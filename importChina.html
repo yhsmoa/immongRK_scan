@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>쿠팡 로켓 중국입고</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .top-menu {
+            background-color: #fff;
+            padding: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .menu-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+        }
+        .menu-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 3px;
+            color: #333;
+            text-decoration: none;
+        }
+        .menu-item:hover {
+            background-color: #f0f0f0;
+        }
+        .menu-item.active {
+            background-color: #e0e0e0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+        .upload-area.dragover {
+            background-color: #f8f9fa;
+            border-color: #4CAF50;
+        }
+        .upload-area p {
+            margin: 15px 0 0;
+            color: #666;
+        }
+        .upload-btn {
+            padding: 10px 20px;
+            background-color: #FF69B4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.2s;
+        }
+        .upload-btn:hover {
+            background-color: #FF1493;
+        }
+        .table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+        }
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        .table th, .table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .table th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+        }
+        .table tr:hover {
+            background-color: #f5f5f5;
+        }
+        .group-header, .subgroup-header, .item-row, .collapsed, .toggle-icon {
+            display: none;
+        }
+        .button-container {
+            margin-top: 20px;
+            text-align: right;
+        }
+        .action-btn {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        .action-btn:hover {
+            background-color: #45a049;
+        }
+        .container h1 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .container h1 .flag {
+            font-size: 1.2em;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 20px;
+            width: 400px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .modal-header h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+        .close {
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .modal-body {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .modal-body input {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .modal-footer {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .modal-btn {
+            padding: 8px 16px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .modal-btn.confirm {
+            background-color: #FF69B4;
+            color: white;
+        }
+        .modal-btn.cancel {
+            background-color: #ddd;
+            color: #333;
+        }
+        .table th:nth-child(2),
+        .table td:nth-child(2) {
+            display: none;
+        }
+        .button-group {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+        
+        .left-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .right-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .action-button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        .action-button:hover {
+            opacity: 0.9;
+        }
+        
+        .organize-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .order-organize-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .import1-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .import2-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .pdf-button {
+            background-color: #2196F3;
+            color: white;
+        }
+        
+        .delete-button {
+            background-color: #f44336;
+            color: white;
+        }
+        
+        .shipment-code-button {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .shipment-code-button:hover {
+            background-color: #e9ecef;
+        }
+        
+        .shipment-code-button.selected {
+            background-color: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+
+        .modal-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin: 0 auto;
+            width: 90%;
+        }
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .content, .content * {
+                visibility: visible;
+            }
+            .content {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 0;
+                margin: 0;
+            }
+            .table {
+                width: 100%;
+                border-collapse: collapse;
+                page-break-inside: auto;
+                font-size: 9px !important;
+            }
+            .table tr {
+                page-break-inside: avoid;
+                page-break-after: auto;
+            }
+            .table th, .table td {
+                border: 1px solid #000;
+                padding: 4px;
+                font-size: 9px !important;
+                line-height: 1.2;
+                white-space: nowrap;
+            }
+            .table th {
+                background-color: #f2f2f2 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                font-weight: bold;
+            }
+            .table td:nth-child(5), /* 상품명 */
+            .table td:nth-child(8) { /* 출고예정 */
+                white-space: normal;
+                max-width: 200px;
+                word-break: break-word;
+            }
+            .button-group, .upload-container {
+                display: none;
+            }
+            @page {
+                size: A4 landscape;
+                margin: 0.5cm;
+            }
+        }
+        .table td:nth-child(8) { /* 출고예정 열 */
+            white-space: pre-line;
+            max-width: 300px;
+            cursor: pointer;
+        }
+        .editable-cell {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 8px;
+            min-height: 100px;
+            width: 100%;
+            box-sizing: border-box;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    <div class="container">
+        <h1>중국입고 관리 <span class="flag">🐉</span></h1>
+        <div class="content">
+            <div class="button-group">
+                <div class="left-buttons">
+                    <button class="action-button delete-button" id="deleteButton">삭제</button>
+                </div>
+                <div class="right-buttons">
+                    <button class="action-button organize-button" id="organizeButton">CN 입고 정리</button>
+                    <button class="action-button import1-button" id="import1Button">입고1</button>
+                    <button class="action-button import2-button" id="import2Button">입고2</button>
+                    <button class="action-button order-organize-button" id="orderOrganizeButton">입고1/2 초기화</button>
+                    <button class="action-button pdf-button" id="printButton">인쇄</button>
+                </div>
+            </div>
+            
+            <div class="upload-container">
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
+                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">Excel 파일 업로드 🐲</button>
+                    <p>또는 파일을 여기에 끌어다 놓으세요</p>
+                </div>
+            </div>
+
+            <!-- 정렬 드롭박스 추가 -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <div style="display: flex; align-items: center;">
+                    <label for="sortDropdown" style="margin-right: 10px; font-weight: bold;">정렬 기준:</label>
+                    <select id="sortDropdown" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; cursor: pointer; background-color: #f9f9f9;">
+                        <option value="none">- 선택 -</option>
+                        <option value="boxName">박스번호</option>
+                        <option value="orderNumber">중국번호</option>
+                        <option value="productName">상품명</option>
+                        <option value="availableOrders">출고예정</option>
+                        <option value="shippingDate">출고예정일</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>출고코드</th>
+                            <th style="display: none;">팔렛</th>
+                            <th>박스명</th>
+                            <th>중국번호</th>
+                            <th>상품명</th>
+                            <th>수량</th>
+                            <th>바코드</th>
+                            <th>출고예정</th>
+                            <th>출고예정일</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataBody">
+                        <!-- 데이터가 여기에 동적으로 추가됩니다 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 출고날짜 입력 모달 -->
+    <div id="dateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>출고코드 입력</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <label for="shipmentCode">출고코드:</label>
+                <input type="text" id="shipmentCode" placeholder="출고코드를 입력하세요">
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" onclick="closeModal()">취소</button>
+                <button class="modal-btn confirm" onclick="confirmShipmentCode()">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 삭제 모달 -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>삭제할 출고코드 선택</h2>
+            <div id="shipmentCodeList">
+                <!-- 출고코드 버튼들이 여기에 동적으로 추가됩니다 -->
+            </div>
+            <div class="button-container">
+                <button class="action-button delete-button" id="confirmDeleteButton">삭제</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 입고1 모달 -->
+    <div id="import1Modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>입고1 정리</h2>
+                <span class="close" onclick="closeImport1Modal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>출고코드를 선택하세요</p>
+                <div class="modal-grid" id="import1ShipmentCodeList">
+                    <!-- 출고코드 버튼들이 여기에 동적으로 추가됩니다 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 입고2 모달 -->
+    <div id="import2Modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>입고2 정리</h2>
+                <span class="close" onclick="closeImport2Modal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>출고코드를 선택하세요</p>
+                <div class="modal-grid" id="import2ShipmentCodeList">
+                    <!-- 출고코드 버튼들이 여기에 동적으로 추가됩니다 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        // 헤더 로드
+        fetch('/header')
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('header-container').innerHTML = html;
+            });
+
+        // 모달 관련 함수
+        function showModal() {
+            document.getElementById('dateModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('dateModal').style.display = 'none';
+            selectedFile = null;
+            document.getElementById('shipmentCode').value = '';
+        }
+
+        function confirmShipmentCode() {
+            const shipmentCode = document.getElementById('shipmentCode').value.trim();
+            if (!shipmentCode) {
+                alert('출고코드를 입력해주세요.');
+                return;
+            }
+            if (selectedFile) {
+                handleFileUpload(selectedFile, shipmentCode);
+            }
+            closeModal();
+        }
+
+        // 드래그 앤 드롭 이벤트 처리
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                selectedFile = files[0];
+                showModal();
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                showModal();
+            }
+        });
+
+        async function handleFileUpload(file, shipmentCode) {
+            if (!file.name.endsWith('.xlsx')) {
+                alert('Excel 파일만 업로드 가능합니다.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('shipmentCode', shipmentCode);
+
+            try {
+                const response = await fetch('/api/importChina/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('파일 업로드 실패');
+                }
+
+                const data = await response.json();
+                alert(data.message);
+                loadImportData();
+            } catch (error) {
+                console.error('Error:', error);
+                alert('파일 업로드 중 오류가 발생했습니다.');
+            }
+        }
+
+        // 전역 변수로 데이터 저장
+        let globalData = [];
+
+        // 데이터 로드 함수
+        async function loadImportData() {
+            try {
+                const response = await fetch('/api/importChina');
+                if (!response.ok) {
+                    throw new Error('데이터 로드 실패');
+                }
+                const data = await response.json();
+                console.log('로드된 데이터:', data);
+                globalData = data; // 전역 변수에 데이터 저장
+                displayData(data);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                console.error('Error:', error);
+            }
+        }
+
+        function displayData(data) {
+            const tbody = document.getElementById('dataBody');
+            tbody.innerHTML = '';
+            
+            data.forEach(item => {
+                const row = document.createElement('tr');
+                
+                // 출고코드
+                const shipmentCodeCell = document.createElement('td');
+                shipmentCodeCell.textContent = item.shipmentCode;
+                row.appendChild(shipmentCodeCell);
+                
+                // 팔렛
+                const palletCell = document.createElement('td');
+                palletCell.textContent = item.pallet;
+                row.appendChild(palletCell);
+                
+                // 박스명
+                const boxNameCell = document.createElement('td');
+                boxNameCell.textContent = item.boxName;
+                row.appendChild(boxNameCell);
+                
+                // 발주번호 (중국번호)
+                const orderNumberCell = document.createElement('td');
+                orderNumberCell.textContent = item.orderNumber;
+                row.appendChild(orderNumberCell);
+                
+                // 상품명
+                const productNameCell = document.createElement('td');
+                productNameCell.textContent = item.productName;
+                row.appendChild(productNameCell);
+                
+                // 수량
+                const quantityCell = document.createElement('td');
+                quantityCell.textContent = item.quantity;
+                row.appendChild(quantityCell);
+                
+                // 바코드
+                const barcodeCell = document.createElement('td');
+                barcodeCell.textContent = item.barcode;
+                row.appendChild(barcodeCell);
+                
+                // 출고예정 (수정 가능)
+                const availableOrdersCell = document.createElement('td');
+                availableOrdersCell.contentEditable = true;
+                availableOrdersCell.textContent = item.availableOrders || '';
+                availableOrdersCell.addEventListener('blur', async function() {
+                    const newValue = this.textContent.trim();
+                    if (newValue !== item.availableOrders) {
+                        try {
+                            const response = await fetch('/api/importChina/updateAvailableOrders', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    shipmentCode: item.shipmentCode,
+                                    barcode: item.barcode,
+                                    availableOrders: newValue
+                                })
+                            });
+                            
+                            if (!response.ok) {
+                                throw new Error('업데이트 실패');
+                            }
+                            
+                            item.availableOrders = newValue;
+                        } catch (error) {
+                            console.error('Error updating available orders:', error);
+                            this.textContent = item.availableOrders || '';
+                            alert('업데이트 중 오류가 발생했습니다.');
+                        }
+                    }
+                });
+                row.appendChild(availableOrdersCell);
+                
+                // 출고예정일
+                const shippingDateCell = document.createElement('td');
+                shippingDateCell.textContent = item.shippingDate || '';
+                row.appendChild(shippingDateCell);
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // 정렬 함수 추가
+        function sortData(field) {
+            if (field === 'none') {
+                displayData(globalData);
+                return;
+            }
+
+            const sortedData = [...globalData].sort((a, b) => {
+                // '출고예정' 기준 선택 시 이중 정렬 적용 (출고예정일 > 출고예정)
+                if (field === 'availableOrders') {
+                    // 1. 출고예정일 기준 정렬
+                    const dateA = (a.shippingDate || '').toString();
+                    const dateB = (b.shippingDate || '').toString();
+                    
+                    if (dateA !== dateB) {
+                        return dateA.localeCompare(dateB);
+                    }
+                    
+                    // 2. 출고예정 기준 정렬
+                    const valueA = (a.availableOrders || '').toString().toLowerCase();
+                    const valueB = (b.availableOrders || '').toString().toLowerCase();
+                    
+                    // 출고예정 값이 같은 경우 박스명으로 정렬
+                    if (valueA === valueB) {
+                        const boxA = (a.boxName || '').toString().toLowerCase();
+                        const boxB = (b.boxName || '').toString().toLowerCase();
+                        return boxA.localeCompare(boxB);
+                    }
+                    
+                    return valueA.localeCompare(valueB);
+                } else {
+                    // 다른 필드는 단일 기준 정렬
+                    const valueA = (a[field] || '').toString().toLowerCase();
+                    const valueB = (b[field] || '').toString().toLowerCase();
+                    return valueA.localeCompare(valueB);
+                }
+            });
+            
+            displayData(sortedData);
+        }
+
+        // 정렬 드롭다운 이벤트 리스너 추가
+        document.addEventListener('DOMContentLoaded', () => {
+            loadImportData();
+            
+            // 정렬 드롭다운 이벤트 설정
+            const sortDropdown = document.getElementById('sortDropdown');
+            sortDropdown.addEventListener('change', (e) => {
+                sortData(e.target.value);
+            });
+        });
+
+        // 삭제 모달 관련 스크립트
+        const deleteButton = document.getElementById('deleteButton');
+        const deleteModal = document.getElementById('deleteModal');
+        const closeButton = deleteModal.querySelector('.close');
+        const shipmentCodeList = document.getElementById('shipmentCodeList');
+        const confirmDeleteButton = document.getElementById('confirmDeleteButton');
+        let selectedShipmentCode = null;
+        
+        // 삭제 버튼 클릭 시 모달 열기
+        deleteButton.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/importChina/data');
+                const data = await response.json();
+                
+                // 출고코드 목록 가져오기
+                const shipmentCodes = [...new Set(data.map(item => item.shipmentCode))];
+                
+                // 출고코드 버튼 생성
+                shipmentCodeList.innerHTML = '';
+                shipmentCodes.forEach(code => {
+                    const button = document.createElement('button');
+                    button.className = 'shipment-code-button';
+                    button.textContent = code;
+                    button.addEventListener('click', () => {
+                        // 선택된 버튼 스타일 변경
+                        document.querySelectorAll('.shipment-code-button').forEach(btn => {
+                            btn.classList.remove('selected');
+                        });
+                        button.classList.add('selected');
+                        selectedShipmentCode = code;
+                    });
+                    shipmentCodeList.appendChild(button);
+                });
+                
+                deleteModal.style.display = 'block';
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+        
+        // 모달 닫기
+        closeButton.addEventListener('click', () => {
+            deleteModal.style.display = 'none';
+            selectedShipmentCode = null;
+        });
+        
+        // 모달 외부 클릭 시 닫기
+        window.addEventListener('click', (event) => {
+            if (event.target === deleteModal) {
+                deleteModal.style.display = 'none';
+                selectedShipmentCode = null;
+            }
+        });
+        
+        // 삭제 확인 버튼 클릭 시
+        confirmDeleteButton.addEventListener('click', async () => {
+            if (!selectedShipmentCode) {
+                alert('삭제할 출고코드를 선택해주세요.');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/importChina/delete/${selectedShipmentCode}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    alert('삭제가 완료되었습니다.');
+                    deleteModal.style.display = 'none';
+                    selectedShipmentCode = null;
+                    // 테이블 새로고침
+                    loadImportData();
+                } else {
+                    alert('삭제 중 오류가 발생했습니다.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('삭제 중 오류가 발생했습니다.');
+            }
+        });
+
+        // 인쇄 버튼 클릭 이벤트
+        document.getElementById('printButton').addEventListener('click', () => {
+            window.print();
+        });
+
+        // 발주서 정리 버튼 클릭 이벤트
+        document.getElementById('organizeButton').addEventListener('click', async () => {
+            try {
+                // 발주서 정리 API 호출
+                const response = await fetch('/api/importChina/organize', {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('발주서 정리 중 오류가 발생했습니다.');
+                }
+                
+                alert('발주서 정리가 완료되었습니다.');
+                loadImportData(); // 테이블 새로고침
+            } catch (error) {
+                console.error('Error:', error);
+                alert(error.message);
+            }
+        });
+
+        // 입고1, 입고2 모달 관련 함수
+        function showImport1Modal() {
+            document.getElementById('import1Modal').style.display = 'block';
+            loadShipmentCodes('import1');
+        }
+
+        function showImport2Modal() {
+            document.getElementById('import2Modal').style.display = 'block';
+            loadShipmentCodes('import2');
+        }
+
+        function closeImport1Modal() {
+            document.getElementById('import1Modal').style.display = 'none';
+        }
+
+        function closeImport2Modal() {
+            document.getElementById('import2Modal').style.display = 'none';
+        }
+
+        async function loadShipmentCodes(type) {
+            try {
+                const response = await fetch('/api/importChina/data');
+                const data = await response.json();
+                
+                // 출고코드 목록 가져오기 (중복 제거)
+                const shipmentCodes = [...new Set(data.map(item => item.shipmentCode))];
+                
+                // 출고코드 버튼 생성
+                const container = document.getElementById(`${type}ShipmentCodeList`);
+                container.innerHTML = '';
+                
+                shipmentCodes.forEach(code => {
+                    const button = document.createElement('button');
+                    button.className = 'shipment-code-button';
+                    button.textContent = code;
+                    button.addEventListener('click', () => {
+                        // 선택된 버튼 스타일 변경
+                        document.querySelectorAll(`#${type}ShipmentCodeList .shipment-code-button`).forEach(btn => {
+                            btn.classList.remove('selected');
+                        });
+                        button.classList.add('selected');
+                        handleShipmentCodeSelection(code, type);
+                    });
+                    container.appendChild(button);
+                });
+            } catch (error) {
+                console.error('Error:', error);
+                alert('출고코드 목록을 불러오는데 실패했습니다.');
+            }
+        }
+
+        async function handleShipmentCodeSelection(shipmentCode, type) {
+            try {
+                // 현재 테이블의 데이터를 가져옵니다
+                const tableBody = document.getElementById('dataBody');
+                const rows = tableBody.getElementsByTagName('tr');
+                const updateData = [];
+
+                // 선택된 출고코드에 해당하는 행만 처리
+                for (let row of rows) {
+                    const cells = row.getElementsByTagName('td');
+                    const currentShipmentCode = cells[0].textContent;
+                    const barcode = cells[6].textContent;
+                    const availableOrders = cells[7].textContent;
+                    
+                    if (currentShipmentCode === shipmentCode && barcode && availableOrders) {
+                        // 줄바꿈으로 구분된 각 출고예정 데이터 처리
+                        const orders = availableOrders.split('\n');
+                        
+                        for (const order of orders) {
+                            if (order.trim()) {
+                                const [orderNumber, logisticsCenter, quantity] = order.split('-');
+                                
+                                // "000000000" 발주번호는 처리하지 않음
+                                if (orderNumber === '000000000') continue;
+                                
+                                // 각 주문에 대해 업데이트 데이터 생성
+                                updateData.push({
+                                    orderNumber,
+                                    barcode,
+                                    importValue: quantity // 출고개수만 입력
+                                });
+                            }
+                        }
+                    }
+                }
+
+                if (updateData.length === 0) {
+                    alert('업데이트할 데이터가 없습니다.');
+                    return;
+                }
+
+                // 서버에 업데이트 요청
+                const endpoint = type === 'import1' ? '/api/orders/updateImport1' : '/api/orders/updateImport2';
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(updateData)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`${type === 'import1' ? '입고1' : '입고2'} 정리 중 오류가 발생했습니다.`);
+                }
+
+                const result = await response.json();
+                alert(`${type === 'import1' ? '입고1' : '입고2'} 정리가 완료되었습니다.`);
+                
+                // 모달 닫기
+                if (type === 'import1') {
+                    closeImport1Modal();
+                } else {
+                    closeImport2Modal();
+                }
+                
+                // 현재 페이지의 테이블을 새로고침
+                loadImportData();
+            } catch (error) {
+                console.error('Error:', error);
+                alert(error.message);
+            }
+        }
+
+        // 입고1, 입고2 버튼 클릭 이벤트
+        document.getElementById('import1Button').addEventListener('click', showImport1Modal);
+        document.getElementById('import2Button').addEventListener('click', showImport2Modal);
+
+        // 입고1/2 초기화 버튼 클릭 이벤트
+        document.getElementById('orderOrganizeButton').addEventListener('click', async () => {
+            if (!confirm('입고1과 입고2의 모든 데이터를 초기화하시겠습니까?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/orders/resetImport12', {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    throw new Error('초기화 중 오류가 발생했습니다.');
+                }
+
+                alert('입고1과 입고2의 데이터가 초기화되었습니다.');
+                loadImportData();
+            } catch (error) {
+                console.error('Error:', error);
+                alert(error.message);
+            }
+        });
+    </script>
+</body>
+</html> 

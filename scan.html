@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>바코드 스캔</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .top-menu {
+            background-color: #fff;
+            padding: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .menu-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+        }
+        .menu-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 3px;
+            color: #333;
+            text-decoration: none;
+        }
+        .menu-item:hover {
+            background-color: #f0f0f0;
+        }
+        .menu-item.active {
+            background-color: #e0e0e0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eaeaea;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .input-area {
+            margin-bottom: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .quantity-input {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            width: 100px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .quantity-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .box-selection-area {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 3px;
+            background-color: #f5f5f5;
+        }
+        .box-selection-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        .box-selection-dropdowns {
+            display: flex;
+            gap: 15px;
+        }
+        .dropdown-container {
+            flex: 1;
+        }
+        .dropdown-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .box-dropdown {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 18px;
+        }
+        .input-field {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            flex: 1;
+        }
+        .scan-btn {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .scan-btn:hover {
+            background-color: #45a049;
+        }
+        .result-box {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            background-color: #f9f9f9;
+            margin-top: 10px;
+            min-height: 50px;
+            text-align: center;
+        }
+        .barcode-display {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .product-name {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        .scan-count {
+            font-size: 5em;
+            font-weight: bold;
+        }
+        .count-complete {
+            color: #4CAF50; /* 초록색 */
+        }
+        .count-partial {
+            color: #FFC107; /* 노란색 */
+        }
+        .error-message {
+            font-size: 2.5em;
+            color: red;
+            margin-top: 15px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f8f8;
+            font-weight: bold;
+        }
+        .scan-complete {
+            background-color: #c8e6c9; /* 초록색 - 확정수량 = 스캔수량 */
+        }
+        .scan-partial {
+            background-color: #fff59d; /* 노란색 - 확정수량 > 스캔수량 > 0 */
+        }
+        .scan-none {
+            /* 스캔수량 = 0인 경우 배경색 없음 */
+        }
+        .current-box-info {
+            background-color: #e3f2fd;
+            border-radius: 4px;
+            padding: 10px 15px;
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .box-info-container {
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 10px 0;
+        }
+        .box-info-content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .box-card {
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #f9f9f9;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            margin: 5px;
+            font-size: 18px;
+            white-space: nowrap;
+            min-width: 150px;
+            justify-content: center;
+            position: relative;
+        }
+        .box-card:hover {
+            background-color: #f0f0f0;
+        }
+        .delete-btn {
+            padding: 5px 10px;
+            background-color: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: 10px;
+            font-size: 12px;
+            position: absolute;
+            right: 5px;
+            top: 5px;
+        }
+        .delete-btn:hover {
+            background-color: #cc0000;
+        }
+        /* 모달 스타일 추가 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 400px;
+            border-radius: 5px;
+            position: relative;
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        
+        .modal-body {
+            margin: 15px 0;
+        }
+        
+        .modal-body select {
+            margin: 8px 0 15px 0;
+        }
+        
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .modal-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .modal-btn-cancel {
+            background-color: #e0e0e0;
+        }
+        
+        .modal-btn-submit {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        /* 박스 상품 모달 스타일 */
+        .box-products-modal {
+            display: none;
+            position: fixed;
+            z-index: 1001; /* 기존 모달보다 높게 설정 */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .box-products-content {
+            background-color: #fefefe;
+            margin: 10% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 5px;
+            position: relative;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .box-products-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .box-title-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .box-products-title {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .box-size-select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            min-width: 100px;
+        }
+        .box-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .box-edit-btn, .box-delete-btn, .box-close-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            color: white;
+        }
+        .box-edit-btn {
+            background-color: #4CAF50;
+        }
+        .box-edit-btn:hover {
+            background-color: #45a049;
+        }
+        .box-delete-btn {
+            background-color: #ff4444;
+        }
+        .box-delete-btn:hover {
+            background-color: #cc0000;
+        }
+        .box-close-btn {
+            background-color: #777;
+        }
+        .box-close-btn:hover {
+            background-color: #555;
+        }
+        .order-info {
+            background-color: #e8f4ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            display: none;
+        }
+        .product-detail {
+            margin-top: 10px;
+            padding: 15px;
+            background-color: #fff3cd;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            font-size: 20px;
+            font-weight: 500;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            color: #856404;
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    <div class="container">
+        <h1>바코드 스캔</h1>
+        <div class="content">
+            <!-- 바코드 스캔 영역 -->
+            <div class="section">
+                <div class="section-title">바코드 스캔 영역</div>
+                
+                <!-- 박스 선택 영역 -->
+                <div class="box-selection-area">
+                    <div class="box-selection-dropdowns">
+                        <div class="dropdown-container">
+                            <select id="boxNumber" class="box-dropdown">
+                                <option value="">박스 번호 선택</option>
+                                <option value="BOX1">BOX1</option>
+                                <option value="BOX2">BOX2</option>
+                                <option value="BOX3">BOX3</option>
+                                <option value="BOX4">BOX4</option>
+                                <option value="BOX5">BOX5</option>
+                                <option value="BOX6">BOX6</option>
+                                <option value="BOX7">BOX7</option>
+                                <option value="BOX8">BOX8</option>
+                                <option value="BOX9">BOX9</option>
+                            </select>
+                        </div>
+                        <div class="dropdown-container">
+                            <select id="boxSize" class="box-dropdown">
+                                <option value="">박스 크기 선택</option>
+                                <option value="극소">극소</option>
+                                <option value="소">소</option>
+                                <option value="중">중</option>
+                                <option value="대1">대1</option>
+                                <option value="대2">대2</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="currentBoxInfo" class="current-box-info" style="display: none;">
+                        작업 중인 박스: <span id="currentBoxText">선택 안됨</span>
+                    </div>
+                </div>
+
+                <div class="input-area">
+                    <input type="text" id="barcode" class="input-field" placeholder="바코드 입력" disabled>
+                    <div style="display: flex; flex-direction: column;">
+                        <label for="quantity" class="quantity-label">수량</label>
+                        <input type="number" id="quantity" class="quantity-input" placeholder="수량" value="1" min="1" disabled>
+                    </div>
+                    <button class="scan-btn" onclick="scanBarcode()" disabled>스캔</button>
+                </div>
+                <div class="result-box" id="barcodeResult">바코드 스캔 결과가 여기에 표시됩니다.</div>
+            </div>
+
+            <!-- 발주서 영역 -->
+            <div class="section">
+                <div class="section-title">발주서 영역</div>
+                <div class="input-area">
+                    <input type="text" id="orderNumber" class="input-field" placeholder="발주번호를 입력하세요">
+                    <button class="scan-btn" onclick="loadOrder()">불러오기</button>
+                </div>
+                
+                <!-- 발주서 정보 표시 영역 추가 -->
+                <div id="orderInfo" class="order-info"></div>
+                
+                <!-- 발주서의 박스정보를 표시할 영역 추가 -->
+                <div id="boxInfoContainer" class="box-info-container" style="display: none;">
+                    <div class="section-title">박스 정보</div>
+                    <div id="boxInfoContent" class="box-info-content" style="display: flex; flex-wrap: wrap; gap: 10px;"></div>
+                </div>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>상품바코드</th>
+                            <th>상품명</th>
+                            <th>확정수량</th>
+                            <th>스캔수량</th>
+                            <th>위치</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productList">
+                        <!-- 상품 목록이 여기에 동적으로 추가됩니다 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 박스 상품 모달 추가 -->
+    <div id="boxProductsModal" class="box-products-modal">
+        <div class="box-products-content">
+            <div class="box-products-header">
+                <div class="box-title-container">
+                    <span id="boxProductsTitle" class="box-products-title">BOX1-극소</span>
+                    <select id="boxSizeSelect" class="box-size-select">
+                        <option value="극소">극소</option>
+                        <option value="소">소</option>
+                        <option value="중">중</option>
+                        <option value="대1">대1</option>
+                        <option value="대2">대2</option>
+                    </select>
+                </div>
+                <div class="box-actions">
+                    <button class="box-edit-btn" id="boxEditBtn">박스 정보 수정</button>
+                    <button class="box-delete-btn" id="boxDeleteBtn">박스 삭제</button>
+                    <button class="box-close-btn" onclick="closeBoxProductsModal()">닫기</button>
+                </div>
+            </div>
+            <div id="boxProductsBody">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>상품바코드</th>
+                            <th>상품명</th>
+                            <th>확정수량</th>
+                            <th>스캔수량</th>
+                        </tr>
+                    </thead>
+                    <tbody id="boxProductsList">
+                        <!-- 박스별 상품 목록이 여기에 동적으로 추가됩니다 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 모달 추가 -->
+    <div id="editBoxModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">박스 정보 수정</div>
+            <div class="modal-body">
+                <div style="margin-bottom: 15px;">
+                    <div style="margin-bottom: 5px;">현재 박스 정보: <span id="currentBoxInfoText"></span></div>
+                </div>
+                <div>
+                    <label>박스 번호:</label>
+                    <select id="editBoxNumber" class="box-dropdown" style="width: 100%;">
+                        <option value="">박스 번호 선택</option>
+                        <option value="BOX1">BOX1</option>
+                        <option value="BOX2">BOX2</option>
+                        <option value="BOX3">BOX3</option>
+                        <option value="BOX4">BOX4</option>
+                        <option value="BOX5">BOX5</option>
+                        <option value="BOX6">BOX6</option>
+                        <option value="BOX7">BOX7</option>
+                        <option value="BOX8">BOX8</option>
+                        <option value="BOX9">BOX9</option>
+                    </select>
+                </div>
+                <div>
+                    <label>박스 크기:</label>
+                    <select id="editBoxSize" class="box-dropdown" style="width: 100%;">
+                        <option value="">박스 크기 선택</option>
+                        <option value="극소">극소</option>
+                        <option value="소">소</option>
+                        <option value="중">중</option>
+                        <option value="대1">대1</option>
+                        <option value="대2">대2</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="closeEditBoxModal()">취소</button>
+                <button class="modal-btn modal-btn-submit" onclick="submitBoxEdit()">수정</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 음향 효과 추가 -->
+    <!-- 오디오 파일 없이 브라우저 API로 효과음 구현 -->
+    <script>
+        // 경고음 생성 함수
+        function playWarningSound() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            // 더 강한 경고음을 위한 설정
+            oscillator.type = 'square';
+            oscillator.frequency.value = 800; // 높은 주파수로 변경
+            
+            // 경고음 패턴 생성 (반복음)
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // 더 큰 소리로 설정
+            gainNode.gain.value = 0.7;
+            
+            // 시작
+            oscillator.start();
+            
+            // 0.15초 간격으로 소리 크기 변경 (깜빡이는 효과)
+            setTimeout(() => { gainNode.gain.value = 0; }, 150);
+            setTimeout(() => { gainNode.gain.value = 0.7; }, 300);
+            setTimeout(() => { gainNode.gain.value = 0; }, 450);
+            setTimeout(() => { gainNode.gain.value = 0.7; }, 600);
+            
+            // 0.75초 후 소리 중지
+            setTimeout(() => {
+                oscillator.stop();
+            }, 750);
+        }
+        
+        // 성공음 생성 함수
+        function playSuccessSound() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.type = 'sine';
+            
+            // 상승하는 음계로 설정
+            oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+            oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+            oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+            oscillator.frequency.setValueAtTime(1046.50, audioContext.currentTime + 0.3); // C6 (한 옥타브 위)
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            gainNode.gain.value = 0.5;
+            oscillator.start();
+            
+            // 0.4초 후 소리 중지
+            setTimeout(() => {
+                oscillator.stop();
+            }, 400);
+        }
+    </script>
+
+    <script>
+        // 헤더 로드
+        fetch('/header')
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('header-container').innerHTML = html;
+            });
+
+        let currentOrder = null;
+        let lastScannedBarcode = null;
+        let boxInfoMap = new Map(); // 박스 정보를 저장할 맵
+
+        async function loadOrder() {
+            const orderNumber = document.getElementById('orderNumber').value;
+            if (!orderNumber) {
+                alert('발주번호를 입력하세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/orders/${orderNumber}`);
+                if (!response.ok) {
+                    throw new Error('발주서를 불러오는데 실패했습니다.');
+                }
+                currentOrder = await response.json();
+                
+                // 발주서 정보 표시 (발주번호, 물류센터, 입고예정일)
+                const orderInfoEl = document.getElementById('orderInfo');
+                orderInfoEl.innerHTML = `${currentOrder.발주번호} (${currentOrder.물류센터}) 입고예정일 : ${currentOrder.입고예정일}`;
+                orderInfoEl.style.display = 'block';
+                
+                // 바코드 입력 필드는 비활성화 상태로 유지 (박스 선택 시 활성화)
+                document.getElementById('barcode').disabled = true;
+                document.querySelector('.scan-btn[onclick="scanBarcode()"]').disabled = true;
+                
+                // 박스 선택 드롭다운 활성화
+                document.getElementById('boxNumber').disabled = false;
+                document.getElementById('boxSize').disabled = false;
+                
+                // 결과 테이블 초기화
+                const tbody = document.getElementById('productList');
+                tbody.innerHTML = '';
+                
+                // 상품 정보 표시 (박스정보가 없는 원본 상품만 표시)
+                currentOrder.상품정보
+                    .filter(product => !product.박스정보)
+                    .forEach(product => {
+                        const row = document.createElement('tr');
+                        // 스캔 상태에 따른 행 색상 설정
+                        if (product.스캔수량 >= product.확정수량) {
+                            row.className = 'scan-complete';
+                        } else if (product.스캔수량 > 0) {
+                            row.className = 'scan-partial';
+                        } else {
+                            row.className = 'scan-none';
+                        }
+                        
+                        row.innerHTML = `
+                            <td>${product.상품바코드}</td>
+                            <td>${product.상품이름}</td>
+                            <td>${product.확정수량}</td>
+                            <td>${product.스캔수량 || 0}</td>
+                            <td>${product.위치 || '-'}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                
+                // 박스 정보 맵 초기화 및 채우기
+                boxInfoMap.clear();
+                currentOrder.상품정보
+                    .filter(product => product.박스정보)
+                    .forEach(product => {
+                        const boxInfo = product.박스정보;
+                        if (!boxInfoMap.has(boxInfo)) {
+                            const [boxNumber, boxSize] = boxInfo.split('-');
+                            boxInfoMap.set(boxInfo, {
+                                boxNumber,
+                                boxSize,
+                                products: []
+                            });
+                        }
+                    });
+                
+                // 박스 정보 UI 업데이트
+                updateBoxInfoUI();
+                
+                // 박스 선택에 포커스
+                document.getElementById('boxNumber').focus();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 박스 정보 UI 업데이트
+        function updateBoxInfoUI() {
+            const boxInfoContent = document.getElementById('boxInfoContent');
+            boxInfoContent.innerHTML = '';
+            
+            if (boxInfoMap.size > 0) {
+                document.getElementById('boxInfoContainer').style.display = 'block';
+                
+                boxInfoMap.forEach((info, boxInfo) => {
+                    const boxCard = document.createElement('div');
+                    boxCard.className = 'box-card';
+                    boxCard.innerHTML = `📦 ${info.boxNumber} - ${info.boxSize}`;
+                    boxCard.onclick = () => openBoxProductsModal(info.boxNumber, info.boxSize);
+                    boxInfoContent.appendChild(boxCard);
+                });
+            } else {
+                document.getElementById('boxInfoContainer').style.display = 'none';
+            }
+        }
+
+        // 박스 상품 모달 열기
+        function openBoxProductsModal(boxNumber, boxSize) {
+            if (!currentOrder) return;
+            
+            const boxInfo = `${boxNumber}-${boxSize}`;
+            const modal = document.getElementById('boxProductsModal');
+            const boxProductsList = document.getElementById('boxProductsList');
+            const boxProductsTitle = document.getElementById('boxProductsTitle');
+            const boxSizeSelect = document.getElementById('boxSizeSelect');
+            
+            // 모달 제목 설정
+            boxProductsTitle.textContent = `${boxNumber}-${boxSize}`;
+            
+            // 박스 크기 드롭다운 현재 값 설정
+            boxSizeSelect.value = boxSize;
+            
+            // 테이블 초기화
+            boxProductsList.innerHTML = '';
+            
+            // 박스에 포함된 상품 목록 가져오기
+            const boxProducts = currentOrder.상품정보.filter(product => product.박스정보 === boxInfo);
+            
+            if (boxProducts.length > 0) {
+                boxProducts.forEach(product => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${product.상품바코드}</td>
+                        <td>${product.상품이름}</td>
+                        <td>${product.확정수량}</td>
+                        <td>${product.스캔수량 || 0}</td>
+                    `;
+                    boxProductsList.appendChild(row);
+                });
+            } else {
+                const row = document.createElement('tr');
+                row.innerHTML = `<td colspan="4" style="text-align: center;">상품이 없습니다.</td>`;
+                boxProductsList.appendChild(row);
+            }
+            
+            // 박스 정보 수정 버튼 이벤트 핸들러 설정
+            document.getElementById('boxEditBtn').onclick = () => {
+                updateBoxSize(boxNumber, boxSize);
+            };
+            
+            // 박스 삭제 버튼 이벤트 핸들러 설정
+            document.getElementById('boxDeleteBtn').onclick = () => {
+                confirmDeleteBox(boxNumber, boxSize);
+            };
+            
+            // 모달 표시
+            modal.style.display = 'block';
+        }
+        
+        // 박스 크기 업데이트 함수
+        function updateBoxSize(boxNumber, oldBoxSize) {
+            if (!currentOrder) return;
+            
+            const newBoxSize = document.getElementById('boxSizeSelect').value;
+            if (newBoxSize === oldBoxSize) {
+                alert('박스 크기가 변경되지 않았습니다.');
+                return;
+            }
+            
+            if (confirm(`박스 크기를 ${oldBoxSize}에서 ${newBoxSize}로 변경하시겠습니까?`)) {
+                fetch('/api/scan/updateBox', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumber: currentOrder.발주번호,
+                        oldBoxNumber: boxNumber,
+                        oldBoxSize: oldBoxSize,
+                        newBoxNumber: boxNumber,
+                        newBoxSize: newBoxSize
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('박스 정보 수정에 실패했습니다.');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    alert(data.message);
+                    closeBoxProductsModal();
+                    loadOrder();  // 변경 사항 반영을 위해 발주서 다시 로드
+                })
+                .catch(error => {
+                    alert(error.message);
+                });
+            }
+        }
+        
+        // 박스 상품 모달 닫기
+        function closeBoxProductsModal() {
+            document.getElementById('boxProductsModal').style.display = 'none';
+        }
+
+        // 박스 상품 삭제 확인
+        function deleteBoxProduct(barcode, boxInfo) {
+            if (!currentOrder) return;
+            
+            if (confirm(`${boxInfo} 박스의 ${barcode} 상품을 삭제하시겠습니까?`)) {
+                // API 호출하여 스캔수량을 0으로 설정 (서버에서 자동 삭제됨)
+                fetch('/api/scan/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumber: currentOrder.발주번호,
+                        barcode: barcode,
+                        boxInfo: boxInfo,
+                        scanCount: 0
+                    })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('상품 삭제에 실패했습니다.');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    alert(data.message);
+                    closeBoxProductsModal(); // 모달 닫기
+                    loadOrder();  // 변경 사항 반영을 위해 발주서 다시 로드
+                })
+                .catch(error => {
+                    alert(error.message);
+                });
+            }
+        }
+
+        // 박스 삭제 확인
+        function confirmDeleteBox(boxNumber, boxSize) {
+            if (!currentOrder) return;
+            
+            const boxInfo = `${boxNumber}-${boxSize}`;
+            
+            if (confirm(`${boxInfo} 박스를 삭제하시겠습니까? 이 박스에 포함된 모든 상품 정보가 삭제됩니다.`)) {
+                // 해당 박스에 포함된 모든 상품의 스캔수량을 0으로 설정
+                const boxProductsPromises = currentOrder.상품정보
+                    .filter(product => product.박스정보 === boxInfo)
+                    .map(product => {
+                        return fetch('/api/scan/update', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                orderNumber: currentOrder.발주번호,
+                                barcode: product.상품바코드,
+                                boxInfo: boxInfo,
+                                scanCount: 0
+                            })
+                        });
+                    });
+                
+                Promise.all(boxProductsPromises)
+                    .then(() => {
+                        alert(`${boxInfo} 박스가 삭제되었습니다.`);
+                        loadOrder();  // 변경 사항 반영을 위해 발주서 다시 로드
+                    })
+                    .catch(error => {
+                        alert(`박스 삭제 중 오류가 발생했습니다: ${error.message}`);
+                    });
+            }
+        }
+
+        // 박스 선택 확인 및 바코드 입력 활성화
+        function checkBoxSelection() {
+            const boxNumber = document.getElementById('boxNumber').value;
+            const boxSize = document.getElementById('boxSize').value;
+            
+            if (boxNumber && boxSize) {
+                // 바코드 입력 필드와 수량 입력 필드 활성화
+                document.getElementById('barcode').disabled = false;
+                document.getElementById('quantity').disabled = false;
+                document.querySelector('.scan-btn[onclick="scanBarcode()"]').disabled = false;
+                // 현재 선택된 박스 정보 표시
+                document.getElementById('currentBoxText').textContent = `${boxNumber}-${boxSize}`;
+                document.getElementById('currentBoxInfo').style.display = 'block';
+                // 바코드 입력에 포커스
+                document.getElementById('barcode').focus();
+            } else {
+                // 바코드 입력 필드와 수량 입력 필드 비활성화
+                document.getElementById('barcode').disabled = true;
+                document.getElementById('quantity').disabled = true;
+                document.querySelector('.scan-btn[onclick="scanBarcode()"]').disabled = true;
+                document.getElementById('currentBoxInfo').style.display = 'none';
+            }
+        }
+
+        async function scanBarcode() {
+            if (!currentOrder) {
+                alert('먼저 발주서를 불러오세요.');
+                return;
+            }
+            
+            const boxNumber = document.getElementById('boxNumber').value;
+            const boxSize = document.getElementById('boxSize').value;
+            
+            if (!boxNumber || !boxSize) {
+                alert('박스 번호와 박스 크기를 선택하세요.');
+                return;
+            }
+
+            const barcode = document.getElementById('barcode').value;
+            if (!barcode) {
+                alert('바코드를 입력하세요.');
+                return;
+            }
+
+            // 사용자가 입력한 수량을 사용
+            const quantity = parseInt(document.getElementById('quantity').value) || 1;
+            if (quantity <= 0) {
+                alert('수량은 1 이상이어야 합니다.');
+                return;
+            }
+
+            try {
+                const boxInfo = `${boxNumber}-${boxSize}`;
+
+                const response = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumber: currentOrder.발주번호,
+                        barcode: barcode,
+                        boxNumber: boxNumber,
+                        boxSize: boxSize,
+                        boxInfo: boxInfo,
+                        quantity: quantity
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || '스캔에 실패했습니다.');
+                }
+
+                const result = await response.json();
+                lastScannedBarcode = barcode;
+                
+                // 바코드 결과 영역 업데이트
+                updateBarcodeResult(result);
+                
+                // 결과 테이블 업데이트
+                const tbody = document.getElementById('productList');
+                tbody.innerHTML = '';
+                
+                // 상품 정보 표시 (박스정보가 없는 원본 상품만 표시)
+                result.상품정보
+                    .filter(product => !product.박스정보)
+                    .forEach(product => {
+                        const row = document.createElement('tr');
+                        // 스캔 상태에 따른 행 색상 설정
+                        if (product.스캔수량 >= product.확정수량) {
+                            row.className = 'scan-complete';
+                        } else if (product.스캔수량 > 0) {
+                            row.className = 'scan-partial';
+                        } else {
+                            row.className = 'scan-none';
+                        }
+                        
+                        row.innerHTML = `
+                            <td>${product.상품바코드}</td>
+                            <td>${product.상품이름}</td>
+                            <td>${product.확정수량}</td>
+                            <td>${product.스캔수량 || 0}</td>
+                            <td>${product.위치 || '-'}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                
+                // 박스 정보 맵 업데이트
+                boxInfoMap.clear();
+                result.상품정보
+                    .filter(product => product.박스정보)
+                    .forEach(product => {
+                        const boxInfo = product.박스정보;
+                        if (!boxInfoMap.has(boxInfo)) {
+                            const [boxNumber, boxSize] = boxInfo.split('-');
+                            boxInfoMap.set(boxInfo, {
+                                boxNumber,
+                                boxSize,
+                                products: []
+                            });
+                        }
+                    });
+                
+                // 박스 정보 UI 업데이트
+                updateBoxInfoUI();
+                
+                // 성공 효과음 재생
+                playSuccessSound();
+                
+                // 바코드 필드와 수량 필드 초기화
+                document.getElementById('barcode').value = '';
+                document.getElementById('quantity').value = '1';
+                document.getElementById('barcode').focus();
+            } catch (error) {
+                // 오류 메시지 표시
+                document.getElementById('barcodeResult').innerHTML = `<div class="error-message">${error.message}</div>`;
+                
+                // 해당 바코드가 발주서에 없는 경우 상품 정보 조회 및 표시
+                if (error.message.includes('상품을 찾을 수 없습니다')) {
+                    // 경고음 재생 (강조)
+                    playWarningSound();
+                    
+                    try {
+                        console.log('바코드 정보 조회 시도:', barcode);
+                        const productResponse = await fetch(`/api/products/barcode/${barcode}`);
+                        console.log('API 응답 상태:', productResponse.status, productResponse.ok);
+                        
+                        if (productResponse.ok) {
+                            const productData = await productResponse.json();
+                            console.log('찾은 상품 정보:', productData);
+                            
+                            // 상품 정보 표시 (더 명확하게)
+                            document.getElementById('barcodeResult').innerHTML = `
+                                <div class="error-message">해당 바코드의 상품을 찾을 수 없습니다.</div>
+                                <div class="product-detail">
+                                    <strong>${productData.상품바코드}</strong> : ${productData.상품이름}
+                                </div>
+                            `;
+                        } else {
+                            // API 호출은 성공했지만 상품을 찾지 못한 경우
+                            console.log('상품을 찾지 못했습니다');
+                            document.getElementById('barcodeResult').innerHTML = `
+                                <div class="error-message">해당 바코드의 상품을 찾을 수 없습니다.</div>
+                                <div class="product-detail">
+                                    <strong>${barcode}</strong> - 등록되지 않은 상품입니다.
+                                </div>
+                            `;
+                        }
+                    } catch (productError) {
+                        console.error('상품 정보 조회 중 오류 발생:', productError);
+                        document.getElementById('barcodeResult').innerHTML = `
+                            <div class="error-message">해당 바코드의 상품을 찾을 수 없습니다.</div>
+                            <div class="product-detail">
+                                <strong>${barcode}</strong> - 상품 정보 조회 중 오류가 발생했습니다.
+                            </div>
+                        `;
+                    }
+                } else if (error.message.includes('이미 확정 수량만큼 스캔되었습니다')) {
+                    // 수량 초과 오류 시 경고음 재생
+                    playWarningSound();
+                    document.getElementById('barcodeResult').innerHTML = `
+                        <div class="error-message">${error.message}</div>
+                    `;
+                } else {
+                    // 그 외 오류 시 기본 메시지 표시
+                    document.getElementById('barcodeResult').innerHTML = `
+                        <div class="error-message">${error.message}</div>
+                    `;
+                }
+                
+                document.getElementById('barcode').value = '';
+                document.getElementById('barcode').focus();
+            }
+        }
+
+        function updateBarcodeResult(data) {
+            // 스캔된 바코드에 해당하는 상품 찾기
+            const scannedProduct = data.상품정보.find(product => product.상품바코드 === lastScannedBarcode && !product.박스정보);
+            
+            if (!scannedProduct) {
+                document.getElementById('barcodeResult').innerHTML = `<div class="error-message">해당 바코드의 상품을 찾을 수 없습니다.</div>`;
+                playWarningSound();
+                return;
+            }
+            
+            const product = scannedProduct;
+            const scanCount = product.스캔수량 || 0;
+            const confirmedCount = product.확정수량 || 0;
+            const quantity = parseInt(document.getElementById('quantity').value) || 1;
+            
+            let countClass = '';
+            if (scanCount >= confirmedCount) {
+                countClass = 'count-complete';
+                // 수량이 충족된 경우 효과음 재생
+                playSuccessSound();
+            } else if (scanCount > 0) {
+                countClass = 'count-partial';
+            }
+            
+            document.getElementById('barcodeResult').innerHTML = `
+                <div class="success-message">${quantity}개가 스캔되었습니다!</div>
+                <div class="barcode-display">${product.상품바코드}</div>
+                <div class="product-name">${product.상품이름}</div>
+                <div class="scan-count ${countClass}">${scanCount} / ${confirmedCount}</div>
+            `;
+        }
+
+        function updateProductList(products) {
+            const tbody = document.getElementById('productList');
+            tbody.innerHTML = '';
+            
+            products.forEach(product => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${product.상품바코드}</td>
+                    <td>${product.상품이름}</td>
+                    <td>${product.확정수량}</td>
+                    <td>${product.스캔수량 || 0}</td>
+                    <td>${product.위치 || '-'}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // 초기 설정
+        document.getElementById('boxNumber').disabled = true;
+        document.getElementById('boxSize').disabled = true;
+        
+        // 박스 선택 이벤트 핸들러
+        document.getElementById('boxNumber').addEventListener('change', function() {
+            const boxNumber = this.value;
+            const boxSizeSelect = document.getElementById('boxSize');
+            
+            // 박스 번호가 이미 존재하는지 확인
+            for (const [key, info] of boxInfoMap.entries()) {
+                if (info.boxNumber === boxNumber) {
+                    // 이미 존재하는 박스 번호면 해당 크기로 자동 선택
+                    boxSizeSelect.value = info.boxSize;
+                    boxSizeSelect.disabled = true; // 변경 불가능하게 설정
+                    
+                    // 경고 메시지 표시
+                    alert(`${boxNumber}의 박스크기는 이미 ${info.boxSize}로 지정되어 있어 변경할 수 없습니다.`);
+                    break;
+                } else {
+                    // 존재하지 않는 박스면 선택 가능하게 설정
+                    boxSizeSelect.disabled = false;
+                }
+            }
+            
+            checkBoxSelection();
+        });
+
+        // 박스 크기 선택 변경 이벤트
+        document.getElementById('boxSize').addEventListener('change', checkBoxSelection);
+        
+        // 바코드 입력 필드에서 엔터키 이벤트 처리
+        document.getElementById('barcode').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                scanBarcode();
+            }
+        });
+        
+        // 발주번호 입력 필드에서 엔터키 이벤트 처리
+        document.getElementById('orderNumber').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                loadOrder();
+            }
+        });
+        
+        // 소켓 연결을 통한 실시간 업데이트
+        const socket = io();
+        socket.on('scan-update', function(data) {
+            if (currentOrder && currentOrder.발주번호 === data.orderNumber) {
+                // 발주서 다시 로드 (최신 정보 반영)
+                loadOrder();
+            }
+        });
+
+        // 박스 정보 수정 모달 관련 함수들
+        let editingBoxInfo = null;
+
+        function openEditBoxModal(boxNumber, boxSize) {
+            editingBoxInfo = { boxNumber, boxSize };
+            document.getElementById('currentBoxInfoText').textContent = `${boxNumber} - ${boxSize}`;
+            document.getElementById('editBoxNumber').value = boxNumber;
+            document.getElementById('editBoxSize').value = boxSize;
+            document.getElementById('editBoxModal').style.display = 'block';
+        }
+
+        function closeEditBoxModal() {
+            document.getElementById('editBoxModal').style.display = 'none';
+            editingBoxInfo = null;
+        }
+
+        async function submitBoxEdit() {
+            const newBoxNumber = document.getElementById('editBoxNumber').value;
+            const newBoxSize = document.getElementById('editBoxSize').value;
+            
+            if (!newBoxNumber || !newBoxSize) {
+                alert('박스 번호와 크기를 모두 선택해주세요.');
+                return;
+            }
+            
+            // 다른 박스번호와 중복 체크
+            let isDuplicate = false;
+            boxInfoMap.forEach((info, boxInfo) => {
+                if (info.boxNumber === newBoxNumber && info.boxNumber !== editingBoxInfo.boxNumber) {
+                    isDuplicate = true;
+                }
+            });
+            
+            if (isDuplicate) {
+                alert('이미 존재하는 박스번호입니다.');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/scan/updateBox', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumber: currentOrder.발주번호,
+                        oldBoxNumber: editingBoxInfo.boxNumber,
+                        oldBoxSize: editingBoxInfo.boxSize,
+                        newBoxNumber: newBoxNumber,
+                        newBoxSize: newBoxSize
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('박스 정보 수정에 실패했습니다.');
+                }
+
+                // 성공적으로 수정되면 발주서 다시 로드
+                await loadOrder();
+                closeEditBoxModal();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 모달 외부 클릭 시 닫기
+        window.onclick = function(event) {
+            const editBoxModal = document.getElementById('editBoxModal');
+            const boxProductsModal = document.getElementById('boxProductsModal');
+            
+            if (event.target === editBoxModal) {
+                closeEditBoxModal();
+            }
+            
+            if (event.target === boxProductsModal) {
+                closeBoxProductsModal();
+            }
+        }
+
+        // ESC 키로 모달 닫기
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeEditBoxModal();
+                closeBoxProductsModal();
+            }
+        });
+    </script>
+</body>
+</html> 

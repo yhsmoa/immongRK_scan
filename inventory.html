@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>재고관리</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .top-menu {
+            background-color: #333;
+            padding: 10px 0;
+            margin-bottom: 20px;
+        }
+        .menu-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+        .menu-item {
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+        }
+        .menu-item:hover {
+            background-color: #444;
+        }
+        .menu-item.active {
+            background-color: #666;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-section {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+            gap: 5px;
+        }
+        .delete-btn, .location-save-btn, .upload-btn {
+            display: inline-block;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+            box-sizing: border-box;
+            width: auto;
+        }
+        .delete-btn {
+            background-color: #f44336;
+            color: white;
+        }
+        .delete-btn:hover {
+            background-color: #d32f2f;
+        }
+        .location-save-btn {
+            background-color: #2196F3;
+            color: white;
+        }
+        .location-save-btn:hover {
+            background-color: #1976D2;
+        }
+        .upload-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .upload-btn:hover {
+            background-color: #45a049;
+        }
+        .search-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f8f8f8;
+            border-radius: 5px;
+        }
+        .search-form {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            align-items: center;
+        }
+        .search-input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .search-btn {
+            background-color: #333;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .search-btn:hover {
+            background-color: #444;
+        }
+        .scan-search-btn {
+            background-color: #2196F3;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .scan-search-btn:hover {
+            background-color: #1976D2;
+        }
+        .scan-search-btn i {
+            font-size: 16px;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f8f8;
+            font-weight: bold;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        
+        /* 체크박스 크기 조정 */
+        .item-checkbox, #selectAll {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        /* 모바일 대응을 위한 스타일 */
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            .content {
+                padding: 10px;
+            }
+            .search-form {
+                grid-template-columns: 1fr;
+            }
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                max-height: 80vh;
+                overflow-y: auto;
+                position: relative;
+            }
+            table {
+                font-size: 14px;
+                min-width: 450px;
+                border-collapse: separate;
+                border-spacing: 0;
+            }
+            th, td {
+                padding: 8px;
+            }
+            /* 모바일에서 숨길 열 */
+            th:nth-child(2), td:nth-child(2), /* SKU ID */
+            th:nth-child(5), td:nth-child(5), /* 발주가능상태 */
+            th:nth-child(6), td:nth-child(6) { /* 재고 */
+                display: none;
+            }
+            .mobile-wrap {
+                white-space: pre-line;
+            }
+            th {
+                background-color: #f8f8f8;
+                position: sticky;
+                top: 0;
+                z-index: 1;
+            }
+            thead {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+            }
+            .upload-section {
+                flex-wrap: nowrap;
+            }
+            .delete-btn,
+            .location-save-btn,
+            .upload-btn {
+                padding: 8px 10px;
+                font-size: 13px;
+            }
+        }
+
+        /* 로케이션 입력 UI 스타일 */
+        .location-input-container {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            width: 300px;
+        }
+        .location-input-container.active {
+            display: block;
+        }
+        .location-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        /* 모달 내 저장 버튼 스타일 - 다른 버튼과 구분 */
+        #locationInputContainer .location-save-btn, 
+        #singleLocationInputContainer .location-save-btn {
+            width: 100%;
+            margin-top: 10px;
+            background-color: #4CAF50;
+        }
+        #locationInputContainer .location-save-btn:hover, 
+        #singleLocationInputContainer .location-save-btn:hover {
+            background-color: #45a049;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+        }
+        .overlay.active {
+            display: block;
+        }
+        
+        /* 로딩 인디케이터 스타일 */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .loading-overlay.active {
+            display: flex;
+        }
+        .loading-spinner {
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        .loading-text {
+            color: white;
+            font-size: 18px;
+            text-align: center;
+        }
+        
+        /* 직접 등록 모달 스타일 */
+        .register-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 1000;
+            width: 500px;
+            max-width: 90%;
+        }
+        .register-modal.active {
+            display: block;
+        }
+        .register-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .register-modal-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .register-modal-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .register-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .close-btn {
+            background-color: #f1f1f1;
+            color: #333;
+        }
+        .save-btn {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .register-modal-body {
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        .register-form-group {
+            margin-bottom: 15px;
+        }
+        .register-form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .register-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        #interactive.viewport {
+            position: relative;
+            width: 100%;
+            height: 300px;
+            overflow: hidden;
+        }
+        #interactive.viewport canvas, video {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        #interactive.viewport canvas.drawingBuffer, video.drawingBuffer {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    <div class="container">
+        <div class="content">
+            <div class="upload-section">
+                <button id="upload2Btn" class="upload-btn" style="background-color: #FF9800;" onclick="document.getElementById('fileInput2').click()">엑셀업로드2</button>
+                <button id="registerBtn" class="upload-btn" style="background-color: #4CAF50;" onclick="openRegisterModal()">직접 등록</button>
+                <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
+                <button id="locationSaveBtn" class="location-save-btn" onclick="saveSelectedLocations()">위치저장</button>
+                <button id="uploadBtn" class="upload-btn" onclick="document.getElementById('fileInput').click()">엑셀 업로드</button>
+                <input type="file" id="fileInput" style="display: none" accept=".xlsx,.xls">
+                <input type="file" id="fileInput2" style="display: none" accept=".xlsx,.xls">
+            </div>
+            
+            <div class="search-section">
+                <form class="search-form" onsubmit="handleSearch(event)">
+                    <select class="search-input" id="orderStatus">
+                        <option value="전체">전체</option>
+                        <option value="정상" selected>정상</option>
+                        <option value="일시중단">일시중단</option>
+                        <option value="불가">불가</option>
+                    </select>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="text" class="search-input" id="searchTerm" placeholder="SKU ID, 바코드, 상품명 검색" style="flex: 1;">
+                    </div>
+                    <button type="submit" class="search-btn">검색</button>
+                </form>
+            </div>
+
+            <div class="table-container">
+                <table id="inventoryTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>SKU ID</th>
+                            <th>상품명</th>
+                            <th>바코드</th>
+                            <th>발주가능상태</th>
+                            <th>재고</th>
+                            <th>로케이션</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 로케이션 입력 UI -->
+    <div class="overlay" id="locationOverlay"></div>
+    <div class="location-input-container" id="locationInputContainer">
+        <input type="text" class="location-input" id="locationInput" placeholder="로케이션 입력">
+        <button class="location-save-btn" onclick="saveLocation()">저장</button>
+    </div>
+
+    <!-- 개별 로케이션 수정 UI -->
+    <div class="overlay" id="singleLocationOverlay"></div>
+    <div class="location-input-container" id="singleLocationInputContainer">
+        <input type="text" class="location-input" id="singleLocationInput" placeholder="로케이션 입력">
+        <button class="location-save-btn" onclick="saveSingleLocation()">저장</button>
+    </div>
+    
+    <!-- 로딩 인디케이터 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text" id="loadingText">엑셀 업로드 중...</div>
+    </div>
+
+    <!-- 직접 등록 모달 -->
+    <div class="overlay" id="registerOverlay"></div>
+    <div class="register-modal" id="registerModal">
+        <div class="register-modal-header">
+            <h3>상품 직접 등록</h3>
+            <div class="register-modal-buttons">
+                <button class="register-btn close-btn" onclick="closeRegisterModal()">닫기</button>
+                <button class="register-btn save-btn" onclick="saveNewProduct()">저장</button>
+            </div>
+        </div>
+        <div class="register-modal-body">
+            <div class="register-form-group">
+                <label for="reg-skuId">SKU ID</label>
+                <input type="text" id="reg-skuId" class="register-input" placeholder="SKU ID를 입력하세요">
+            </div>
+            <div class="register-form-group">
+                <label for="reg-name">상품명*</label>
+                <input type="text" id="reg-name" class="register-input" placeholder="상품명을 입력하세요" required>
+            </div>
+            <div class="register-form-group">
+                <label for="reg-barcode">바코드*</label>
+                <input type="text" id="reg-barcode" class="register-input" placeholder="바코드를 입력하세요" required>
+            </div>
+            <div class="register-form-group">
+                <label for="reg-orderStatus">발주가능상태</label>
+                <select id="reg-orderStatus" class="register-input">
+                    <option value="정상" selected>정상</option>
+                    <option value="일시중단">일시중단</option>
+                    <option value="불가">불가</option>
+                </select>
+            </div>
+            <div class="register-form-group">
+                <label for="reg-quantity">재고 수량</label>
+                <input type="text" id="reg-quantity" class="register-input" placeholder="수량을 입력하세요">
+            </div>
+            <div class="register-form-group">
+                <label for="reg-location">로케이션</label>
+                <input type="text" id="reg-location" class="register-input" placeholder="위치 정보를 입력하세요">
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        // 전역 변수로 선택된 항목 저장
+        let selectedItemsForLocation = null;
+
+        // 페이지 로드 시
+        document.addEventListener('DOMContentLoaded', function() {
+            // 헤더 로드
+            fetch('/header')
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('header-container').innerHTML = html;
+                });
+            
+            // 이벤트 리스너 설정
+            setupEventListeners();
+            
+            // 버튼 크기 동기화
+            setTimeout(function() {
+                equalizeButtonWidths();
+            }, 200);
+            
+            // 데이터 불러오기
+            loadInventoryData();
+        });
+
+        // 이벤트 리스너 설정
+        function setupEventListeners() {
+            // 엑셀 파일 업로드 처리
+            document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+            
+            // 엑셀업로드2 파일 처리
+            document.getElementById('fileInput2').addEventListener('change', handleLocation2FileUpload);
+            
+            // 전체 선택 체크박스 기능
+            document.getElementById('selectAll').addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('.item-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = this.checked;
+                });
+            });
+            
+            // 오버레이 클릭 시 입력 UI 닫기
+            document.getElementById('locationOverlay').addEventListener('click', closeLocationInput);
+            document.getElementById('singleLocationOverlay').addEventListener('click', closeSingleLocationInput);
+            
+            // 윈도우 리사이즈 시 버튼 크기 재조정
+            window.addEventListener('resize', function() {
+                // 딜레이를 두고 호출하여 너무 빈번한 실행 방지
+                if (this.resizeTimer) clearTimeout(this.resizeTimer);
+                this.resizeTimer = setTimeout(function() {
+                    equalizeButtonWidths();
+                }, 300);
+            });
+        }
+
+        // 버튼 너비 맞추기 함수
+        function equalizeButtonWidths() {
+            const deleteBtn = document.getElementById('deleteBtn');
+            const locationSaveBtn = document.getElementById('locationSaveBtn');
+            const uploadBtn = document.getElementById('uploadBtn');
+            
+            if (!deleteBtn || !locationSaveBtn || !uploadBtn) return;
+            
+            // 일단 모든 버튼의 너비를 자동으로 설정
+            deleteBtn.style.width = 'auto';
+            locationSaveBtn.style.width = 'auto';
+            uploadBtn.style.width = 'auto';
+            
+            // 버튼들의 너비 계산
+            const deleteBtnWidth = deleteBtn.offsetWidth;
+            const uploadBtnWidth = uploadBtn.offsetWidth;
+            
+            // 가장 큰 너비 찾기
+            const maxWidth = Math.max(deleteBtnWidth, uploadBtnWidth);
+            
+            // 모든 버튼에 동일한 너비 적용
+            if (maxWidth > 0) {
+                deleteBtn.style.width = maxWidth + 'px';
+                locationSaveBtn.style.width = maxWidth + 'px';
+                uploadBtn.style.width = maxWidth + 'px';
+            }
+        }
+
+        // 재고 데이터 삭제
+        function deleteInventoryData() {
+            const selectedItems = Array.from(document.querySelectorAll('.item-checkbox:checked'))
+                .map(checkbox => {
+                    const row = checkbox.closest('tr');
+                    return row.querySelector('td:nth-child(2)').textContent; // SKU ID
+                });
+
+            if (selectedItems.length === 0) {
+                alert('삭제할 항목을 선택해주세요.');
+                return;
+            }
+
+            if (confirm('선택된 항목을 삭제하시겠습니까?')) {
+                fetch('/api/inventory/delete-selected', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ skuIds: selectedItems })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('선택된 재고 데이터가 성공적으로 삭제되었습니다.');
+                        // 테이블 새로고침
+                        loadInventoryData();
+                    } else {
+                        alert('데이터 삭제 중 오류가 발생했습니다.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('데이터 삭제 중 오류가 발생했습니다.');
+                });
+            }
+        }
+
+        // 재고 데이터 로드
+        function loadInventoryData() {
+            fetch('/api/inventory/list')
+                .then(response => response.json())
+                .then(data => {
+                    // 발주가능상태가 '정상'인 데이터만 필터링
+                    const filteredData = data.filter(item => item.orderStatus === '정상');
+                    displayData(filteredData);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+        function displayData(data) {
+            const tbody = document.querySelector('#inventoryTable tbody');
+            tbody.innerHTML = '';
+            
+            // 모바일 여부 확인 (CSS 미디어 쿼리와 동일한 기준 사용)
+            const isMobile = window.matchMedia('(max-width: 768px)').matches;
+            
+            data.forEach(item => {
+                const tr = document.createElement('tr');
+                let name = item.name;
+                let barcode = item.barcode;
+                
+                // 모바일에서만 줄바꿈 적용
+                if (isMobile) {
+                    name = name.replace(/(.{10})/g, '$1\n');
+                    barcode = barcode.replace(/(.{6})/g, '$1\n');
+                }
+                
+                tr.innerHTML = `
+                    <td><input type="checkbox" class="item-checkbox"></td>
+                    <td>${item.skuId}</td>
+                    <td class="${isMobile ? 'mobile-wrap' : ''}">${name}</td>
+                    <td class="${isMobile ? 'mobile-wrap' : ''}">${barcode}</td>
+                    <td>${item.orderStatus}</td>
+                    <td>${item.quantity}</td>
+                    <td class="location-cell">${item.location}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            setupLocationCells();
+        }
+
+        // 로케이션 셀 클릭 이벤트 처리
+        function setupLocationCells() {
+            const tbody = document.querySelector('#inventoryTable tbody');
+            tbody.addEventListener('click', function(e) {
+                if (e.target.classList.contains('location-cell')) {
+                    const row = e.target.closest('tr');
+                    const skuId = row.querySelector('td:nth-child(2)').textContent;
+                    const currentLocation = e.target.textContent;
+                    
+                    document.getElementById('singleLocationInput').value = currentLocation;
+                    document.getElementById('singleLocationInput').dataset.skuId = skuId;
+                    document.getElementById('singleLocationInput').dataset.cell = e.target;
+                    
+                    document.getElementById('singleLocationOverlay').classList.add('active');
+                    document.getElementById('singleLocationInputContainer').classList.add('active');
+                    
+                    // 입력 필드에 포커스하고 전체 선택
+                    const input = document.getElementById('singleLocationInput');
+                    input.focus();
+                    input.select();
+                }
+            });
+        }
+
+        // 선택된 항목들의 로케이션 저장
+        function saveSelectedLocations() {
+            const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
+            
+            if (checkedBoxes.length === 0) {
+                alert('위치를 저장할 항목을 선택해주세요.');
+                return;
+            }
+
+            const selectedItems = Array.from(checkedBoxes).map(checkbox => {
+                const row = checkbox.closest('tr');
+                return {
+                    skuId: row.querySelector('td:nth-child(2)').textContent,
+                    locationCell: row.querySelector('.location-cell')
+                };
+            });
+
+            document.getElementById('locationInput').value = '';
+            document.getElementById('locationInput').dataset.selectedItems = JSON.stringify(selectedItems);
+            document.getElementById('locationOverlay').classList.add('active');
+            document.getElementById('locationInputContainer').classList.add('active');
+            
+            // 입력 필드에 포커스하고 전체 선택
+            const input = document.getElementById('locationInput');
+            input.focus();
+            input.select();
+        }
+
+        // 로케이션 저장
+        function saveLocation() {
+            const input = document.getElementById('locationInput');
+            const location = input.value.trim();
+            
+            if (!location) {
+                alert('로케이션을 입력해주세요.');
+                return;
+            }
+
+            const selectedItems = JSON.parse(input.dataset.selectedItems || '[]');
+            
+            if (selectedItems.length === 0) {
+                alert('저장할 항목이 선택되지 않았습니다.');
+                return;
+            }
+
+            let successCount = 0;
+            let failCount = 0;
+
+            selectedItems.forEach(item => {
+                fetch('/api/inventory/update-location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        skuId: item.skuId, 
+                        location: location 
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        successCount++;
+                        item.locationCell.textContent = location;
+                    } else {
+                        failCount++;
+                    }
+
+                    if (successCount + failCount === selectedItems.length) {
+                        closeLocationInput();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    failCount++;
+                    if (successCount + failCount === selectedItems.length) {
+                        closeLocationInput();
+                    }
+                });
+            });
+        }
+
+        // 로케이션 입력 UI 닫기
+        function closeLocationInput() {
+            document.getElementById('locationOverlay').classList.remove('active');
+            document.getElementById('locationInputContainer').classList.remove('active');
+            document.getElementById('locationInput').value = '';
+            document.getElementById('locationInput').dataset.selectedItems = '';
+        }
+
+        // 개별 로케이션 저장
+        function saveSingleLocation() {
+            const input = document.getElementById('singleLocationInput');
+            const location = input.value.trim();
+            const skuId = input.dataset.skuId;
+            const cell = input.dataset.cell;
+            
+            if (!location) {
+                alert('로케이션을 입력해주세요.');
+                return;
+            }
+
+            fetch('/api/inventory/update-location', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    skuId: skuId, 
+                    location: location 
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    cell.textContent = location;
+                }
+                closeSingleLocationInput();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                closeSingleLocationInput();
+            });
+        }
+
+        // 개별 로케이션 입력 UI 닫기
+        function closeSingleLocationInput() {
+            document.getElementById('singleLocationOverlay').classList.remove('active');
+            document.getElementById('singleLocationInputContainer').classList.remove('active');
+            document.getElementById('singleLocationInput').value = '';
+            document.getElementById('singleLocationInput').dataset.skuId = '';
+            document.getElementById('singleLocationInput').dataset.cell = '';
+        }
+
+        // 검색 처리 함수
+        function handleSearch(event) {
+            event.preventDefault();
+            const orderStatus = document.getElementById('orderStatus').value;
+            const searchTerm = document.getElementById('searchTerm').value;
+
+            fetch('/api/inventory/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    orderStatus: orderStatus === '전체' ? '' : orderStatus,
+                    searchTerm: searchTerm
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayData(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('검색 중 오류가 발생했습니다.');
+            });
+        }
+
+        // 파일 업로드 처리
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                fetch('/api/inventory/upload', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('파일이 성공적으로 업로드되었습니다.');
+                        // 테이블 새로고침
+                        loadInventoryData();
+                    } else {
+                        alert('파일 업로드 중 오류가 발생했습니다.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('파일 업로드 중 오류가 발생했습니다.');
+                });
+            }
+        }
+
+        // 엑셀업로드2 파일 처리
+        function handleLocation2FileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // 로딩 인디케이터 표시
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            loadingOverlay.classList.add('active');
+            loadingText.textContent = '엑셀 파일 읽는 중...';
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                loadingText.textContent = '엑셀 데이터 처리 중...';
+                
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+    
+                    // 첫 번째 시트 사용
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: ['barcode', 'location'] });
+    
+                    // 헤더행 제거 (있는 경우)
+                    if (jsonData.length > 0 && typeof jsonData[0].barcode === 'string' && 
+                        (jsonData[0].barcode.toLowerCase() === 'barcode' || 
+                         jsonData[0].barcode.toLowerCase() === '바코드')) {
+                        jsonData.shift();
+                    }
+                    
+                    loadingText.textContent = `총 ${jsonData.length}개 데이터 처리 중...`;
+                    console.log(`총 ${jsonData.length}개 데이터 처리 중...`);
+    
+                    // 서버에 데이터 전송
+                    fetch('/api/inventory/upload-locations', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ items: jsonData })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`서버 오류: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        loadingOverlay.classList.remove('active');
+                        if (data.success) {
+                            alert(`${data.updated}개의 위치 정보가 업데이트되었습니다.`);
+                            // 테이블 새로고침
+                            loadInventoryData();
+                        } else {
+                            alert('위치 정보 업데이트 중 오류가 발생했습니다.');
+                        }
+                        // 파일 입력 초기화
+                        document.getElementById('fileInput2').value = '';
+                    })
+                    .catch(error => {
+                        loadingOverlay.classList.remove('active');
+                        console.error('Error:', error);
+                        alert('위치 정보 업데이트 중 오류가 발생했습니다: ' + error.message);
+                        // 파일 입력 초기화
+                        document.getElementById('fileInput2').value = '';
+                    });
+                } catch (error) {
+                    loadingOverlay.classList.remove('active');
+                    console.error('Error:', error);
+                    alert('엑셀 파일 처리 중 오류가 발생했습니다: ' + error.message);
+                    // 파일 입력 초기화
+                    document.getElementById('fileInput2').value = '';
+                }
+            };
+            
+            reader.onerror = function() {
+                loadingOverlay.classList.remove('active');
+                alert('파일 읽기 중 오류가 발생했습니다.');
+                // 파일 입력 초기화
+                document.getElementById('fileInput2').value = '';
+            };
+            
+            reader.readAsArrayBuffer(file);
+        }
+        
+        // 직접 등록 모달 관련 함수들
+        function openRegisterModal() {
+            document.getElementById('registerOverlay').classList.add('active');
+            document.getElementById('registerModal').classList.add('active');
+            // SKU ID 자동 생성 (현재 날짜 기반)
+            const today = new Date();
+            const timestamp = today.getTime().toString().slice(-8);
+            document.getElementById('reg-skuId').value = 'SKU-' + timestamp;
+            // 포커스 이동
+            document.getElementById('reg-name').focus();
+        }
+
+        function closeRegisterModal() {
+            document.getElementById('registerOverlay').classList.remove('active');
+            document.getElementById('registerModal').classList.remove('active');
+            // 폼 초기화
+            document.getElementById('reg-skuId').value = '';
+            document.getElementById('reg-name').value = '';
+            document.getElementById('reg-barcode').value = '';
+            document.getElementById('reg-orderStatus').value = '정상';
+            document.getElementById('reg-quantity').value = '';
+            document.getElementById('reg-location').value = '';
+        }
+
+        function saveNewProduct() {
+            // 필수 입력값 검증
+            const name = document.getElementById('reg-name').value.trim();
+            const barcode = document.getElementById('reg-barcode').value.trim();
+            
+            if (!name) {
+                alert('상품명을 입력해주세요.');
+                document.getElementById('reg-name').focus();
+                return;
+            }
+            
+            if (!barcode) {
+                alert('바코드를 입력해주세요.');
+                document.getElementById('reg-barcode').focus();
+                return;
+            }
+            
+            // 데이터 수집
+            const productData = {
+                skuId: document.getElementById('reg-skuId').value.trim(),
+                name: name,
+                barcode: barcode,
+                orderStatus: document.getElementById('reg-orderStatus').value,
+                quantity: document.getElementById('reg-quantity').value.trim() || '-',
+                location: document.getElementById('reg-location').value.trim() || '-'
+            };
+            
+            // 로딩 표시
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            loadingOverlay.classList.add('active');
+            loadingText.textContent = '상품 등록 중...';
+            
+            // 서버로 데이터 전송
+            fetch('/api/inventory/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(productData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadingOverlay.classList.remove('active');
+                
+                if (data.success) {
+                    alert('상품이 성공적으로 등록되었습니다.');
+                    closeRegisterModal();
+                    // 테이블 새로고침
+                    loadInventoryData();
+                } else {
+                    alert(data.error || '상품 등록 중 오류가 발생했습니다.');
+                }
+            })
+            .catch(error => {
+                loadingOverlay.classList.remove('active');
+                console.error('Error:', error);
+                alert('상품 등록 중 오류가 발생했습니다.');
+            });
+        }
+
+        // 오버레이 클릭시 모달 닫기
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('registerOverlay').addEventListener('click', closeRegisterModal);
+        });
+    </script>
+</body>
+</html> 

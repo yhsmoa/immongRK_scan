@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>쿠팡 로켓 발주서</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .top-menu {
+            background-color: #fff;
+            padding: 15px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .menu-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+        }
+        .menu-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 3px;
+            color: #333;
+            text-decoration: none;
+        }
+        .menu-item:hover {
+            background-color: #f0f0f0;
+        }
+        .menu-item.active {
+            background-color: #e0e0e0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .content {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-area {
+            margin-bottom: 20px;
+            padding: 20px;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .upload-area.dragover {
+            border-color: #4CAF50;
+            background-color: #f8f8f8;
+        }
+        .upload-btn {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .upload-btn:hover {
+            background-color: #45a049;
+        }
+        .delete-btn {
+            padding: 8px 16px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .delete-btn:hover {
+            background-color: #c82333;
+        }
+        .checked-row {
+            background-color: #e3f2fd !important;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f8f8;
+            font-weight: bold;
+        }
+        .order-row {
+            cursor: pointer;
+            background-color: #f8f9fa;
+        }
+        .order-row:hover {
+            background-color: #e9ecef;
+        }
+        .order-details {
+            display: none;
+            background-color: #fff;
+        }
+        .order-details.show {
+            display: table-row;
+        }
+        .order-details table {
+            width: 100%;
+            margin: 0;
+            border-collapse: collapse;
+            background-color: #f1f3f5;
+            min-width: 800px;
+        }
+        .order-details th {
+            background-color: #e9ecef;
+            padding: 12px;
+            white-space: nowrap;
+        }
+        .order-details td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+            white-space: nowrap;
+        }
+        /* 발주수량과 스캔수량이 다른 행 스타일 */
+        .quantity-mismatch {
+            background-color: #fff3cd !important; /* 노란색 배경 */
+        }
+        /* 입고1 수량이 있는 셀 스타일 */
+        .quantity-addition {
+            background-color: #d4edda !important; /* 연한 녹색 배경 */
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .close-btn {
+            position: absolute;
+            right: 10px;
+            top: 10px;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .download-btn {
+            padding: 8px 16px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .download-btn:hover {
+            background-color: #0b7dda;
+        }
+        .table-header {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 10px;
+        }
+        .order-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .export-btn {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+            margin-right: 10px;
+        }
+        
+        .export-btn:hover {
+            background-color: #45a049;
+        }
+        .load-location-btn {
+            padding: 8px 16px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+            margin-right: 10px;
+        }
+        .load-location-btn:hover {
+            background-color: #0b7dda;
+        }
+        .print-btn {
+            padding: 8px 16px;
+            background-color: #ff9800;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+            margin-right: 10px;
+        }
+        .print-btn:hover {
+            background-color: #e68a00;
+        }
+        .date-change-btn {
+            padding: 8px 16px;
+            background-color: #9C27B0;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+            margin-right: 10px;
+        }
+        .date-change-btn:hover {
+            background-color: #7B1FA2;
+        }
+        .center-change-btn {
+            padding: 8px 16px;
+            background-color: #00BCD4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+            margin-right: 10px;
+        }
+        .center-change-btn:hover {
+            background-color: #0097A7;
+        }
+        .date-change-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .date-change-modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .date-change-modal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .date-change-modal-body {
+            display: flex;
+            flex-direction: row;
+            min-height: 200px;
+        }
+        .date-change-modal-left {
+            flex: 1;
+            padding-right: 20px;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+        }
+        .date-change-modal-right {
+            flex: 1;
+            padding-left: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .date-change-input {
+            padding: 8px;
+            font-size: 16px;
+            margin-top: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+            text-align: center;
+        }
+        .center-change-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+        .center-change-modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .center-change-modal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+        .center-change-modal-body {
+            display: flex;
+            flex-direction: row;
+            min-height: 200px;
+        }
+        .center-change-modal-left {
+            flex: 1;
+            padding-right: 20px;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+        }
+        .center-change-modal-right {
+            flex: 1;
+            padding-left: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .center-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+            width: 100%;
+        }
+        .center-button {
+            padding: 8px 16px;
+            background-color: #f1f1f1;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .center-button:hover {
+            background-color: #e0e0e0;
+        }
+        .center-button.selected {
+            background-color: #00BCD4;
+            color: white;
+            border-color: #00BCD4;
+        }
+        .modal-btn {
+            padding: 8px 16px;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        .save-btn {
+            background-color: #4CAF50;
+        }
+        .cancel-btn {
+            background-color: #f44336;
+        }
+        .search-container {
+            display: flex;
+            gap: 10px;
+            margin-right: 20px;
+        }
+        .search-input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .search-btn {
+            padding: 8px 16px;
+            background-color: #2196F3; /* 파란색으로 변경 */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .search-btn:hover {
+            background-color: #0b7dda;
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    <div class="container">
+        <h1>발주서 관리</h1>
+        <div class="content">
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">Excel 파일 업로드</button>
+                <p>또는 파일을 여기에 끌어다 놓으세요</p>
+            </div>
+            <div class="table-header">
+                <div class="search-container">
+                    <input type="text" id="searchInput" class="search-input" placeholder="물류센터 또는 입고예정일">
+                    <button class="search-btn" onclick="searchOrders()">조회</button>
+                </div>
+                <button class="export-btn" onclick="expandAllOrders()">발주서 펼쳐보기</button>
+                <button class="export-btn" onclick="exportSelectedOrders()">발주서 저장</button>
+                <button class="center-change-btn" onclick="showCenterChangeModal()">센터변경</button>
+                <button class="date-change-btn" onclick="showDateChangeModal()">입고일 변경</button>
+                <button class="load-location-btn" onclick="loadLocations()">위치 불러오기</button>
+                <button class="print-btn" onclick="printSelectedOrders()">인쇄</button>
+                <button class="delete-btn" onclick="deleteSelectedOrders()">삭제</button>
+            </div>
+            <table id="orderTable">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" class="order-checkbox" id="selectAll" onclick="toggleSelectAll(this)">
+                        </th>
+                        <th>발주번호</th>
+                        <th>물류센터</th>
+                        <th>상품수</th>
+                        <th>발주수량</th>
+                        <th>확정수량</th>
+                        <th>스캔수량</th>
+                        <th>입고예정일</th>
+                    </tr>
+                </thead>
+                <tbody id="orderBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="orderModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <h2>발주서 상세 정보</h2>
+            <div id="orderDetails"></div>
+            <button class="download-btn" onclick="downloadSelectedOrders()">선택된 발주서 다운로드</button>
+          </div>
+    </div>
+
+    <div id="dateChangeModal" class="date-change-modal">
+        <div class="date-change-modal-content">
+            <div class="date-change-modal-header">
+                <h2>입고일 변경</h2>
+                <div>
+                    <button class="modal-btn cancel-btn" onclick="closeDateChangeModal()">취소</button>
+                    <button class="modal-btn save-btn" onclick="confirmDateChange()">저장</button>
+                </div>
+            </div>
+            <div class="date-change-modal-body">
+                <div class="date-change-modal-left" id="orderListContainer">
+                    <!-- 여기에 발주 리스트가 표시됩니다 -->
+                </div>
+                <div class="date-change-modal-right">
+                    <div>변경될 입고일 (예: 20250101)</div>
+                    <input type="text" id="newDateInput" class="date-change-input" placeholder="YYYYMMDD">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="centerChangeModal" class="center-change-modal">
+        <div class="center-change-modal-content">
+            <div class="center-change-modal-header">
+                <h2>물류센터 변경</h2>
+                <div>
+                    <button class="modal-btn cancel-btn" onclick="closeCenterChangeModal()">취소</button>
+                    <button class="modal-btn save-btn" onclick="confirmCenterChange()">저장</button>
+                </div>
+            </div>
+            <div class="center-change-modal-body">
+                <div class="center-change-modal-left" id="centerOrderListContainer">
+                    <!-- 여기에 발주 리스트가 표시됩니다 -->
+                </div>
+                <div class="center-change-modal-right">
+                    <div>변경할 물류센터를 선택하세요</div>
+                    <div class="center-buttons" id="centerButtonsContainer">
+                        <!-- 여기에 물류센터 버튼이 표시됩니다 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="deleteModal" class="modal">
+        <div class="modal-content" style="max-width: 500px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                <h2 style="margin: 0; font-size: 22px; color: #333;">발주서 삭제 확인</h2>
+                <div>
+                    <button class="modal-btn cancel-btn" style="padding: 10px 15px; border-radius: 4px;" onclick="closeDeleteModal()">취소</button>
+                    <button class="modal-btn delete-btn" style="margin-left: 10px; padding: 10px 15px; border-radius: 4px;" onclick="confirmDelete()">삭제</button>
+                </div>
+            </div>
+            <div style="padding: 0 10px;">
+                <div style="margin-bottom: 20px; background-color: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee;">
+                    <label for="deletePassword" style="font-weight: bold; display: block; margin-bottom: 8px;">비밀번호를 입력해주세요:</label>
+                    <input type="password" id="deletePassword" style="padding: 10px; width: 100%; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box;" placeholder="삭제 비밀번호">
+                </div>
+                <div style="margin-top: 20px;">
+                    <h3 style="margin-top: 0; font-size: 18px; color: #555; padding-bottom: 10px; border-bottom: 1px solid #eee;">삭제할 발주서 목록</h3>
+                    <div id="deleteOrderList" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 헤더 로드
+        fetch('/header')
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('header-container').innerHTML = html;
+            });
+
+        // 드래그 앤 드롭 이벤트 처리
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        async function handleFileUpload(file) {
+            if (!file.name.endsWith('.xlsx')) {
+                alert('Excel 파일만 업로드 가능합니다.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('파일 업로드 실패');
+                }
+
+                const data = await response.json();
+                let message = data.message;
+                if (data.duplicates && data.duplicates.length > 0) {
+                    message += '\n\n중복된 발주서는 추가되지 않았습니다.';
+                }
+                alert(message);
+                loadOrders();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 페이지 로드 시 발주서 목록 가져오기
+        document.addEventListener('DOMContentLoaded', () => {
+            loadOrders().then(() => {
+                restoreLocations();
+            });
+        });
+
+        async function loadOrders() {
+            try {
+                const response = await fetch('/api/orders');
+                if (!response.ok) {
+                    throw new Error('발주서 목록을 불러오는데 실패했습니다.');
+                }
+                const orders = await response.json();
+                displayOrders(orders);
+            } catch (error) {
+                console.error('Error:', error);
+                // 오류 발생 시 빈 테이블만 표시
+                document.getElementById('orderBody').innerHTML = '';
+            }
+        }
+
+        // 발주서 목록 표시
+        function displayOrders(orders) {
+            const tbody = document.getElementById('orderBody');
+            tbody.innerHTML = '';
+
+            orders.forEach(order => {
+                // 메인 행
+                const mainRow = document.createElement('tr');
+                mainRow.className = 'order-row';
+                mainRow.onclick = (e) => {
+                    if (!e.target.type || e.target.type !== 'checkbox') {
+                        toggleOrderDetails(order.발주번호);
+                    }
+                };
+
+                mainRow.innerHTML = `
+                    <td>
+                        <input type="checkbox" class="order-checkbox" 
+                               data-order-number="${order.발주번호}"
+                               onclick="event.stopPropagation(); toggleCheck(this)">
+                    </td>
+                    <td>${order.발주번호}</td>
+                    <td>${order.물류센터}</td>
+                    <td>${order.상품수}</td>
+                    <td>${order.발주수량}</td>
+                    <td>${order.확정수량}</td>
+                    <td>${order.스캔수량 || 0}</td>
+                    <td>${order.입고예정일}</td>
+                `;
+
+                // 상세 정보 행
+                const detailsRow = document.createElement('tr');
+                detailsRow.className = 'order-details';
+                detailsRow.id = `details-${order.발주번호}`;
+                
+                detailsRow.innerHTML = `
+                    <td colspan="7">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>상품번호</th>
+                                    <th>상품바코드</th>
+                                    <th>상품명</th>
+                                    <th>발주수량</th>
+                                    <th>확정수량</th>
+                                    <th>스캔수량</th>
+                                    <th>입고1</th>
+                                    <th>입고2</th>
+                                    <th>위치</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${order.상품정보.map(product => `
+                                    <tr class="${Number(product.발주수량) !== Number(product.스캔수량 || 0) ? 'quantity-mismatch' : ''}">
+                                        <td>${product.상품번호}</td>
+                                        <td>${product.상품바코드}</td>
+                                        <td>${product.상품이름}</td>
+                                        <td>${product.발주수량}</td>
+                                        <td>${product.확정수량}</td>
+                                        <td>${product.스캔수량 || 0}</td>
+                                        <td class="${Number(product.발주수량) !== Number(product.스캔수량 || 0) && product.입고1 && product.입고1 !== '-' ? 'quantity-addition' : ''}">${product.입고1 || '-'}</td>
+                                        <td>${product.입고2 || '-'}</td>
+                                        <td>${product.위치 || '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </td>
+                `;
+
+                tbody.appendChild(mainRow);
+                tbody.appendChild(detailsRow);
+            });
+        }
+
+        function toggleOrderDetails(orderNumber) {
+            const detailsRow = document.getElementById(`details-${orderNumber}`);
+            detailsRow.classList.toggle('show');
+        }
+
+        // 발주서 상세 정보 표시
+        async function showOrderDetails(orderNumber) {
+            try {
+                const response = await fetch(`/api/orders/${orderNumber}`);
+                if (!response.ok) {
+                    throw new Error('발주서 상세 정보를 불러오는데 실패했습니다.');
+                }
+                const order = await response.json();
+                
+                const modal = document.getElementById('orderModal');
+                const detailsDiv = document.getElementById('orderDetails');
+                
+                let html = `
+                    <h3>발주서 정보</h3>
+                    <p>발주번호: ${order.발주번호}</p>
+                    <p>입고예정일: ${order.입고예정일}</p>
+                    <p>물류센터: ${order.물류센터}</p>
+                    
+                    <h3>상품 정보</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>상품번호</th>
+                                <th>상품바코드</th>
+                                <th>상품명</th>
+                                <th>발주수량</th>
+                                <th>확정수량</th>
+                                <th>스캔수량</th>
+                                <th>입고1</th>
+                                <th>입고2</th>
+                                <th>납품부족사유</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                order.상품정보.forEach(product => {
+                    html += `
+                        <tr class="${Number(product.발주수량) !== Number(product.스캔수량 || 0) ? 'quantity-mismatch' : ''}">
+                            <td>${product.상품번호}</td>
+                            <td>${product.상품바코드}</td>
+                            <td>${product.상품이름}</td>
+                            <td>${product.발주수량}</td>
+                            <td>${product.확정수량}</td>
+                            <td>${product.스캔수량}</td>
+                            <td class="${Number(product.발주수량) !== Number(product.스캔수량 || 0) && product.입고1 && product.입고1 !== '-' ? 'quantity-addition' : ''}">${product.입고1 || '-'}</td>
+                            <td>${product.입고2 || '-'}</td>
+                            <td>${product.납품부족사유 || '-'}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+
+                detailsDiv.innerHTML = html;
+                modal.style.display = 'block';
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 모달 닫기
+        function closeModal() {
+            document.getElementById('orderModal').style.display = 'none';
+        }
+
+        // 선택된 발주서 다운로드
+        async function downloadSelectedOrders() {
+            try {
+                const response = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumbers: [currentOrderNumber]
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('다운로드 실패');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `발주서_${currentOrderNumber}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 전체 선택/해제 함수
+        function toggleSelectAll(checkbox) {
+            const checkboxes = document.querySelectorAll('.order-checkbox:not(#selectAll)');
+            checkboxes.forEach(cb => {
+                cb.checked = checkbox.checked;
+                const row = cb.closest('tr');
+                if (checkbox.checked) {
+                    row.classList.add('checked-row');
+                } else {
+                    row.classList.remove('checked-row');
+                }
+            });
+        }
+
+        // 체크박스 토글 함수
+        function toggleCheck(checkbox) {
+            const row = checkbox.closest('tr');
+            if (checkbox.checked) {
+                row.classList.add('checked-row');
+            } else {
+                row.classList.remove('checked-row');
+            }
+            
+            // 전체 선택 체크박스 상태 업데이트
+            const allCheckboxes = document.querySelectorAll('.order-checkbox:not(#selectAll)');
+            const selectAll = document.getElementById('selectAll');
+            const checkedCount = Array.from(allCheckboxes).filter(cb => cb.checked).length;
+            selectAll.checked = checkedCount === allCheckboxes.length;
+        }
+
+        // 선택된 발주서 삭제 함수
+        async function deleteSelectedOrders() {
+            const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert('삭제할 발주서를 선택해주세요.');
+                return;
+            }
+
+            const orderNumbers = Array.from(checkboxes).map(checkbox => 
+                checkbox.getAttribute('data-order-number')
+            );
+            
+            const orderCenters = Array.from(checkboxes).map(checkbox => {
+                const row = checkbox.closest('tr');
+                const centerCell = row.querySelector('td:nth-child(3)');
+                return centerCell ? centerCell.textContent : '';
+            });
+            
+            // 삭제할 발주서 목록 표시
+            const deleteOrderList = document.getElementById('deleteOrderList');
+            deleteOrderList.innerHTML = '';
+            
+            for (let i = 0; i < orderNumbers.length; i++) {
+                const item = document.createElement('div');
+                item.style.padding = '5px';
+                item.style.borderBottom = '1px solid #eee';
+                item.textContent = `${orderNumbers[i]} - ${orderCenters[i]}`;
+                deleteOrderList.appendChild(item);
+            }
+            
+            // 패스워드 초기화
+            document.getElementById('deletePassword').value = '';
+            
+            // 모달 표시
+            document.getElementById('deleteModal').style.display = 'block';
+        }
+        
+        // 삭제 모달 닫기
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+        
+        // 삭제 확인 처리
+        async function confirmDelete() {
+            const password = document.getElementById('deletePassword').value;
+            
+            // 패스워드 검증 추가
+            if (!password) {
+                alert('패스워드를 입력해주세요.');
+                return;
+            }
+            
+            const checkboxes = document.querySelectorAll('.order-checkbox:checked');
+            const orderNumbers = Array.from(checkboxes).map(checkbox => 
+                checkbox.getAttribute('data-order-number')
+            );
+            
+            try {
+                const response = await fetch('/api/orders/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ orderNumbers, password })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '삭제 실패');
+                }
+
+                closeDeleteModal();
+                alert('선택한 발주서가 삭제되었습니다.');
+                loadOrders();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 선택된 발주서 내보내기
+        async function exportSelectedOrders() {
+            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
+                .map(checkbox => checkbox.getAttribute('data-order-number'));
+
+            if (selectedOrders.length === 0) {
+                alert('저장할 발주서를 선택해주세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/orders/export', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ orderNumbers: selectedOrders })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    
+                    // 파일명 생성
+                    let filename;
+                    if (selectedOrders.length === 1) {
+                        filename = `발주리스트 확정 (${selectedOrders[0]}).xlsx`;
+                    } else {
+                        filename = `발주리스트 확정 (${selectedOrders[0]} 외 ${selectedOrders.length - 1}건).xlsx`;
+                    }
+                    
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    throw new Error('발주서 저장에 실패했습니다.');
+                }
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 위치 정보 불러오기
+        async function loadLocations() {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
+                alert('위치를 불러올 발주서를 선택해주세요.');
+                return;
+            }
+
+            try {
+                // 선택된 발주서의 상세 정보 표시 확인
+                const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+                console.log('선택된 발주서 번호:', selectedOrderNumbers);
+                
+                // 선택된 각 발주서에 대해 상세 정보 행을 표시
+                selectedOrderNumbers.forEach(orderNumber => {
+                    const detailsRow = document.getElementById(`details-${orderNumber}`);
+                    if (!detailsRow.classList.contains('show')) {
+                        detailsRow.classList.add('show');
+                    }
+                });
+
+                // 모든 상품 바코드와 해당 위치 셀 수집
+                const barcodeCells = new Map(); // 바코드와 해당 셀들을 매핑
+
+                selectedOrderNumbers.forEach(orderNumber => {
+                    const detailsTable = document.querySelector(`#details-${orderNumber} table tbody`);
+                    if (detailsTable) {
+                        const rows = detailsTable.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const barcodeCell = row.querySelector('td:nth-child(2)');
+                            const locationCell = row.querySelector('td:nth-child(9)');
+                            
+                            if (barcodeCell && locationCell) {
+                                const barcode = barcodeCell.textContent.trim();
+                                if (barcode) {
+                                    if (!barcodeCells.has(barcode)) {
+                                        barcodeCells.set(barcode, []);
+                                    }
+                                    barcodeCells.get(barcode).push({
+                                        orderNumber: orderNumber,
+                                        cell: locationCell
+                                    });
+                                }
+                            }
+                        });
+                    }
+                });
+
+                console.log('수집된 바코드 정보:', Array.from(barcodeCells.keys()));
+
+                // 바코드가 없으면 종료
+                if (barcodeCells.size === 0) {
+                    alert('불러올 상품 바코드가 없습니다.');
+                    return;
+                }
+
+                // 위치 정보 요청
+                const response = await fetch('/api/inventory/locations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ barcodes: Array.from(barcodeCells.keys()) })
+                });
+
+                if (!response.ok) {
+                    throw new Error('위치 정보를 불러오는데 실패했습니다.');
+                }
+
+                const locations = await response.json();
+                console.log('서버에서 받은 위치 정보:', locations);
+                
+                // 위치 정보 업데이트
+                let updateCount = 0;
+                for (const item of locations) {
+                    const cells = barcodeCells.get(item.barcode);
+                    console.log(`바코드 ${item.barcode}의 위치 정보:`, item.location);
+                    console.log(`해당 바코드의 셀 정보:`, cells);
+                    
+                    if (cells && item.location && item.location !== '-') {
+                        console.log(`위치 정보 업데이트 시도: ${item.barcode} -> ${item.location}`);
+                        for (const cellInfo of cells) {
+                            // 서버에 위치 정보 저장
+                            const saveResponse = await fetch('/api/orders/update-location', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    orderNumber: cellInfo.orderNumber,
+                                    barcode: item.barcode,
+                                    location: item.location
+                                })
+                            });
+
+                            if (saveResponse.ok) {
+                                cellInfo.cell.textContent = item.location;
+                                updateCount++;
+                                console.log(`위치 정보 업데이트 성공: ${item.barcode} -> ${item.location}`);
+                            } else {
+                                console.error(`위치 정보 업데이트 실패: ${item.barcode}`);
+                            }
+                        }
+                    } else {
+                        console.log(`위치 정보 업데이트 건너뜀: ${item.barcode} - 위치 정보 없음`);
+                    }
+                }
+
+                if (updateCount > 0) {
+                    alert(`${updateCount}개 상품의 위치 정보가 업데이트되었습니다.`);
+                } else {
+                    alert('업데이트할 위치 정보가 없습니다.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('위치 정보를 불러오는데 실패했습니다: ' + error.message);
+            }
+        }
+
+        // 페이지 로드 시 저장된 위치 정보 복원
+        function restoreLocations() {
+            try {
+                const savedLocations = localStorage.getItem('productLocations');
+                if (savedLocations) {
+                    const locationMap = JSON.parse(savedLocations);
+                    const rows = document.querySelectorAll('#orderBody tr.order-details.show table tbody tr');
+                    rows.forEach(row => {
+                        const barcodeCell = row.querySelector('td:nth-child(2)');
+                        const locationCell = row.querySelector('td:nth-child(9)');
+                        if (barcodeCell && locationCell) {
+                            const barcode = barcodeCell.textContent.trim();
+                            if (barcode && locationMap[barcode]) {
+                                locationCell.textContent = locationMap[barcode];
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error restoring locations:', error);
+            }
+        }
+
+        // 선택된 발주서 인쇄
+        function printSelectedOrders() {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
+                alert('인쇄할 발주서를 선택해주세요.');
+                return;
+            }
+
+            // 선택된 발주서의 상세 정보 가져오기
+            const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+            
+            // 먼저 모든 선택된 발주서의 상세 정보를 펼침
+            selectedOrderNumbers.forEach(orderNumber => {
+                const detailsRow = document.getElementById(`details-${orderNumber}`);
+                if (detailsRow && !detailsRow.classList.contains('show')) {
+                    detailsRow.classList.add('show');
+                }
+            });
+            
+            // 약간의 지연을 주어 DOM이 업데이트될 시간을 줌
+            setTimeout(() => {
+                // 새 창 열기 (인쇄용)
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>발주서 인쇄</title>
+                        <style>
+                            body {
+                                font-family: Arial, sans-serif;
+                                margin: 0;
+                                padding: 20px;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-bottom: 20px;
+                            }
+                            th, td {
+                                border: 1px solid #ddd;
+                                padding: 8px;
+                                text-align: left;
+                                font-size: 12px;
+                            }
+                            th {
+                                background-color: #f2f2f2;
+                                font-weight: bold;
+                            }
+                            tr:nth-child(even) {
+                                background-color: #f9f9f9;
+                            }
+                            h2 {
+                                color: #333;
+                                margin-top: 30px;
+                                margin-bottom: 10px;
+                            }
+                            /* 가로 인쇄 설정 */
+                            @page {
+                                size: A4 landscape;
+                                margin: 1cm;
+                            }
+                            @media print {
+                                table { page-break-inside: auto; }
+                                tr { page-break-inside: avoid; page-break-after: auto; }
+                                thead { display: table-header-group; }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <h2>발주서 인쇄</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>발주번호</th>
+                                    <th>물류센터</th>
+                                    <th>상품명</th>
+                                    <th>발주수량</th>
+                                    <th>확정수량</th>
+                                    <th>스캔수량</th>
+                                    <th>입고1</th>
+                                    <th>입고2</th>
+                                    <th>위치</th>
+                                    <th>입고예정일</th>
+                                </tr>
+                            </thead>
+                            <tbody id="printBody">
+                            </tbody>
+                        </table>
+                    </body>
+                    </html>
+                `);
+                
+                // 데이터 수집
+                let allProducts = [];
+                
+                // 각 발주서의 상품 정보 수집
+                selectedOrderNumbers.forEach(orderNumber => {
+                    const order = getOrderFromDOM(orderNumber);
+                    console.log(`발주서 ${orderNumber} 데이터:`, order);
+                    if (order) {
+                        order.상품정보.forEach(product => {
+                            allProducts.push({
+                                발주번호: order.발주번호,
+                                물류센터: order.물류센터,
+                                상품명: product.상품이름,
+                                발주수량: product.발주수량,
+                                확정수량: '',  // 빈칸으로 설정
+                                스캔수량: product.스캔수량,
+                                입고1: product.입고1 || '-',
+                                입고2: product.입고2 || '-',
+                                위치: product.위치 || '-',
+                                입고예정일: order.입고예정일
+                            });
+                        });
+                    }
+                });
+                
+                console.log('인쇄할 총 상품 데이터:', allProducts.length);
+                
+                // 정렬 순서: 입고예정일 > 물류센터 > 발주번호 > 위치
+                allProducts.sort((a, b) => {
+                    // 입고예정일 비교
+                    if (a.입고예정일 !== b.입고예정일) {
+                        return a.입고예정일.localeCompare(b.입고예정일);
+                    }
+                    // 물류센터 비교
+                    if (a.물류센터 !== b.물류센터) {
+                        return a.물류센터.localeCompare(b.물류센터);
+                    }
+                    // 발주번호 비교
+                    if (a.발주번호 !== b.발주번호) {
+                        return a.발주번호.localeCompare(b.발주번호);
+                    }
+                    // 위치 비교
+                    return (a.위치 || '-').localeCompare(b.위치 || '-');
+                });
+                
+                // 테이블에 데이터 채우기
+                const tbody = printWindow.document.getElementById('printBody');
+                
+                if (allProducts.length === 0) {
+                    const noDataRow = printWindow.document.createElement('tr');
+                    noDataRow.innerHTML = '<td colspan="10" style="text-align: center;">발주서 데이터를 불러올 수 없습니다. 발주서를 선택한 후 다시 시도해주세요.</td>';
+                    tbody.appendChild(noDataRow);
+                } else {
+                    allProducts.forEach(product => {
+                        const row = printWindow.document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${product.발주번호}</td>
+                            <td>${product.물류센터}</td>
+                            <td>${product.상품명}</td>
+                            <td>${product.발주수량}</td>
+                            <td>${product.확정수량}</td>
+                            <td>${product.스캔수량}</td>
+                            <td>${product.입고1}</td>
+                            <td>${product.입고2}</td>
+                            <td>${product.위치}</td>
+                            <td>${product.입고예정일}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                }
+                
+                // 인쇄 준비가 되면 인쇄 대화상자 표시
+                printWindow.document.close();
+                printWindow.onload = function() {
+                    printWindow.focus();
+                    printWindow.print();
+                    // 인쇄 후 창 닫기 방지를 위해 자동 닫기는 제거
+                };
+            }, 500); // 500ms 지연
+        }
+        
+        // DOM에서 발주서 정보 가져오기
+        function getOrderFromDOM(orderNumber) {
+            const mainRow = document.querySelector(`.order-checkbox[data-order-number="${orderNumber}"]`).closest('tr');
+            const detailsRow = document.getElementById(`details-${orderNumber}`);
+            
+            if (!mainRow || !detailsRow) {
+                console.error(`발주서 ${orderNumber}의 행을 찾을 수 없습니다.`);
+                return null;
+            }
+            
+            const cells = mainRow.querySelectorAll('td');
+            const products = [];
+            
+            try {
+                // 상세 정보에서 상품 정보 추출
+                const detailsTable = detailsRow.querySelector('table');
+                if (!detailsTable) {
+                    console.error(`발주서 ${orderNumber}의 상세 테이블을 찾을 수 없습니다.`);
+                    return null;
+                }
+                
+                const productRows = detailsTable.querySelectorAll('tbody tr');
+                if (productRows.length === 0) {
+                    console.error(`발주서 ${orderNumber}의 상품 행을 찾을 수 없습니다.`);
+                }
+                
+                productRows.forEach((row, index) => {
+                    const productCells = row.querySelectorAll('td');
+                    if (productCells.length >= 9) {
+                        products.push({
+                            상품번호: productCells[0].textContent,
+                            상품바코드: productCells[1].textContent,
+                            상품이름: productCells[2].textContent,
+                            발주수량: productCells[3].textContent,
+                            확정수량: productCells[4].textContent,
+                            스캔수량: productCells[5].textContent,
+                            입고1: productCells[6].textContent,
+                            입고2: productCells[7].textContent,
+                            위치: productCells[8].textContent
+                        });
+                    } else {
+                        console.error(`발주서 ${orderNumber}의 ${index+1}번째 상품 행에 충분한 셀이 없습니다. 셀 개수: ${productCells.length}`);
+                    }
+                });
+                
+                return {
+                    발주번호: cells[1].textContent,
+                    물류센터: cells[2].textContent,
+                    상품수: cells[3].textContent,
+                    발주수량: cells[4].textContent,
+                    확정수량: cells[5].textContent,
+                    스캔수량: cells[6].textContent,
+                    입고예정일: cells[7].textContent,
+                    상품정보: products
+                };
+            } catch (error) {
+                console.error(`발주서 ${orderNumber} 데이터 추출 중 오류:`, error);
+                return null;
+            }
+        }
+
+        // 입고일 변경 모달 표시
+        function showDateChangeModal() {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
+                alert('입고일을 변경할 발주서를 선택해주세요.');
+                return;
+            }
+
+            // 선택된 발주서 정보 가져오기
+            const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+            
+            // 선택된 발주서 정보 표시
+            const orderListContainer = document.getElementById('orderListContainer');
+            orderListContainer.innerHTML = '';
+            
+            // 발주서 정보 목록 생성
+            const orderList = document.createElement('ul');
+            orderList.style.listStyle = 'none';
+            orderList.style.padding = '0';
+            
+            selectedOrderNumbers.forEach(orderNumber => {
+                const mainRow = document.querySelector(`.order-checkbox[data-order-number="${orderNumber}"]`).closest('tr');
+                if (mainRow) {
+                    const cells = mainRow.querySelectorAll('td');
+                    const orderNumber = cells[1].textContent;
+                    const logisticsCenter = cells[2].textContent; 
+                    const expectedDate = cells[7].textContent;
+                    
+                    const listItem = document.createElement('li');
+                    listItem.style.padding = '10px';
+                    listItem.style.borderBottom = '1px solid #eee';
+                    listItem.innerHTML = `<strong>물류센터:</strong> ${logisticsCenter} | <strong>발주번호:</strong> ${orderNumber} | <strong>입고예정일:</strong> ${expectedDate}`;
+                    orderList.appendChild(listItem);
+                }
+            });
+            
+            orderListContainer.appendChild(orderList);
+            
+            // 모달 표시
+            document.getElementById('dateChangeModal').style.display = 'block';
+        }
+
+        // 입고일 변경 모달 닫기
+        function closeDateChangeModal() {
+            document.getElementById('dateChangeModal').style.display = 'none';
+            document.getElementById('newDateInput').value = '';
+        }
+
+        // 입고일 변경 확인
+        function confirmDateChange() {
+            const newDate = document.getElementById('newDateInput').value.trim();
+            
+            if (!newDate) {
+                alert('변경할 입고일을 입력해주세요.');
+                return;
+            }
+            
+            // 날짜 형식 검증 (YYYYMMDD)
+            if (!/^\d{8}$/.test(newDate)) {
+                alert('입고일은 YYYYMMDD 형식으로 입력해주세요. (예: 20250101)');
+                return;
+            }
+            
+            // 최종 확인 다이얼로그
+            if (confirm('입고일 변경을 진행하시겠습니까?')) {
+                updateOrderDates(newDate);
+            }
+        }
+
+        // 입고일 변경 실행
+        async function updateOrderDates(newDate) {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+            
+            try {
+                const response = await fetch('/api/orders/update-date', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumbers: selectedOrderNumbers,
+                        newDate: newDate
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('입고일 변경에 실패했습니다.');
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`${result.updatedCount}개 발주서의 입고일이 변경되었습니다.`);
+                    
+                    // 화면에 표시된 입고일 업데이트
+                    selectedOrderNumbers.forEach(orderNumber => {
+                        const mainRow = document.querySelector(`.order-checkbox[data-order-number="${orderNumber}"]`).closest('tr');
+                        if (mainRow) {
+                            const dateCell = mainRow.querySelector('td:nth-child(8)'); // 입고예정일 셀
+                            if (dateCell) {
+                                dateCell.textContent = newDate;
+                            }
+                        }
+                    });
+                    
+                    closeDateChangeModal();
+                    
+                    // 필요한 경우 전체 데이터 다시 로드
+                    // loadOrders();
+                } else {
+                    throw new Error(result.message || '입고일 변경에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert(error.message);
+            }
+        }
+
+        // 물류센터 변경 모달 표시
+        function showCenterChangeModal() {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
+                alert('물류센터를 변경할 발주서를 선택해주세요.');
+                return;
+            }
+
+            // 선택된 발주서 정보 가져오기
+            const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+            
+            // 선택된 발주서 정보 표시
+            const orderListContainer = document.getElementById('centerOrderListContainer');
+            orderListContainer.innerHTML = '';
+            
+            // 발주서 정보 목록 생성
+            const orderList = document.createElement('ul');
+            orderList.style.listStyle = 'none';
+            orderList.style.padding = '0';
+            
+            selectedOrderNumbers.forEach(orderNumber => {
+                const mainRow = document.querySelector(`.order-checkbox[data-order-number="${orderNumber}"]`).closest('tr');
+                if (mainRow) {
+                    const cells = mainRow.querySelectorAll('td');
+                    const orderNumber = cells[1].textContent;
+                    const logisticsCenter = cells[2].textContent; 
+                    const expectedDate = cells[7].textContent;
+                    
+                    const listItem = document.createElement('li');
+                    listItem.style.padding = '10px';
+                    listItem.style.borderBottom = '1px solid #eee';
+                    listItem.innerHTML = `<strong>물류센터:</strong> ${logisticsCenter} | <strong>발주번호:</strong> ${orderNumber} | <strong>입고예정일:</strong> ${expectedDate}`;
+                    orderList.appendChild(listItem);
+                }
+            });
+            
+            orderListContainer.appendChild(orderList);
+            
+            // 모든 물류센터 목록 가져오기
+            getAllLogisticsCenters().then(centers => {
+                const centersContainer = document.getElementById('centerButtonsContainer');
+                centersContainer.innerHTML = '';
+                
+                // 물류센터 버튼 생성
+                centers.forEach(center => {
+                    const centerButton = document.createElement('button');
+                    centerButton.className = 'center-button';
+                    centerButton.textContent = center;
+                    centerButton.onclick = function() {
+                        // 모든 버튼에서 선택 클래스 제거
+                        document.querySelectorAll('.center-button').forEach(btn => {
+                            btn.classList.remove('selected');
+                        });
+                        // 현재 버튼에 선택 클래스 추가
+                        this.classList.add('selected');
+                    };
+                    centersContainer.appendChild(centerButton);
+                });
+                
+                // 모달 표시
+                document.getElementById('centerChangeModal').style.display = 'block';
+            });
+        }
+
+        // 모든 물류센터 목록 가져오기
+        async function getAllLogisticsCenters() {
+            try {
+                // 1. 현재 화면에 표시된 모든 물류센터 수집
+                const centers = new Set();
+                const rows = document.querySelectorAll('#orderTable tbody tr.order-row');
+                rows.forEach(row => {
+                    const centerCell = row.querySelector('td:nth-child(3)');
+                    if (centerCell && centerCell.textContent.trim()) {
+                        centers.add(centerCell.textContent.trim());
+                    }
+                });
+                
+                // 2. 서버에서 모든 물류센터 가져오기 (선택 사항)
+                try {
+                    const response = await fetch('/api/orders/logistics-centers');
+                    if (response.ok) {
+                        const data = await response.json();
+                        data.centers.forEach(center => centers.add(center));
+                    }
+                } catch (error) {
+                    console.error('서버에서 물류센터 목록을 가져오는데 실패했습니다:', error);
+                    // 서버 오류가 있어도 화면에서 수집한 목록 사용
+                }
+                
+                return Array.from(centers).sort();
+            } catch (error) {
+                console.error('물류센터 목록을 가져오는데 실패했습니다:', error);
+                return [];
+            }
+        }
+
+        // 물류센터 변경 모달 닫기
+        function closeCenterChangeModal() {
+            document.getElementById('centerChangeModal').style.display = 'none';
+        }
+
+        // 물류센터 변경 확인
+        function confirmCenterChange() {
+            const selectedButton = document.querySelector('.center-button.selected');
+            
+            if (!selectedButton) {
+                alert('변경할 물류센터를 선택해주세요.');
+                return;
+            }
+            
+            const newCenter = selectedButton.textContent;
+            
+            // 최종 확인 다이얼로그
+            if (confirm('물류센터 변경을 진행하시겠습니까?')) {
+                updateOrderCenters(newCenter);
+            }
+        }
+
+        // 물류센터 변경 실행
+        async function updateOrderCenters(newCenter) {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+            
+            try {
+                const response = await fetch('/api/orders/update-center', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumbers: selectedOrderNumbers,
+                        newCenter: newCenter
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('물류센터 변경에 실패했습니다.');
+                }
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`${result.updatedCount}개 발주서의 물류센터가 변경되었습니다.`);
+                    
+                    // 화면에 표시된 물류센터 업데이트
+                    selectedOrderNumbers.forEach(orderNumber => {
+                        const mainRow = document.querySelector(`.order-checkbox[data-order-number="${orderNumber}"]`).closest('tr');
+                        if (mainRow) {
+                            const centerCell = mainRow.querySelector('td:nth-child(3)'); // 물류센터 셀
+                            if (centerCell) {
+                                centerCell.textContent = newCenter;
+                            }
+                        }
+                    });
+                    
+                    closeCenterChangeModal();
+                } else {
+                    throw new Error(result.message || '물류센터 변경에 실패했습니다.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert(error.message);
+            }
+        }
+
+        // 센터변경 모달 외부 클릭 시 닫기
+        window.addEventListener('click', (event) => {
+            const centerModal = document.getElementById('centerChangeModal');
+            const dateModal = document.getElementById('dateChangeModal');
+            const deleteModal = document.getElementById('deleteModal');
+            
+            if (event.target === centerModal) {
+                closeCenterChangeModal();
+            }
+            if (event.target === dateModal) {
+                closeDateChangeModal();
+            }
+            if (event.target === deleteModal) {
+                closeDeleteModal();
+            }
+        });
+
+        // 발주서 펼쳐보기 함수
+        function expandAllOrders() {
+            const detailsRows = document.querySelectorAll('.order-details');
+            detailsRows.forEach(row => {
+                row.classList.add('show');
+            });
+        }
+        
+        // 발주서 검색 기능 구현
+        function searchOrders() {
+            const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+            const rows = document.querySelectorAll('#orderBody tr.order-row');
+            
+            // 검색어가 비어있으면 모든 발주서 표시
+            if (!searchTerm) {
+                rows.forEach(row => {
+                    row.style.display = '';
+                    // 상세 정보는 기본적으로 숨김
+                    const orderNumber = row.getAttribute('data-order-number');
+                    const detailsRow = document.getElementById(`details-${orderNumber}`);
+                    if (detailsRow) {
+                        detailsRow.classList.remove('show');
+                    }
+                });
+                return;
+            }
+            
+            rows.forEach(row => {
+                const center = row.cells[2].textContent.toLowerCase(); // 물류센터
+                const date = row.cells[7].textContent.toLowerCase(); // 입고예정일
+                
+                if (center.includes(searchTerm) || date.includes(searchTerm)) {
+                    row.style.display = '';
+                    // 검색된 발주서의 상세 정보도 표시
+                    const orderNumber = row.getAttribute('data-order-number');
+                    const detailsRow = document.getElementById(`details-${orderNumber}`);
+                    if (detailsRow) {
+                        detailsRow.classList.add('show');
+                    }
+                } else {
+                    row.style.display = 'none';
+                    // 검색되지 않은 발주서의 상세 정보는 숨김
+                    const orderNumber = row.getAttribute('data-order-number');
+                    const detailsRow = document.getElementById(`details-${orderNumber}`);
+                    if (detailsRow) {
+                        detailsRow.classList.remove('show');
+                    }
+                }
+            });
+        }
+        
+        // 엔터키로도 검색 가능하도록 구현
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        searchOrders();
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+

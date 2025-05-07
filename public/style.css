@@ -1,0 +1,41 @@
+/* 전체 레이아웃 */
+.layout {
+    display: flex;
+    height: 100vh;
+    font-family: Arial, sans-serif;
+  }
+  
+  /* 사이드 메뉴 */
+  .sidebar {
+    width: 200px;
+    background-color: #f2f4f6;
+    padding: 20px;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+  }
+  
+  .sidebar h3 {
+    margin-top: 0;
+    font-size: 18px;
+    color: #333;
+  }
+  
+  .sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0 0 0;
+  }
+  
+  .sidebar li {
+    margin: 15px 0;
+    cursor: pointer;
+    color: #333;
+    font-weight: bold;
+  }
+  
+  /* 오른쪽 콘텐츠 자리 */
+  .main-content {
+    flex-grow: 1;
+    padding: 30px;
+    background-color: #fff;
+  }
+  

@@ -1,0 +1,40 @@
+            <table class="order-details">
+                <thead>
+                    <tr>
+                        <th>상품번호</th>
+                        <th>상품바코드</th>
+                        <th>상품명</th>
+                        <th>발주수량</th>
+                        <th>확정수량</th>
+                        <th>스캔수량</th>
+                        <th>입고1</th>
+                        <th>입고2</th>
+                    </tr>
+                </thead>
+                <tbody id="orderDetailBody">
+                    <!-- 상세 정보가 여기에 동적으로 추가됩니다 -->
+                </tbody>
+            </table> 
+
+        function displayOrderDetail(order) {
+            // 디버깅용 alert 추가
+            alert('주문 데이터 확인:\n' + JSON.stringify(order, null, 2));
+            
+            const detailBody = document.getElementById('orderDetailBody');
+            detailBody.innerHTML = '';
+            
+            order.상품정보.forEach(product => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${product.상품번호}</td>
+                    <td>${product.상품바코드}</td>
+                    <td>${product.상품이름}</td>
+                    <td>${product.발주수량}</td>
+                    <td>${product.확정수량}</td>
+                    <td>${product.스캔수량 || 0}</td>
+                    <td>${product.입고1 || '-'}</td>
+                    <td>${product.입고2 || '-'}</td>
+                `;
+                detailBody.appendChild(row);
+            });
+        } 

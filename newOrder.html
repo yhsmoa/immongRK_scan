@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>신규 발주서 등록</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .content {
+            margin-top: 20px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .upload-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        .upload-btn:hover {
+            background-color: #45a049;
+        }
+        .table-header {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+        .table-header button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .table-header button:hover {
+            background-color: #45a049;
+        }
+        .delete-btn {
+            background-color: #ff6b6b !important;
+        }
+        .delete-btn:hover {
+            background-color: #ff5252 !important;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .order-checkbox {
+            width: 20px;
+            height: 20px;
+        }
+        .order-details {
+            display: none;
+        }
+        .order-details.show {
+            display: table-row;
+        }
+        .details-table {
+            width: 100%;
+            margin-top: 10px;
+        }
+        .details-table th {
+            background-color: #e6e6e6;
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    <div class="container">
+        <h1>신규 발주서 등록</h1>
+        <div class="content">
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">Excel 파일 업로드</button>
+                <p>또는 파일을 여기에 끌어다 놓으세요</p>
+            </div>
+            <div class="table-header">
+                <button class="register-btn" onclick="registerOrders()">발주서 등록</button>
+                <button class="export-btn" onclick="exportSelectedOrders()">발주서 엑셀저장</button>
+                <button class="load-location-btn" onclick="loadLocations()">위치 불러오기</button>
+                <button class="print-btn" onclick="printSelectedOrders()">인쇄</button>
+                <button class="delete-btn" onclick="deleteSelectedOrders()">삭제</button>
+            </div>
+            <table id="orderTable">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" class="order-checkbox" id="selectAll" onclick="toggleSelectAll(this)">
+                        </th>
+                        <th>발주번호</th>
+                        <th>물류센터</th>
+                        <th>품목개수</th>
+                        <th>발주수량</th>
+                        <th>확정수량</th>
+                        <th>스캔수량</th>
+                        <th>입고예정일</th>
+                    </tr>
+                </thead>
+                <tbody id="orderBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add a new password confirmation modal for deleting orders -->
+    <div id="deleteModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000;">
+        <div class="modal-content" style="max-width: 500px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                <h2 style="margin: 0; font-size: 22px; color: #333;">발주서 삭제 확인</h2>
+                <div>
+                    <button class="modal-btn cancel-btn" style="padding: 10px 15px; border-radius: 4px; background-color: #f44336; color: white; border: none; cursor: pointer;" onclick="closeDeleteModal()">취소</button>
+                    <button class="modal-btn delete-btn" style="margin-left: 10px; padding: 10px 15px; border-radius: 4px; background-color: #ff6b6b; color: white; border: none; cursor: pointer;" onclick="confirmDelete()">삭제</button>
+                </div>
+            </div>
+            <div style="padding: 0 10px;">
+                <div style="margin-bottom: 20px; background-color: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee;">
+                    <label for="deletePassword" style="font-weight: bold; display: block; margin-bottom: 8px;">비밀번호를 입력해주세요:</label>
+                    <input type="password" id="deletePassword" style="padding: 10px; width: 100%; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box;" placeholder="삭제 비밀번호">
+                </div>
+                <div style="margin-top: 20px;">
+                    <h3 style="margin-top: 0; font-size: 18px; color: #555; padding-bottom: 10px; border-bottom: 1px solid #eee;">삭제할 발주서 목록</h3>
+                    <div id="deleteOrderList" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 헤더 로드
+        fetch('/header')
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('header-container').innerHTML = html;
+            });
+
+        // 파일 업로드 처리
+        let uploadedOrders = [];
+        
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        // 드래그 앤 드롭 처리
+        const uploadArea = document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            this.style.borderColor = '#4CAF50';
+        });
+
+        uploadArea.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            this.style.borderColor = '#ccc';
+        });
+
+        uploadArea.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.style.borderColor = '#ccc';
+            if (e.dataTransfer.files.length > 0) {
+                handleFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+
+        async function handleFileUpload(file) {
+            if (!file.name.endsWith('.xlsx')) {
+                alert('Excel 파일만 업로드 가능합니다.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/orders/parse-excel', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('파일 분석 실패');
+                }
+
+                const data = await response.json();
+                if (data.orders && data.orders.length > 0) {
+                    uploadedOrders = data.orders;
+                    displayOrders(uploadedOrders);
+                    alert(`${uploadedOrders.length}개의 발주서가 분석되었습니다. '발주서 등록' 버튼을 클릭하여 저장하세요.`);
+                } else {
+                    alert('파일에서 발주서 정보를 찾을 수 없습니다.');
+                }
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 발주서 등록
+        async function registerOrders() {
+            if (uploadedOrders.length === 0) {
+                alert('등록할 발주서가 없습니다. 먼저 Excel 파일을 업로드해주세요.');
+                return;
+            }
+
+            if (!confirm('분석된 발주서를 등록하시겠습니까?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/orders/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ orders: uploadedOrders })
+                });
+
+                if (!response.ok) {
+                    throw new Error('발주서 등록에 실패했습니다.');
+                }
+
+                const result = await response.json();
+                
+                let message = `${result.registered}개의 발주서가 등록되었습니다.`;
+                if (result.duplicates && result.duplicates > 0) {
+                    message += `\n${result.duplicates}개의 중복된 발주서는 등록되지 않았습니다.`;
+                }
+                
+                alert(message);
+                uploadedOrders = [];
+                document.getElementById('orderBody').innerHTML = '';
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 발주서 목록 표시
+        function displayOrders(orders) {
+            const tbody = document.getElementById('orderBody');
+            tbody.innerHTML = '';
+
+            orders.forEach(order => {
+                // 메인 행 추가
+                const mainRow = document.createElement('tr');
+                mainRow.innerHTML = `
+                    <td>
+                        <input type="checkbox" class="order-checkbox" data-order-number="${order.발주번호}">
+                    </td>
+                    <td>${order.발주번호}</td>
+                    <td>${order.물류센터}</td>
+                    <td>${order.상품수}</td>
+                    <td>${order.발주수량}</td>
+                    <td>${order.확정수량}</td>
+                    <td>${order.스캔수량}</td>
+                    <td>${order.입고예정일}</td>
+                `;
+                tbody.appendChild(mainRow);
+
+                // 상세 정보 행 추가
+                const detailsRow = document.createElement('tr');
+                detailsRow.id = `details-${order.발주번호}`;
+                detailsRow.className = 'order-details';
+                detailsRow.innerHTML = `
+                    <td colspan="8">
+                        <table class="details-table">
+                            <thead>
+                                <tr>
+                                    <th>상품번호</th>
+                                    <th>상품바코드</th>
+                                    <th>상품이름</th>
+                                    <th>발주수량</th>
+                                    <th>확정수량</th>
+                                    <th>스캔수량</th>
+                                    <th>입고1</th>
+                                    <th>입고2</th>
+                                    <th>위치</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${order.상품정보.map(product => `
+                                    <tr>
+                                        <td>${product.상품번호}</td>
+                                        <td>${product.상품바코드}</td>
+                                        <td>${product.상품이름}</td>
+                                        <td>${product.발주수량}</td>
+                                        <td>${product.확정수량}</td>
+                                        <td>${product.스캔수량}</td>
+                                        <td>${product.입고1 || '-'}</td>
+                                        <td>${product.입고2 || '-'}</td>
+                                        <td>${product.위치 || '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </td>
+                `;
+                tbody.appendChild(detailsRow);
+
+                // 체크박스 클릭 이벤트 추가
+                const checkbox = mainRow.querySelector('.order-checkbox');
+                checkbox.addEventListener('change', function() {
+                    const detailsRow = document.getElementById(`details-${this.getAttribute('data-order-number')}`);
+                    if (this.checked) {
+                        detailsRow.classList.add('show');
+                    } else {
+                        detailsRow.classList.remove('show');
+                    }
+                });
+            });
+        }
+
+        // 전체 선택/해제
+        function toggleSelectAll(checkbox) {
+            const checkboxes = document.querySelectorAll('.order-checkbox:not(#selectAll)');
+            checkboxes.forEach(cb => {
+                cb.checked = checkbox.checked;
+                const detailsRow = document.getElementById(`details-${cb.getAttribute('data-order-number')}`);
+                if (detailsRow) {
+                    if (checkbox.checked) {
+                        detailsRow.classList.add('show');
+                    } else {
+                        detailsRow.classList.remove('show');
+                    }
+                }
+            });
+        }
+
+        // 위치 정보 불러오기
+        async function loadLocations() {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
+                alert('위치를 불러올 발주서를 선택해주세요.');
+                return;
+            }
+
+            try {
+                const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+                
+                selectedOrderNumbers.forEach(orderNumber => {
+                    const detailsRow = document.getElementById(`details-${orderNumber}`);
+                    if (!detailsRow.classList.contains('show')) {
+                        detailsRow.classList.add('show');
+                    }
+                });
+
+                const barcodeCells = new Map();
+
+                selectedOrderNumbers.forEach(orderNumber => {
+                    const detailsTable = document.querySelector(`#details-${orderNumber} table tbody`);
+                    if (detailsTable) {
+                        const rows = detailsTable.querySelectorAll('tr');
+                        rows.forEach(row => {
+                            const barcodeCell = row.querySelector('td:nth-child(2)');
+                            const locationCell = row.querySelector('td:nth-child(9)');
+                            
+                            if (barcodeCell && locationCell) {
+                                const barcode = barcodeCell.textContent.trim();
+                                if (barcode) {
+                                    if (!barcodeCells.has(barcode)) {
+                                        barcodeCells.set(barcode, []);
+                                    }
+                                    barcodeCells.get(barcode).push({
+                                        orderNumber: orderNumber,
+                                        cell: locationCell
+                                    });
+                                }
+                            }
+                        });
+                    }
+                });
+
+                if (barcodeCells.size === 0) {
+                    alert('불러올 상품 바코드가 없습니다.');
+                    return;
+                }
+
+                const response = await fetch('/api/inventory/locations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ barcodes: Array.from(barcodeCells.keys()) })
+                });
+
+                if (!response.ok) {
+                    throw new Error('위치 정보를 불러오는데 실패했습니다.');
+                }
+
+                const locations = await response.json();
+                
+                let updateCount = 0;
+                for (const item of locations) {
+                    const cells = barcodeCells.get(item.barcode);
+                    if (cells && item.location && item.location !== '-') {
+                        for (const cellInfo of cells) {
+                            const saveResponse = await fetch('/api/orders/update-location', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    orderNumber: cellInfo.orderNumber,
+                                    barcode: item.barcode,
+                                    location: item.location
+                                })
+                            });
+
+                            if (saveResponse.ok) {
+                                cellInfo.cell.textContent = item.location;
+                                updateCount++;
+                            }
+                        }
+                    }
+                }
+
+                if (updateCount > 0) {
+                    alert(`${updateCount}개 상품의 위치 정보가 업데이트되었습니다.`);
+                } else {
+                    alert('업데이트할 위치 정보가 없습니다.');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('위치 정보를 불러오는데 실패했습니다: ' + error.message);
+            }
+        }
+
+        // 발주서 삭제
+        async function deleteSelectedOrders() {
+            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
+                .map(checkbox => checkbox.getAttribute('data-order-number'));
+
+            if (selectedOrders.length === 0) {
+                alert('삭제할 발주서를 선택해주세요.');
+                return;
+            }
+
+            // 삭제할 발주서 목록 표시
+            const deleteOrderList = document.getElementById('deleteOrderList');
+            deleteOrderList.innerHTML = '';
+            
+            for (let i = 0; i < selectedOrders.length; i++) {
+                const order = uploadedOrders.find(o => o.발주번호 === selectedOrders[i]);
+                const item = document.createElement('div');
+                item.style.padding = '5px';
+                item.style.borderBottom = '1px solid #eee';
+                item.textContent = `${selectedOrders[i]} - ${order ? order.물류센터 : ''}`;
+                deleteOrderList.appendChild(item);
+            }
+            
+            // 패스워드 초기화
+            document.getElementById('deletePassword').value = '';
+            
+            // 모달 표시
+            document.getElementById('deleteModal').style.display = 'block';
+        }
+        
+        // 삭제 모달 닫기
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+        }
+        
+        // 삭제 확인 처리
+        async function confirmDelete() {
+            const password = document.getElementById('deletePassword').value;
+            
+            // 패스워드 검증 추가
+            if (!password) {
+                alert('패스워드를 입력해주세요.');
+                return;
+            }
+            
+            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
+                .map(checkbox => checkbox.getAttribute('data-order-number'));
+
+            try {
+                const response = await fetch('/api/orders/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ orderNumbers: selectedOrders, password })
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || '발주서 삭제에 실패했습니다.');
+                }
+
+                closeDeleteModal();
+                alert('선택한 발주서가 삭제되었습니다.');
+                loadOrders();
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 모달 외부 클릭 시 닫기
+        window.addEventListener('click', (event) => {
+            const deleteModal = document.getElementById('deleteModal');
+            if (event.target === deleteModal) {
+                closeDeleteModal();
+            }
+        });
+
+        // 발주서 저장
+        async function exportSelectedOrders() {
+            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
+                .map(checkbox => checkbox.getAttribute('data-order-number'));
+
+            if (selectedOrders.length === 0) {
+                alert('저장할 발주서를 선택해주세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/orders/export', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ orderNumbers: selectedOrders })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    
+                    let filename;
+                    if (selectedOrders.length === 1) {
+                        filename = `발주리스트 확정 (${selectedOrders[0]}).xlsx`;
+                    } else {
+                        filename = `발주리스트 확정 (${selectedOrders[0]} 외 ${selectedOrders.length - 1}건).xlsx`;
+                    }
+                    
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    throw new Error('발주서 저장에 실패했습니다.');
+                }
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+
+        // 인쇄 기능
+        function printSelectedOrders() {
+            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
+                .map(checkbox => checkbox.getAttribute('data-order-number'));
+
+            if (selectedOrders.length === 0) {
+                alert('인쇄할 발주서를 선택해주세요.');
+                return;
+            }
+
+            // 인쇄 창 열기
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                alert('팝업이 차단되었습니다. 팝업 차단을 해제하고 다시 시도해주세요.');
+                return;
+            }
+
+            // 인쇄 내용 생성
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>발주서 인쇄</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; }
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th { background-color: #f2f2f2; }
+                        h2 { margin-top: 30px; }
+                        @media print {
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="no-print">
+                        <button onclick="window.print()">인쇄</button>
+                        <button onclick="window.close()">닫기</button>
+                    </div>
+            `);
+
+            // 선택된 발주서 정보 추가
+            selectedOrders.forEach(orderNumber => {
+                const order = uploadedOrders.find(o => o.발주번호 === orderNumber);
+                if (order) {
+                    printWindow.document.write(`
+                        <h2>발주번호: ${order.발주번호}</h2>
+                        <p>물류센터: ${order.물류센터}</p>
+                        <p>입고예정일: ${order.입고예정일}</p>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>상품번호</th>
+                                    <th>상품바코드</th>
+                                    <th>상품이름</th>
+                                    <th>발주수량</th>
+                                    <th>확정수량</th>
+                                    <th>위치</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${order.상품정보.map(product => `
+                                    <tr>
+                                        <td>${product.상품번호}</td>
+                                        <td>${product.상품바코드}</td>
+                                        <td>${product.상품이름}</td>
+                                        <td>${product.발주수량}</td>
+                                        <td>${product.확정수량}</td>
+                                        <td>${product.위치 || ''}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `);
+                }
+            });
+
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+        }
+    </script>
+</body>
+</html> 
