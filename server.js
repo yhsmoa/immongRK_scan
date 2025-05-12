@@ -17,14 +17,16 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 // MongoDB Atlas 연결
-// 여기에 MongoDB Atlas 연결 문자열을 붙여넣으세요
-const MONGODB_URI = "mongodb+srv://immongorder1:djajskek1@cluster0.wo05sle.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0";
-mongoose.connect(MONGODB_URI)
-.then(() => console.log('MongoDB Atlas 연결 성공'))
-.catch(err => console.error('MongoDB Atlas 연결 실패:', err));
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://immongorder1:djajskek1@cluster0.wo05sle.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0";
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ MongoDB Atlas 연결 성공'))
+.catch(err => console.error('❌ MongoDB Atlas 연결 실패:', err));
 
 app.use(express.static(__dirname));
 app.use(express.static(__dirname + '/public'));
