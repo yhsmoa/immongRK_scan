@@ -20,7 +20,9 @@ const io = socketIo(server);
 const PORT = 3001;
 
 // MongoDB Atlas 연결
-mongoose.connect(process.env.MONGODB_URI)
+// 여기에 MongoDB Atlas 연결 문자열을 붙여넣으세요
+const MONGODB_URI = "mongodb+srv://immongorder1:djajskek1@cluster0.wo05sle.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0";
+mongoose.connect(MONGODB_URI)
 .then(() => console.log('MongoDB Atlas 연결 성공'))
 .catch(err => console.error('MongoDB Atlas 연결 실패:', err));
 
@@ -1734,6 +1736,42 @@ app.get('/api/importChina', async (req, res) => {
     } catch (error) {
         console.error('Error fetching data:', error);
         res.status(500).json({ error: '데이터 조회 중 오류가 발생했습니다.' });
+    }
+});
+
+// 발주서 입고일 변경 API
+app.post('/api/orders/update-date', async (req, res) => {
+    try {
+        const { orderNumbers, newDate } = req.body;
+        
+        if (!Array.isArray(orderNumbers) || orderNumbers.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: '변경할 발주서가 선택되지 않았습니다.' 
+            });
+        }
+        
+        if (!newDate || !/^\d{8}$/.test(newDate)) {
+            return res.status(400).json({ 
+                success: false, 
+                message: '올바른 날짜 형식이 아닙니다. YYYYMMDD 형식으로 입력해주세요.' 
+            });
+        }
+        
+        // 발주서 입고예정일 업데이트
+        const result = await Order.updateMany(
+            { 발주번호: { $in: orderNumbers } },
+            { $set: { 입고예정일: newDate } }
+        );
+        
+        res.json({
+            success: true,
+            message: '입고일이 성공적으로 변경되었습니다.',
+            updatedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('입고일 변경 중 오류 발생:', error);
+        res.status(500).json({ success: false, message: '입고일 변경 중 오류가 발생했습니다.' });
     }
 });
 
