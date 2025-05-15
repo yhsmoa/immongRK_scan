@@ -181,28 +181,53 @@
         }
         .table-header {
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 10px;
+        }
+        .search-container {
+            display: flex;
+            gap: 10px;
+            flex-grow: 0;
+            width: 320px;
+            min-width: 250px;
+        }
+        .search-input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            flex-grow: 1;
+        }
+        .table-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
         .order-checkbox {
             width: 18px;
             height: 18px;
             cursor: pointer;
         }
-        .export-btn {
+        .export-btn, .center-change-btn, .date-change-btn, .load-location-btn, .print-btn, .delete-btn {
             padding: 8px 16px;
-            background-color: #4CAF50;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
-            transition: background-color 0.2s;
-            margin-right: 10px;
+            margin-right: 0;
         }
-        
-        .export-btn:hover {
-            background-color: #45a049;
+        .search-btn {
+            padding: 8px 16px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .search-btn:hover {
+            background-color: #0b7dda;
         }
         .load-location-btn {
             padding: 8px 16px;
@@ -212,8 +237,7 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
-            transition: background-color 0.2s;
-            margin-right: 10px;
+            margin-right: 0;
         }
         .load-location-btn:hover {
             background-color: #0b7dda;
@@ -226,8 +250,7 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
-            transition: background-color 0.2s;
-            margin-right: 10px;
+            margin-right: 0;
         }
         .print-btn:hover {
             background-color: #e68a00;
@@ -240,8 +263,7 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
-            transition: background-color 0.2s;
-            margin-right: 10px;
+            margin-right: 0;
         }
         .date-change-btn:hover {
             background-color: #7B1FA2;
@@ -254,11 +276,22 @@
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
-            transition: background-color 0.2s;
-            margin-right: 10px;
+            margin-right: 0;
         }
         .center-change-btn:hover {
             background-color: #0097A7;
+        }
+        .delete-btn {
+            padding: 8px 16px;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-right: 0;
+        }
+        .delete-btn:hover {
+            background-color: #c82333;
         }
         .date-change-modal {
             display: none;
@@ -307,7 +340,6 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
         }
         .date-change-input {
             padding: 8px;
@@ -406,27 +438,6 @@
         .cancel-btn {
             background-color: #f44336;
         }
-        .search-container {
-            display: flex;
-            gap: 10px;
-            margin-right: 20px;
-        }
-        .search-input {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .search-btn {
-            padding: 8px 16px;
-            background-color: #2196F3; /* 파란색으로 변경 */
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .search-btn:hover {
-            background-color: #0b7dda;
-        }
     </style>
 </head>
 <body>
@@ -444,13 +455,15 @@
                     <input type="text" id="searchInput" class="search-input" placeholder="물류센터 또는 입고예정일">
                     <button class="search-btn" onclick="searchOrders()">조회</button>
                 </div>
-                <button class="export-btn" onclick="expandAllOrders()">발주서 펼쳐보기</button>
-                <button class="export-btn" onclick="exportSelectedOrders()">발주서 저장</button>
-                <button class="center-change-btn" onclick="showCenterChangeModal()">센터변경</button>
-                <button class="date-change-btn" onclick="showDateChangeModal()">입고일 변경</button>
-                <button class="load-location-btn" onclick="loadLocations()">위치 불러오기</button>
-                <button class="print-btn" onclick="printSelectedOrders()">인쇄</button>
-                <button class="delete-btn" onclick="deleteSelectedOrders()">삭제</button>
+                <div class="table-buttons">
+                    <button class="export-btn" onclick="expandAllOrders()">발주서 펼쳐보기</button>
+                    <button class="export-btn" onclick="exportSelectedOrders()">발주서 저장</button>
+                    <button class="center-change-btn" onclick="showCenterChangeModal()">센터변경</button>
+                    <button class="date-change-btn" onclick="showDateChangeModal()">입고일 변경</button>
+                    <button class="load-location-btn" onclick="loadLocations()">위치 불러오기</button>
+                    <button class="print-btn" onclick="printSelectedOrders()">인쇄</button>
+                    <button class="delete-btn" onclick="deleteSelectedOrders()">삭제</button>
+                </div>
             </div>
             <table id="orderTable">
                 <thead>
@@ -646,6 +659,7 @@
                 // 메인 행
                 const mainRow = document.createElement('tr');
                 mainRow.className = 'order-row';
+                mainRow.setAttribute('data-order-number', order.발주번호);
                 mainRow.onclick = (e) => {
                     if (!e.target.type || e.target.type !== 'checkbox') {
                         toggleOrderDetails(order.발주번호);
@@ -1653,9 +1667,37 @@
 
         // 발주서 펼쳐보기 함수
         function expandAllOrders() {
-            const detailsRows = document.querySelectorAll('.order-details');
-            detailsRows.forEach(row => {
-                row.classList.add('show');
+            // 체크된 발주서만 펼쳐보기
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
+                alert('펼쳐볼 발주서를 선택해주세요.');
+                return;
+            }
+            
+            // 모든 발주서 상세 정보 먼저 숨기기
+            document.querySelectorAll('.order-details').forEach(row => {
+                row.classList.remove('show');
+            });
+            
+            // 체크된 발주서의 발주번호 수집
+            const selectedOrderNumbers = [];
+            selectedCheckboxes.forEach(checkbox => {
+                const orderNumber = checkbox.getAttribute('data-order-number');
+                if (orderNumber) {
+                    selectedOrderNumbers.push(orderNumber);
+                    console.log('펼쳐볼 발주번호:', orderNumber);
+                }
+            });
+            
+            // 선택된 발주서만 펼쳐 보이기
+            selectedOrderNumbers.forEach(orderNumber => {
+                const detailsRow = document.getElementById(`details-${orderNumber}`);
+                if (detailsRow) {
+                    detailsRow.classList.add('show');
+                    console.log('발주서 상세 표시:', orderNumber);
+                } else {
+                    console.error('발주서 상세 요소를 찾을 수 없음:', orderNumber);
+                }
             });
         }
         

@@ -105,6 +105,20 @@
         .details-table th {
             background-color: #e6e6e6;
         }
+        .order-link {
+            color: #2196F3;
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .order-link:hover {
+            text-decoration: underline;
+        }
+        /* Remove any hover-related CSS if it exists */
+        .order-checkbox:hover + .order-details,
+        tr:hover .order-details {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -180,7 +194,7 @@
         
         document.getElementById('fileInput').addEventListener('change', function(e) {
             if (e.target.files.length > 0) {
-                handleFileUpload(e.target.files[0]);
+                directFileUpload(e.target.files[0]);
             }
         });
 
@@ -200,11 +214,11 @@
             e.preventDefault();
             this.style.borderColor = '#ccc';
             if (e.dataTransfer.files.length > 0) {
-                handleFileUpload(e.dataTransfer.files[0]);
+                directFileUpload(e.dataTransfer.files[0]);
             }
         });
 
-        async function handleFileUpload(file) {
+        async function directFileUpload(file) {
             if (!file.name.endsWith('.xlsx')) {
                 alert('Excel 파일만 업로드 가능합니다.');
                 return;
@@ -214,23 +228,23 @@
             formData.append('file', file);
 
             try {
-                const response = await fetch('/api/orders/parse-excel', {
+                const response = await fetch('/api/neworder/upload', {
                     method: 'POST',
                     body: formData
                 });
 
                 if (!response.ok) {
-                    throw new Error('파일 분석 실패');
+                    throw new Error('파일 업로드 실패');
                 }
 
                 const data = await response.json();
-                if (data.orders && data.orders.length > 0) {
-                    uploadedOrders = data.orders;
-                    displayOrders(uploadedOrders);
-                    alert(`${uploadedOrders.length}개의 발주서가 분석되었습니다. '발주서 등록' 버튼을 클릭하여 저장하세요.`);
-                } else {
-                    alert('파일에서 발주서 정보를 찾을 수 없습니다.');
-                }
+                alert(data.message);
+                
+                // Clear the file input
+                document.getElementById('fileInput').value = '';
+                
+                // Reload the orders to display the newly added ones
+                loadNewOrders();
             } catch (error) {
                 alert(error.message);
             }
@@ -238,38 +252,42 @@
 
         // 발주서 등록
         async function registerOrders() {
-            if (uploadedOrders.length === 0) {
-                alert('등록할 발주서가 없습니다. 먼저 Excel 파일을 업로드해주세요.');
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
+                alert('등록할 발주서를 선택해주세요.');
                 return;
             }
-
-            if (!confirm('분석된 발주서를 등록하시겠습니까?')) {
+            
+            const selectedOrders = Array.from(selectedCheckboxes).map(cb => 
+                cb.getAttribute('data-order-number')
+            );
+            
+            if (!confirm(`선택한 ${selectedOrders.length}개의 발주서를 기존 발주서 목록에 등록하시겠습니까?`)) {
                 return;
             }
-
+            
             try {
-                const response = await fetch('/api/orders/register', {
+                const response = await fetch('/api/neworders/register', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ orders: uploadedOrders })
+                    body: JSON.stringify({ orderNumbers: selectedOrders })
                 });
-
+                
                 if (!response.ok) {
-                    throw new Error('발주서 등록에 실패했습니다.');
+                    const error = await response.json();
+                    throw new Error(error.message || '발주서 등록에 실패했습니다.');
                 }
-
+                
                 const result = await response.json();
                 
-                let message = `${result.registered}개의 발주서가 등록되었습니다.`;
-                if (result.duplicates && result.duplicates > 0) {
-                    message += `\n${result.duplicates}개의 중복된 발주서는 등록되지 않았습니다.`;
-                }
+                alert(result.message);
                 
-                alert(message);
-                uploadedOrders = [];
-                document.getElementById('orderBody').innerHTML = '';
+                // 등록 성공 후 목록 새로고침
+                if (result.registered > 0) {
+                    loadNewOrders();
+                }
             } catch (error) {
                 alert(error.message);
             }
@@ -287,7 +305,7 @@
                     <td>
                         <input type="checkbox" class="order-checkbox" data-order-number="${order.발주번호}">
                     </td>
-                    <td>${order.발주번호}</td>
+                    <td><a href="#" class="order-link" data-order-number="${order.발주번호}">${order.발주번호}</a></td>
                     <td>${order.물류센터}</td>
                     <td>${order.상품수}</td>
                     <td>${order.발주수량}</td>
@@ -345,6 +363,21 @@
                         detailsRow.classList.add('show');
                     } else {
                         detailsRow.classList.remove('show');
+                    }
+                });
+                
+                // 발주번호 클릭 이벤트 추가
+                const orderLink = mainRow.querySelector('.order-link');
+                orderLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const orderNumber = this.getAttribute('data-order-number');
+                    const detailsRow = document.getElementById(`details-${orderNumber}`);
+                    
+                    // 토글 기능 (보이면 숨기고, 숨겨져 있으면 보이게)
+                    if (detailsRow.classList.contains('show')) {
+                        detailsRow.classList.remove('show');
+                    } else {
+                        detailsRow.classList.add('show');
                     }
                 });
             });
@@ -434,7 +467,7 @@
                     const cells = barcodeCells.get(item.barcode);
                     if (cells && item.location && item.location !== '-') {
                         for (const cellInfo of cells) {
-                            const saveResponse = await fetch('/api/orders/update-location', {
+                            const saveResponse = await fetch('/api/neworders/update-location', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json'
@@ -514,7 +547,7 @@
                 .map(checkbox => checkbox.getAttribute('data-order-number'));
 
             try {
-                const response = await fetch('/api/orders/delete', {
+                const response = await fetch('/api/neworders/delete', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -529,7 +562,7 @@
 
                 closeDeleteModal();
                 alert('선택한 발주서가 삭제되었습니다.');
-                loadOrders();
+                loadNewOrders();
             } catch (error) {
                 alert(error.message);
             }
@@ -554,7 +587,7 @@
             }
 
             try {
-                const response = await fetch('/api/orders/export', {
+                const response = await fetch('/api/neworders/export', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -570,9 +603,9 @@
                     
                     let filename;
                     if (selectedOrders.length === 1) {
-                        filename = `발주리스트 확정 (${selectedOrders[0]}).xlsx`;
+                        filename = `신규발주리스트 (${selectedOrders[0]}).xlsx`;
                     } else {
-                        filename = `발주리스트 확정 (${selectedOrders[0]} 외 ${selectedOrders.length - 1}건).xlsx`;
+                        filename = `신규발주리스트 (${selectedOrders[0]} 외 ${selectedOrders.length - 1}건).xlsx`;
                     }
                     
                     a.download = filename;
@@ -667,6 +700,28 @@
             printWindow.document.write('</body></html>');
             printWindow.document.close();
         }
+
+        // Add loadNewOrders function and call it when the page loads
+        // Add this at the end of the script, before the final closing script tag
+        // Load new orders on page load
+        async function loadNewOrders() {
+            try {
+                const response = await fetch('/api/neworders');
+                if (!response.ok) {
+                    throw new Error('신규 발주서 조회에 실패했습니다.');
+                }
+                
+                const orders = await response.json();
+                displayOrders(orders);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // Load orders when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadNewOrders();
+        });
     </script>
 </body>
 </html> 
