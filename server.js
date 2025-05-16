@@ -1778,6 +1778,57 @@ app.post('/api/orders/update-date', async (req, res) => {
     }
 });
 
+// 발주서 물류센터 변경 API
+app.post('/api/orders/update-center', async (req, res) => {
+    try {
+        const { orderNumbers, newCenter } = req.body;
+        console.log('물류센터 변경 요청:', { orderNumbers, newCenter });
+        
+        if (!Array.isArray(orderNumbers) || orderNumbers.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: '변경할 발주서가 선택되지 않았습니다.' 
+            });
+        }
+        
+        if (!newCenter || newCenter.trim() === '') {
+            return res.status(400).json({ 
+                success: false, 
+                message: '변경할 물류센터 정보가 없습니다.' 
+            });
+        }
+        
+        // 발주서 물류센터 업데이트
+        const result = await Order.updateMany(
+            { 발주번호: { $in: orderNumbers } },
+            { $set: { 물류센터: newCenter } }
+        );
+        
+        console.log('물류센터 변경 결과:', result);
+        
+        res.json({
+            success: true,
+            message: '물류센터가 성공적으로 변경되었습니다.',
+            updatedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('물류센터 변경 중 오류 발생:', error);
+        res.status(500).json({ success: false, message: '물류센터 변경 중 오류가 발생했습니다.' });
+    }
+});
+
+// 물류센터 목록 가져오기 API
+app.get('/api/orders/logistics-centers', async (req, res) => {
+    try {
+        // 고유한 물류센터 목록 가져오기
+        const centers = await Order.distinct('물류센터');
+        res.json({ success: true, centers });
+    } catch (error) {
+        console.error('물류센터 목록 가져오기 중 오류 발생:', error);
+        res.status(500).json({ success: false, error: '물류센터 목록을 가져오는 중 오류가 발생했습니다.' });
+    }
+});
+
 // 신규발주서 엑셀 파일 업로드 처리
 app.post('/api/neworder/upload', upload.single('file'), async (req, res) => {
     try {

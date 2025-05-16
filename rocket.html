@@ -530,6 +530,9 @@
                 </div>
                 <div class="center-change-modal-right">
                     <div>변경할 물류센터를 선택하세요</div>
+                    <div style="margin-bottom: 15px; margin-top: 10px;">
+                        <label>직접입력: <input type="text" id="customCenterInput" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 200px;"></label>
+                    </div>
                     <div class="center-buttons" id="centerButtonsContainer">
                         <!-- 여기에 물류센터 버튼이 표시됩니다 -->
                     </div>
@@ -1521,6 +1524,9 @@
             
             orderListContainer.appendChild(orderList);
             
+            // 직접 입력 필드 초기화
+            document.getElementById('customCenterInput').value = '';
+            
             // 모든 물류센터 목록 가져오기
             getAllLogisticsCenters().then(centers => {
                 const centersContainer = document.getElementById('centerButtonsContainer');
@@ -1538,6 +1544,8 @@
                         });
                         // 현재 버튼에 선택 클래스 추가
                         this.classList.add('selected');
+                        // 직접 입력 필드 초기화
+                        document.getElementById('customCenterInput').value = '';
                     };
                     centersContainer.appendChild(centerButton);
                 });
@@ -1550,7 +1558,7 @@
         // 모든 물류센터 목록 가져오기
         async function getAllLogisticsCenters() {
             try {
-                // 1. 현재 화면에 표시된 모든 물류센터 수집
+                // 현재 화면에 표시된 모든 물류센터 수집
                 const centers = new Set();
                 const rows = document.querySelectorAll('#orderTable tbody tr.order-row');
                 rows.forEach(row => {
@@ -1560,16 +1568,17 @@
                     }
                 });
                 
-                // 2. 서버에서 모든 물류센터 가져오기 (선택 사항)
+                // 서버에서 물류센터 목록 가져오기 시도
                 try {
+                    // API 경로 수정 (예: 절대 경로 사용)
                     const response = await fetch('/api/orders/logistics-centers');
                     if (response.ok) {
                         const data = await response.json();
                         data.centers.forEach(center => centers.add(center));
                     }
                 } catch (error) {
-                    console.error('서버에서 물류센터 목록을 가져오는데 실패했습니다:', error);
-                    // 서버 오류가 있어도 화면에서 수집한 목록 사용
+                    console.warn('서버에서 물류센터 목록을 가져오는데 실패했습니다:', error);
+                    // 서버 오류가 발생해도 화면에서 수집한 목록 사용
                 }
                 
                 return Array.from(centers).sort();
@@ -1587,7 +1596,18 @@
         // 물류센터 변경 확인
         function confirmCenterChange() {
             const selectedButton = document.querySelector('.center-button.selected');
+            const customCenterInput = document.getElementById('customCenterInput').value.trim();
             
+            // 직접 입력된 값이 있는 경우, 그 값을 사용
+            if (customCenterInput) {
+                // 최종 확인 다이얼로그
+                if (confirm('물류센터 변경을 진행하시겠습니까?')) {
+                    updateOrderCenters(customCenterInput);
+                }
+                return;
+            }
+            
+            // 직접 입력 값이 없고 버튼도 선택되지 않은 경우
             if (!selectedButton) {
                 alert('변경할 물류센터를 선택해주세요.');
                 return;
@@ -1618,15 +1638,15 @@
                     })
                 });
 
+                // 응답 상태 확인
                 if (!response.ok) {
-                    throw new Error('물류센터 변경에 실패했습니다.');
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.message || '물류센터 변경에 실패했습니다.');
                 }
 
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert(`${result.updatedCount}개 발주서의 물류센터가 변경되었습니다.`);
-                    
                     // 화면에 표시된 물류센터 업데이트
                     selectedOrderNumbers.forEach(orderNumber => {
                         const mainRow = document.querySelector(`.order-checkbox[data-order-number="${orderNumber}"]`).closest('tr');
@@ -1638,12 +1658,13 @@
                         }
                     });
                     
+                    alert(`${result.updatedCount}개 발주서의 물류센터가 변경되었습니다.`);
                     closeCenterChangeModal();
                 } else {
                     throw new Error(result.message || '물류센터 변경에 실패했습니다.');
                 }
             } catch (error) {
-                console.error('Error:', error);
+                console.error('물류센터 변경 중 오류:', error);
                 alert(error.message);
             }
         }
