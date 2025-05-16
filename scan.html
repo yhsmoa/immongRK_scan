@@ -663,6 +663,10 @@
                 document.getElementById('boxNumber').disabled = false;
                 document.getElementById('boxSize').disabled = false;
                 
+                // 박스 선택 드롭다운 초기화
+                document.getElementById('boxNumber').value = '';
+                document.getElementById('boxSize').value = '';
+                
                 // 결과 테이블 초기화
                 const tbody = document.getElementById('productList');
                 tbody.innerHTML = '';

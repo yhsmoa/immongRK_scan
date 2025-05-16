@@ -211,12 +211,16 @@
         }
         .export-btn, .center-change-btn, .date-change-btn, .load-location-btn, .print-btn, .delete-btn {
             padding: 8px 16px;
+            background-color: #808080; /* 회색으로 변경 */
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
             margin-right: 0;
+        }
+        .export-btn:hover, .center-change-btn:hover, .date-change-btn:hover, .load-location-btn:hover, .print-btn:hover, .delete-btn:hover {
+            background-color: #666666; /* 회색 hover 색상 */
         }
         .search-btn {
             padding: 8px 16px;
@@ -229,9 +233,15 @@
         .search-btn:hover {
             background-color: #0b7dda;
         }
-        .load-location-btn {
+        .save-btn {
+            background-color: #4CAF50; /* 초록색 */
+        }
+        .cancel-btn {
+            background-color: #f44336;
+        }
+        .center-change-btn, .date-change-btn, .load-location-btn {
             padding: 8px 16px;
-            background-color: #2196F3;
+            background-color: #2196F3; /* 파란색으로 통일 */
             color: white;
             border: none;
             border-radius: 4px;
@@ -239,59 +249,8 @@
             font-size: 14px;
             margin-right: 0;
         }
-        .load-location-btn:hover {
-            background-color: #0b7dda;
-        }
-        .print-btn {
-            padding: 8px 16px;
-            background-color: #ff9800;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-right: 0;
-        }
-        .print-btn:hover {
-            background-color: #e68a00;
-        }
-        .date-change-btn {
-            padding: 8px 16px;
-            background-color: #9C27B0;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-right: 0;
-        }
-        .date-change-btn:hover {
-            background-color: #7B1FA2;
-        }
-        .center-change-btn {
-            padding: 8px 16px;
-            background-color: #00BCD4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            margin-right: 0;
-        }
-        .center-change-btn:hover {
-            background-color: #0097A7;
-        }
-        .delete-btn {
-            padding: 8px 16px;
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            margin-right: 0;
-        }
-        .delete-btn:hover {
-            background-color: #c82333;
+        .center-change-btn:hover, .date-change-btn:hover, .load-location-btn:hover {
+            background-color: #0b7dda; /* 파란색 hover 색상 */
         }
         .date-change-modal {
             display: none;
@@ -432,11 +391,18 @@
             font-size: 14px;
             margin-left: 10px;
         }
-        .save-btn {
-            background-color: #4CAF50;
+        .print-btn {
+            padding: 8px 16px;
+            background-color: #ff9800; /* 오렌지색 유지 */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 0;
         }
-        .cancel-btn {
-            background-color: #f44336;
+        .print-btn:hover {
+            background-color: #e68a00; /* 오렌지색 hover 색상 */
         }
     </style>
 </head>
@@ -457,10 +423,10 @@
                 </div>
                 <div class="table-buttons">
                     <button class="export-btn" onclick="expandAllOrders()">발주서 펼쳐보기</button>
-                    <button class="export-btn" onclick="exportSelectedOrders()">발주서 저장</button>
+                    <button class="load-location-btn" onclick="loadLocations()">위치 불러오기</button>
                     <button class="center-change-btn" onclick="showCenterChangeModal()">센터변경</button>
                     <button class="date-change-btn" onclick="showDateChangeModal()">입고일 변경</button>
-                    <button class="load-location-btn" onclick="loadLocations()">위치 불러오기</button>
+                    <button class="export-btn" style="background-color: #4CAF50;" onclick="exportSelectedOrders()">발주서 저장</button>
                     <button class="print-btn" onclick="printSelectedOrders()">인쇄</button>
                     <button class="delete-btn" onclick="deleteSelectedOrders()">삭제</button>
                 </div>

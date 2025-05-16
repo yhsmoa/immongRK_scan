@@ -407,8 +407,8 @@
             <div class="search-section">
                 <form class="search-form" onsubmit="handleSearch(event)">
                     <select class="search-input" id="orderStatus">
-                        <option value="전체">전체</option>
-                        <option value="정상" selected>정상</option>
+                        <option value="전체" selected>전체</option>
+                        <option value="정상">정상</option>
                         <option value="일시중단">일시중단</option>
                         <option value="불가">불가</option>
                     </select>
@@ -628,9 +628,8 @@
             fetch('/api/inventory/list')
                 .then(response => response.json())
                 .then(data => {
-                    // 발주가능상태가 '정상'인 데이터만 필터링
-                    const filteredData = data.filter(item => item.orderStatus === '정상');
-                    displayData(filteredData);
+                    // 모든 데이터 표시 (필터링 제거)
+                    displayData(data);
                 })
                 .catch(error => {
                     console.error('Error:', error);
