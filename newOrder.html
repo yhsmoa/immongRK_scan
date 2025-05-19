@@ -623,86 +623,174 @@
 
         // 인쇄 기능
         function printSelectedOrders() {
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
-                .map(checkbox => checkbox.getAttribute('data-order-number'));
-
-            if (selectedOrders.length === 0) {
+            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
+            if (selectedCheckboxes.length === 0) {
                 alert('인쇄할 발주서를 선택해주세요.');
                 return;
             }
 
-            // 인쇄 창 열기
+            // 선택된 발주서의 상세 정보 가져오기
+            const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
+            
+            console.log('선택된 발주서 번호:', selectedOrderNumbers);
+            console.log('uploadedOrders 상태:', uploadedOrders);
+            
+            // 새 창 열기 (인쇄용)
             const printWindow = window.open('', '_blank');
             if (!printWindow) {
                 alert('팝업이 차단되었습니다. 팝업 차단을 해제하고 다시 시도해주세요.');
                 return;
             }
-
-            // 인쇄 내용 생성
+            
             printWindow.document.write(`
+                <!DOCTYPE html>
                 <html>
                 <head>
+                    <meta charset="UTF-8">
                     <title>발주서 인쇄</title>
                     <style>
-                        body { font-family: Arial, sans-serif; }
-                        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                        th { background-color: #f2f2f2; }
-                        h2 { margin-top: 30px; }
+                        body {
+                            font-family: Arial, sans-serif;
+                            margin: 0;
+                            padding: 20px;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
+                        th, td {
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: left;
+                            font-size: 12px;
+                        }
+                        th {
+                            background-color: #f2f2f2;
+                            font-weight: bold;
+                        }
+                        tr:nth-child(even) {
+                            background-color: #f9f9f9;
+                        }
+                        h2 {
+                            color: #333;
+                            margin-top: 30px;
+                            margin-bottom: 10px;
+                        }
+                        /* 가로 인쇄 설정 */
+                        @page {
+                            size: A4 landscape;
+                            margin: 1cm;
+                        }
                         @media print {
-                            .no-print { display: none; }
+                            table { page-break-inside: auto; }
+                            tr { page-break-inside: avoid; page-break-after: auto; }
+                            thead { display: table-header-group; }
                         }
                     </style>
                 </head>
                 <body>
-                    <div class="no-print">
-                        <button onclick="window.print()">인쇄</button>
-                        <button onclick="window.close()">닫기</button>
-                    </div>
+                    <h2>발주서 인쇄</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>발주번호</th>
+                                <th>물류센터</th>
+                                <th>상품번호</th>
+                                <th>상품바코드</th>
+                                <th>상품명</th>
+                                <th>발주수량</th>
+                                <th>확정수량</th>
+                                <th>위치</th>
+                                <th>입고예정일</th>
+                            </tr>
+                        </thead>
+                        <tbody id="printBody">
+                        </tbody>
+                    </table>
+                </body>
+                </html>
             `);
-
-            // 선택된 발주서 정보 추가
-            selectedOrders.forEach(orderNumber => {
+            
+            // 데이터 수집
+            let allProducts = [];
+            
+            // 각 발주서의 상품 정보 수집
+            selectedOrderNumbers.forEach(orderNumber => {
                 const order = uploadedOrders.find(o => o.발주번호 === orderNumber);
                 if (order) {
-                    printWindow.document.write(`
-                        <h2>발주번호: ${order.발주번호}</h2>
-                        <p>물류센터: ${order.물류센터}</p>
-                        <p>입고예정일: ${order.입고예정일}</p>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>상품번호</th>
-                                    <th>상품바코드</th>
-                                    <th>상품이름</th>
-                                    <th>발주수량</th>
-                                    <th>확정수량</th>
-                                    <th>위치</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${order.상품정보.map(product => `
-                                    <tr>
-                                        <td>${product.상품번호}</td>
-                                        <td>${product.상품바코드}</td>
-                                        <td>${product.상품이름}</td>
-                                        <td>${product.발주수량}</td>
-                                        <td>${product.확정수량}</td>
-                                        <td>${product.위치 || ''}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `);
+                    console.log(`발주서 ${orderNumber} 데이터:`, order); // 개별 발주서 데이터 확인
+                    order.상품정보.forEach(product => {
+                        allProducts.push({
+                            발주번호: order.발주번호,
+                            물류센터: order.물류센터,
+                            상품번호: product.상품번호,
+                            상품바코드: product.상품바코드,
+                            상품명: product.상품이름,
+                            발주수량: product.발주수량,
+                            확정수량: product.확정수량 || '',
+                            위치: product.위치 || '-',
+                            입고예정일: order.입고예정일
+                        });
+                    });
+                } else {
+                    console.warn(`발주서 ${orderNumber}를 찾을 수 없습니다.`);
                 }
             });
-
-            printWindow.document.write('</body></html>');
+            
+            console.log('인쇄용 상품 데이터:', allProducts.length); // 처리된 데이터 확인
+            
+            // 정렬 순서: 입고예정일 > 물류센터 > 발주번호 > 위치
+            allProducts.sort((a, b) => {
+                // 입고예정일 비교
+                if (a.입고예정일 !== b.입고예정일) {
+                    return a.입고예정일.localeCompare(b.입고예정일);
+                }
+                // 물류센터 비교
+                if (a.물류센터 !== b.물류센터) {
+                    return a.물류센터.localeCompare(b.물류센터);
+                }
+                // 발주번호 비교
+                if (a.발주번호 !== b.발주번호) {
+                    return a.발주번호.localeCompare(b.발주번호);
+                }
+                // 위치 비교
+                return (a.위치 || '-').localeCompare(b.위치 || '-');
+            });
+            
+            // 테이블에 데이터 채우기
+            const tbody = printWindow.document.getElementById('printBody');
+            
+            if (allProducts.length === 0) {
+                const noDataRow = printWindow.document.createElement('tr');
+                noDataRow.innerHTML = '<td colspan="9" style="text-align: center;">발주서 데이터를 불러올 수 없습니다. 발주서를 선택한 후 다시 시도해주세요.</td>';
+                tbody.appendChild(noDataRow);
+            } else {
+                allProducts.forEach(product => {
+                    const row = printWindow.document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${product.발주번호}</td>
+                        <td>${product.물류센터}</td>
+                        <td>${product.상품번호}</td>
+                        <td>${product.상품바코드}</td>
+                        <td>${product.상품명}</td>
+                        <td>${product.발주수량}</td>
+                        <td>${product.확정수량}</td>
+                        <td>${product.위치}</td>
+                        <td>${product.입고예정일}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+            
+            // 인쇄 준비가 되면 인쇄 대화상자 표시
             printWindow.document.close();
+            printWindow.onload = function() {
+                printWindow.focus();
+                printWindow.print();
+            };
         }
 
-        // Add loadNewOrders function and call it when the page loads
-        // Add this at the end of the script, before the final closing script tag
         // Load new orders on page load
         async function loadNewOrders() {
             try {
@@ -712,6 +800,8 @@
                 }
                 
                 const orders = await response.json();
+                console.log('로드된 발주서 데이터:', orders); // 데이터 로드 확인용 로그
+                uploadedOrders = orders; // 전역 변수에 할당하여 다른 함수에서 사용할 수 있도록 함
                 displayOrders(orders);
             } catch (error) {
                 console.error('Error:', error);
