@@ -828,7 +828,28 @@
 
         // 인쇄 버튼 클릭 이벤트
         document.getElementById('printButton').addEventListener('click', () => {
+            // 출고예정일이 없는 행을 임시로 숨김
+            const rows = document.querySelectorAll('#dataBody tr');
+            const hiddenRows = [];
+            
+            rows.forEach(row => {
+                const shippingDateCell = row.cells[8]; // 출고예정일은 9번째 열 (인덱스 8)
+                if (!shippingDateCell || !shippingDateCell.textContent.trim()) {
+                    row.dataset.originalDisplay = row.style.display;
+                    row.style.display = 'none';
+                    hiddenRows.push(row);
+                }
+            });
+            
+            // 인쇄 다이얼로그 표시
             window.print();
+            
+            // 인쇄 후 숨긴 행 복원 (setTimeout을 사용하여 인쇄 대화상자가 닫힌 후 실행)
+            setTimeout(() => {
+                hiddenRows.forEach(row => {
+                    row.style.display = row.dataset.originalDisplay || '';
+                });
+            }, 1000);
         });
 
         // 발주서 정리 버튼 클릭 이벤트
