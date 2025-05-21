@@ -1321,20 +1321,16 @@ app.post('/api/inventory/locations', async (req, res) => {
             return res.status(400).json({ error: '바코드 목록이 제공되지 않았습니다.' });
         }
 
-        console.log('위치 정보 조회 요청 바코드:', barcodes);
+        console.log('위치 정보 조회 요청');
 
         // 바코드 목록에 해당하는 재고 데이터 조회
         const inventoryItems = await Inventory.find({ barcode: { $in: barcodes } });
-        
-        console.log('조회된 재고 데이터:', inventoryItems);
 
         // 결과 형식 변환: [{ barcode: '123', location: 'A-1' }, ...]
         const locations = inventoryItems.map(item => ({
             barcode: item.barcode,
             location: item.location || '-'
         }));
-
-        console.log('반환할 위치 정보:', locations);
 
         res.json(locations);
     } catch (error) {
@@ -1543,7 +1539,7 @@ app.post('/api/scan/updateBox', async (req, res) => {
 app.post('/api/orders/update-location', async (req, res) => {
     try {
         const { orderNumber, barcode, location } = req.body;
-        console.log('위치 정보 업데이트 요청:', { orderNumber, barcode, location });
+        console.log('위치 정보 업데이트 요청', orderNumber, barcode);
 
         const order = await Order.findOne({ 발주번호: orderNumber });
         if (!order) {
@@ -1558,9 +1554,7 @@ app.post('/api/orders/update-location', async (req, res) => {
             return res.status(404).json({ error: '상품을 찾을 수 없습니다.' });
         }
 
-        console.log('업데이트 전 상품 정보:', order.상품정보[productIndex]);
         order.상품정보[productIndex].위치 = location;
-        console.log('업데이트 후 상품 정보:', order.상품정보[productIndex]);
 
         await order.save();
         console.log('위치 정보 업데이트 완료');
@@ -2105,7 +2099,7 @@ app.post('/api/neworders/export', async (req, res) => {
 app.post('/api/neworders/update-location', async (req, res) => {
     try {
         const { orderNumber, barcode, location } = req.body;
-        console.log('신규 발주서 위치 정보 업데이트 요청:', { orderNumber, barcode, location });
+        console.log('신규 발주서 위치 정보 업데이트', orderNumber, barcode);
 
         const order = await NewOrder.findOne({ 발주번호: orderNumber });
         if (!order) {
@@ -2120,9 +2114,7 @@ app.post('/api/neworders/update-location', async (req, res) => {
             return res.status(404).json({ error: '상품을 찾을 수 없습니다.' });
         }
 
-        console.log('업데이트 전 상품 정보:', order.상품정보[productIndex]);
         order.상품정보[productIndex].위치 = location;
-        console.log('업데이트 후 상품 정보:', order.상품정보[productIndex]);
 
         await order.save();
         console.log('위치 정보 업데이트 완료');
@@ -2130,6 +2122,63 @@ app.post('/api/neworders/update-location', async (req, res) => {
     } catch (error) {
         console.error('위치 정보 업데이트 중 오류:', error);
         res.status(500).json({ error: '위치 정보 업데이트 중 오류가 발생했습니다.' });
+    }
+});
+
+// 신규 발주서 배치 위치 정보 업데이트 API
+app.post('/api/neworders/batch-update-location', async (req, res) => {
+    try {
+        const { updates } = req.body;
+        
+        if (!Array.isArray(updates) || updates.length === 0) {
+            return res.status(400).json({ error: '업데이트할 데이터가 없습니다.' });
+        }
+        
+        console.log(`배치 위치 업데이트: ${updates.length}개 항목 처리`);
+        
+        let successCount = 0;
+        // 주문 번호로 그룹화하여 DB 호출 최소화
+        const orderGroups = {};
+        
+        // 주문 번호별로 그룹화
+        updates.forEach(update => {
+            if (!orderGroups[update.orderNumber]) {
+                orderGroups[update.orderNumber] = [];
+            }
+            orderGroups[update.orderNumber].push(update);
+        });
+        
+        // 각 주문별로 처리
+        for (const orderNumber in orderGroups) {
+            const orderUpdates = orderGroups[orderNumber];
+            
+            // 주문 조회는 한 번만 수행
+            const order = await NewOrder.findOne({ 발주번호: orderNumber });
+            if (!order) continue;
+            
+            let modified = false;
+            
+            // 해당 주문의 모든 업데이트 처리
+            for (const update of orderUpdates) {
+                const productIndex = order.상품정보.findIndex(p => p.상품바코드 === update.barcode);
+                if (productIndex === -1) continue;
+                
+                order.상품정보[productIndex].위치 = update.location;
+                modified = true;
+                successCount++;
+            }
+            
+            // 변경된 경우에만 저장
+            if (modified) {
+                await order.save();
+            }
+        }
+        
+        console.log(`배치 위치 업데이트 완료: ${successCount}개 항목 업데이트`);
+        res.json({ success: true, updated: successCount });
+    } catch (error) {
+        console.error('배치 위치 정보 업데이트 중 오류:', error);
+        res.status(500).json({ error: '배치 위치 정보 업데이트 중 오류가 발생했습니다.' });
     }
 });
 

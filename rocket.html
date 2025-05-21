@@ -1025,17 +1025,13 @@
                 }
 
                 const locations = await response.json();
-                console.log('서버에서 받은 위치 정보:', locations);
                 
                 // 위치 정보 업데이트
                 let updateCount = 0;
                 for (const item of locations) {
                     const cells = barcodeCells.get(item.barcode);
-                    console.log(`바코드 ${item.barcode}의 위치 정보:`, item.location);
-                    console.log(`해당 바코드의 셀 정보:`, cells);
                     
                     if (cells && item.location && item.location !== '-') {
-                        console.log(`위치 정보 업데이트 시도: ${item.barcode} -> ${item.location}`);
                         for (const cellInfo of cells) {
                             // 서버에 위치 정보 저장
                             const saveResponse = await fetch('/api/orders/update-location', {
@@ -1053,20 +1049,15 @@
                             if (saveResponse.ok) {
                                 cellInfo.cell.textContent = item.location;
                                 updateCount++;
-                                console.log(`위치 정보 업데이트 성공: ${item.barcode} -> ${item.location}`);
-                            } else {
-                                console.error(`위치 정보 업데이트 실패: ${item.barcode}`);
                             }
                         }
-                    } else {
-                        console.log(`위치 정보 업데이트 건너뜀: ${item.barcode} - 위치 정보 없음`);
                     }
                 }
 
                 if (updateCount > 0) {
-                    alert(`${updateCount}개 상품의 위치 정보가 업데이트되었습니다.`);
+                    alert(`위치정보 업데이트 완료`);
                 } else {
-                    alert('업데이트할 위치 정보가 없습니다.');
+                    alert('위치정보 업데이트 완료');
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -1197,7 +1188,6 @@
                 // 각 발주서의 상품 정보 수집
                 selectedOrderNumbers.forEach(orderNumber => {
                     const order = getOrderFromDOM(orderNumber);
-                    console.log(`발주서 ${orderNumber} 데이터:`, order);
                     if (order) {
                         order.상품정보.forEach(product => {
                             allProducts.push({
@@ -1215,8 +1205,6 @@
                         });
                     }
                 });
-                
-                console.log('인쇄할 총 상품 데이터:', allProducts.length);
                 
                 // 정렬 순서: 입고예정일 > 물류센터 > 발주번호 > 위치
                 allProducts.sort((a, b) => {
