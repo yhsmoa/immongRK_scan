@@ -1076,6 +1076,9 @@ app.post('/api/orders/updateImport1', async (req, res) => {
             return res.status(400).json({ error: '유효하지 않은 데이터' });
         }
 
+        // 중복된 발주번호와 바코드 항목을 합산하는 처리
+        const consolidatedData = {};
+        
         for (const item of updateData) {
             const { orderNumber, barcode, importValue } = item;
             
@@ -1083,7 +1086,28 @@ app.post('/api/orders/updateImport1', async (req, res) => {
                 console.error('필수 데이터 누락:', item);
                 continue;
             }
+            
+            const key = `${orderNumber}:${barcode}`;
+            if (!consolidatedData[key]) {
+                consolidatedData[key] = {
+                    orderNumber,
+                    barcode,
+                    importValue: parseInt(importValue) || 0
+                };
+            } else {
+                // 기존 데이터에 현재 값을 더함
+                consolidatedData[key].importValue += parseInt(importValue) || 0;
+            }
+        }
+        
+        // 합산된 데이터를 배열로 변환
+        const mergedData = Object.values(consolidatedData);
+        console.log(`입고1 업데이트: ${updateData.length}개 항목이 ${mergedData.length}개로 합산됨`);
 
+        let updatedCount = 0;
+        for (const item of mergedData) {
+            const { orderNumber, barcode, importValue } = item;
+            
             const order = await Order.findOne({ '발주번호': orderNumber });
             if (!order) {
                 console.error('주문을 찾을 수 없음:', orderNumber);
@@ -1096,12 +1120,18 @@ app.post('/api/orders/updateImport1', async (req, res) => {
                 continue;
             }
 
-            // 입고1 필드만 업데이트
-            product.입고1 = importValue;
+            // 기존 입고1 값이 있다면 합산, 없다면 새 값으로 설정
+            const currentValue = product.입고1 && product.입고1 !== '-' ? parseInt(product.입고1) || 0 : 0;
+            const newValue = currentValue + importValue;
+            
+            // 입고1 필드 업데이트
+            product.입고1 = newValue.toString();
             await order.save();
+            updatedCount++;
         }
 
-        res.json({ success: true });
+        console.log(`입고1 업데이트 완료: 총 ${updatedCount}개 항목 업데이트됨`);
+        res.json({ success: true, message: `${mergedData.length}개 항목이 성공적으로 업데이트되었습니다.` });
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: '입고1 업데이트 실패' });
@@ -1117,6 +1147,9 @@ app.post('/api/orders/updateImport2', async (req, res) => {
             return res.status(400).json({ error: '유효하지 않은 데이터' });
         }
 
+        // 중복된 발주번호와 바코드 항목을 합산하는 처리
+        const consolidatedData = {};
+        
         for (const item of updateData) {
             const { orderNumber, barcode, importValue } = item;
             
@@ -1124,7 +1157,28 @@ app.post('/api/orders/updateImport2', async (req, res) => {
                 console.error('필수 데이터 누락:', item);
                 continue;
             }
+            
+            const key = `${orderNumber}:${barcode}`;
+            if (!consolidatedData[key]) {
+                consolidatedData[key] = {
+                    orderNumber,
+                    barcode,
+                    importValue: parseInt(importValue) || 0
+                };
+            } else {
+                // 기존 데이터에 현재 값을 더함
+                consolidatedData[key].importValue += parseInt(importValue) || 0;
+            }
+        }
+        
+        // 합산된 데이터를 배열로 변환
+        const mergedData = Object.values(consolidatedData);
+        console.log(`입고2 업데이트: ${updateData.length}개 항목이 ${mergedData.length}개로 합산됨`);
 
+        let updatedCount = 0;
+        for (const item of mergedData) {
+            const { orderNumber, barcode, importValue } = item;
+            
             const order = await Order.findOne({ '발주번호': orderNumber });
             if (!order) {
                 console.error('주문을 찾을 수 없음:', orderNumber);
@@ -1137,12 +1191,18 @@ app.post('/api/orders/updateImport2', async (req, res) => {
                 continue;
             }
 
-            // 입고2 필드만 업데이트
-            product.입고2 = importValue;
+            // 기존 입고2 값이 있다면 합산, 없다면 새 값으로 설정
+            const currentValue = product.입고2 && product.입고2 !== '-' ? parseInt(product.입고2) || 0 : 0;
+            const newValue = currentValue + importValue;
+            
+            // 입고2 필드 업데이트
+            product.입고2 = newValue.toString();
             await order.save();
+            updatedCount++;
         }
 
-        res.json({ success: true });
+        console.log(`입고2 업데이트 완료: 총 ${updatedCount}개 항목 업데이트됨`);
+        res.json({ success: true, message: `${mergedData.length}개 항목이 성공적으로 업데이트되었습니다.` });
     } catch (error) {
         console.error('Error:', error);
         res.status(500).json({ error: '입고2 업데이트 실패' });
