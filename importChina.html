@@ -395,6 +395,13 @@
 
             <!-- 정렬 드롭박스 추가 -->
             <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <div style="display: flex; align-items: center; margin-right: 20px;">
+                    <label for="filterDropdown" style="margin-right: 10px; font-weight: bold;">필터:</label>
+                    <select id="filterDropdown" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; cursor: pointer; background-color: #f9f9f9;">
+                        <option value="all">전체 표시</option>
+                        <option value="shipping">출고만 표시</option>
+                    </select>
+                </div>
                 <div style="display: flex; align-items: center;">
                     <label for="sortDropdown" style="margin-right: 10px; font-weight: bold;">정렬 기준:</label>
                     <select id="sortDropdown" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; cursor: pointer; background-color: #f9f9f9;">
@@ -419,7 +426,9 @@
                             <th>상품명</th>
                             <th>수량</th>
                             <th>바코드</th>
-                            <th>출고예정</th>
+                            <th>출고번호</th>
+                            <th>센터</th>
+                            <th>출고개수</th>
                             <th>출고예정일</th>
                         </tr>
                     </thead>
@@ -612,7 +621,17 @@
             const tbody = document.getElementById('dataBody');
             tbody.innerHTML = '';
             
-            data.forEach(item => {
+            // 현재 필터 상태 확인
+            const filterDropdown = document.getElementById('filterDropdown');
+            const filterValue = filterDropdown.value;
+            
+            // 필터링된 데이터
+            let filteredData = data;
+            if (filterValue === 'shipping') {
+                filteredData = data.filter(item => item.shippingDate && item.shippingDate.trim() !== '');
+            }
+            
+            filteredData.forEach(item => {
                 const row = document.createElement('tr');
                 
                 // 출고코드
@@ -620,8 +639,9 @@
                 shipmentCodeCell.textContent = item.shipmentCode;
                 row.appendChild(shipmentCodeCell);
                 
-                // 팔렛
+                // 팔렛 (숨김)
                 const palletCell = document.createElement('td');
+                palletCell.style.display = 'none';
                 palletCell.textContent = item.pallet;
                 row.appendChild(palletCell);
                 
@@ -630,7 +650,7 @@
                 boxNameCell.textContent = item.boxName;
                 row.appendChild(boxNameCell);
                 
-                // 발주번호 (중국번호)
+                // 중국번호
                 const orderNumberCell = document.createElement('td');
                 orderNumberCell.textContent = item.orderNumber;
                 row.appendChild(orderNumberCell);
@@ -650,39 +670,56 @@
                 barcodeCell.textContent = item.barcode;
                 row.appendChild(barcodeCell);
                 
-                // 출고예정 (수정 가능)
-                const availableOrdersCell = document.createElement('td');
-                availableOrdersCell.contentEditable = true;
-                availableOrdersCell.textContent = item.availableOrders || '';
-                availableOrdersCell.addEventListener('blur', async function() {
-                    const newValue = this.textContent.trim();
-                    if (newValue !== item.availableOrders) {
-                        try {
-                            const response = await fetch('/api/importChina/updateAvailableOrders', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    shipmentCode: item.shipmentCode,
-                                    barcode: item.barcode,
-                                    availableOrders: newValue
-                                })
-                            });
-                            
-                            if (!response.ok) {
-                                throw new Error('업데이트 실패');
-                            }
-                            
-                            item.availableOrders = newValue;
-                        } catch (error) {
-                            console.error('Error updating available orders:', error);
-                            this.textContent = item.availableOrders || '';
-                            alert('업데이트 중 오류가 발생했습니다.');
-                        }
+                // 새로운 열: 출고번호
+                const shippingNumberCell = document.createElement('td');
+                shippingNumberCell.contentEditable = true;
+                // 출고예정 정보에서 첫 번째 값(출고번호) 추출
+                let shippingNumber = '';
+                if (item.availableOrders) {
+                    const parts = item.availableOrders.split('-');
+                    if (parts.length > 0) {
+                        shippingNumber = parts[0];
                     }
+                }
+                shippingNumberCell.textContent = shippingNumber;
+                shippingNumberCell.addEventListener('blur', async function() {
+                    updateOrderData(this, item, 0);
                 });
-                row.appendChild(availableOrdersCell);
+                row.appendChild(shippingNumberCell);
+                
+                // 새로운 열: 센터
+                const centerCell = document.createElement('td');
+                centerCell.contentEditable = true;
+                // 출고예정 정보에서 두 번째 값(센터) 추출
+                let center = '';
+                if (item.availableOrders) {
+                    const parts = item.availableOrders.split('-');
+                    if (parts.length > 1) {
+                        center = parts[1];
+                    }
+                }
+                centerCell.textContent = center;
+                centerCell.addEventListener('blur', async function() {
+                    updateOrderData(this, item, 1);
+                });
+                row.appendChild(centerCell);
+                
+                // 새로운 열: 출고개수
+                const shippingQuantityCell = document.createElement('td');
+                shippingQuantityCell.contentEditable = true;
+                // 출고예정 정보에서 세 번째 값(출고개수) 추출
+                let shippingQuantity = '';
+                if (item.availableOrders) {
+                    const parts = item.availableOrders.split('-');
+                    if (parts.length > 2) {
+                        shippingQuantity = parts[2];
+                    }
+                }
+                shippingQuantityCell.textContent = shippingQuantity;
+                shippingQuantityCell.addEventListener('blur', async function() {
+                    updateOrderData(this, item, 2);
+                });
+                row.appendChild(shippingQuantityCell);
                 
                 // 출고예정일
                 const shippingDateCell = document.createElement('td');
@@ -691,6 +728,53 @@
                 
                 tbody.appendChild(row);
             });
+        }
+
+        // 주문 정보 업데이트 함수 추가
+        async function updateOrderData(cell, item, index) {
+            // 현재 availableOrders를 파싱
+            const parts = item.availableOrders ? item.availableOrders.split('-') : ['', '', ''];
+            const newValue = cell.textContent.trim();
+            
+            // 업데이트된 값을 parts 배열에 저장
+            parts[index] = newValue;
+            
+            // 새 availableOrders 문자열 생성
+            const newAvailableOrders = parts.join('-');
+            
+            // 변경사항이 있는 경우에만 업데이트
+            if (newAvailableOrders !== item.availableOrders) {
+                try {
+                    const response = await fetch('/api/importChina/updateAvailableOrders', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            shipmentCode: item.shipmentCode,
+                            barcode: item.barcode,
+                            availableOrders: newAvailableOrders
+                        })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('업데이트 실패');
+                    }
+                    
+                    item.availableOrders = newAvailableOrders;
+                } catch (error) {
+                    console.error('Error updating order data:', error);
+                    // 업데이트 실패 시 셀 값을 원래대로 복원
+                    if (index === 0) {
+                        cell.textContent = parts[0] || '';
+                    } else if (index === 1) {
+                        cell.textContent = parts[1] || '';
+                    } else if (index === 2) {
+                        cell.textContent = parts[2] || '';
+                    }
+                    alert('업데이트 중 오류가 발생했습니다.');
+                }
+            }
         }
 
         // 정렬 함수 추가
@@ -742,6 +826,12 @@
             const sortDropdown = document.getElementById('sortDropdown');
             sortDropdown.addEventListener('change', (e) => {
                 sortData(e.target.value);
+            });
+            
+            // 필터 드롭다운 이벤트 설정
+            const filterDropdown = document.getElementById('filterDropdown');
+            filterDropdown.addEventListener('change', () => {
+                sortData(sortDropdown.value);
             });
         });
 
@@ -833,7 +923,7 @@
             const hiddenRows = [];
             
             rows.forEach(row => {
-                const shippingDateCell = row.cells[8]; // 출고예정일은 9번째 열 (인덱스 8)
+                const shippingDateCell = row.cells[10]; // 출고예정일은 11번째 열 (인덱스 10)
                 if (!shippingDateCell || !shippingDateCell.textContent.trim()) {
                     row.dataset.originalDisplay = row.style.display;
                     row.style.display = 'none';
@@ -935,27 +1025,20 @@
                     const cells = row.getElementsByTagName('td');
                     const currentShipmentCode = cells[0].textContent;
                     const barcode = cells[6].textContent;
-                    const availableOrders = cells[7].textContent;
+                    const shippingNumber = cells[7].textContent;
+                    const center = cells[8].textContent;
+                    const quantity = cells[9].textContent;
                     
-                    if (currentShipmentCode === shipmentCode && barcode && availableOrders) {
-                        // 줄바꿈으로 구분된 각 출고예정 데이터 처리
-                        const orders = availableOrders.split('\n');
+                    if (currentShipmentCode === shipmentCode && barcode && quantity) {
+                        // "000000000" 발주번호는 처리하지 않음
+                        if (shippingNumber === '000000000') continue;
                         
-                        for (const order of orders) {
-                            if (order.trim()) {
-                                const [orderNumber, logisticsCenter, quantity] = order.split('-');
-                                
-                                // "000000000" 발주번호는 처리하지 않음
-                                if (orderNumber === '000000000') continue;
-                                
-                                // 각 주문에 대해 업데이트 데이터 생성
-                                updateData.push({
-                                    orderNumber,
-                                    barcode,
-                                    importValue: quantity // 출고개수만 입력
-                                });
-                            }
-                        }
+                        // 각 주문에 대해 업데이트 데이터 생성
+                        updateData.push({
+                            orderNumber: shippingNumber,
+                            barcode,
+                            importValue: quantity // 출고개수만 입력
+                        });
                     }
                 }
 
