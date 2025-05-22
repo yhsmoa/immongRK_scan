@@ -717,8 +717,8 @@ app.post('/api/orders/export', async (req, res) => {
                     상품바코드: product.상품바코드,
                     상품이름: product.상품이름,
                     발주수량: product.발주수량,
-                    확정수량: product.확정수량,
-                    스캔수량: product.스캔수량 || 0,
+                    확정수량: product.스캔수량 || 0, // '확정수량' 열에 '스캔수량' 값을 입력
+                    // 스캔수량: product.스캔수량 || 0, // 이 열은 제거됨
                     '유통(소비)기한': product['유통(소비)기한'] || '',
                     제조일자: product.제조일자 || '',
                     생산년도: product.생산년도 || '',
@@ -754,10 +754,10 @@ app.post('/api/orders/export', async (req, res) => {
             hiddenSheet.cell(index + 1, 1).value(option);
         });
 
-        // 헤더 추가
+        // 헤더 추가 (스캔수량 열 제거)
         const headers = [
             '발주번호', '물류센터', '입고유형', '발주상태', '상품번호', 
-            '상품바코드', '상품이름', '발주수량', '확정수량', '스캔수량',
+            '상품바코드', '상품이름', '발주수량', '확정수량', // '스캔수량' 헤더 제거
             '유통(소비)기한', '제조일자', '생산년도', '납품부족사유', '회송담당자',
             '회송담당자 연락처', '회송지주소', '매입가', '공급가', '부가세',
             '총발주 매입금', '입고예정일', '발주등록일시', '입고1', '입고2', '위치'
@@ -767,7 +767,6 @@ app.post('/api/orders/export', async (req, res) => {
         headers.forEach((header, index) => {
             const cell = mainSheet.cell(1, index + 1);
             cell.value(header);
-            // 헤더 행에 회색 배경색 적용 (A~Z까지 모든 열)
             cell.style("fill", {
                 type: "solid",
                 color: "D9D9D9" // 연한 회색
@@ -776,14 +775,12 @@ app.post('/api/orders/export', async (req, res) => {
 
         // 데이터 행 추가
         exportData.forEach((row, rowIndex) => {
-            // 확정수량과 스캔수량이 일치하지 않는지 확인
-            const isQuantityMismatch = row.확정수량 !== row.스캔수량;
+            const isQuantityMismatch = row.발주수량 !== row.확정수량; // '확정수량' 열이 이제 '스캔수량' 값을 가지므로, 발주수량과 비교
             
             Object.values(row).forEach((value, colIndex) => {
                 const cell = mainSheet.cell(rowIndex + 2, colIndex + 1);
                 cell.value(value);
                 
-                // 수량 불일치 시 노란색 배경 적용
                 if (isQuantityMismatch) {
                     cell.style("fill", {
                         type: "solid",
@@ -793,19 +790,17 @@ app.post('/api/orders/export', async (req, res) => {
             });
         });
 
-        // M열(13번째 열)에 드롭다운 추가
+        // '납품부족사유'는 13번째 열이므로 M열임
         const lastRow = exportData.length + 1;
-        const dropdownRange = mainSheet.range(`M2:M${lastRow}`);
+        const dropdownRange = mainSheet.range(`M2:M${lastRow}`); 
         dropdownRange.dataValidation({
             type: 'list',
-            formula1: 'hiddenSheet!$A$1:$A$20', // hiddenSheet의 A1:A20 범위를 참조
+            formula1: 'hiddenSheet!$A$1:$A$20',
             allowBlank: true
         });
 
-        // hiddenSheet를 숨김 처리
         hiddenSheet.hidden(true);
 
-        // 파일명 생성
         let filename;
         if (orderNumbers && orderNumbers.length === 1) {
             filename = `발주리스트 확정 (${orderNumbers[0]}).xlsx`;
@@ -815,7 +810,6 @@ app.post('/api/orders/export', async (req, res) => {
             filename = `발주리스트 확정 (전체).xlsx`;
         }
 
-        // 엑셀 파일 생성
         const buffer = await workbook.outputAsync();
         
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
