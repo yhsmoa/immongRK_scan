@@ -717,7 +717,8 @@ app.post('/api/orders/export', async (req, res) => {
                     상품바코드: product.상품바코드,
                     상품이름: product.상품이름,
                     발주수량: product.발주수량,
-                    확정수량: product.스캔수량 || 0,
+                    확정수량: product.확정수량,
+                    스캔수량: product.스캔수량 || 0,
                     '유통(소비)기한': product['유통(소비)기한'] || '',
                     제조일자: product.제조일자 || '',
                     생산년도: product.생산년도 || '',
@@ -756,21 +757,39 @@ app.post('/api/orders/export', async (req, res) => {
         // 헤더 추가
         const headers = [
             '발주번호', '물류센터', '입고유형', '발주상태', '상품번호', 
-            '상품바코드', '상품이름', '발주수량', '확정수량', '유통(소비)기한',
-            '제조일자', '생산년도', '납품부족사유', '회송담당자', '회송담당자 연락처',
-            '회송지주소', '매입가', '공급가', '부가세', '총발주 매입금',
-            '입고예정일', '발주등록일시', '입고1', '입고2', '위치'
+            '상품바코드', '상품이름', '발주수량', '확정수량', '스캔수량',
+            '유통(소비)기한', '제조일자', '생산년도', '납품부족사유', '회송담당자',
+            '회송담당자 연락처', '회송지주소', '매입가', '공급가', '부가세',
+            '총발주 매입금', '입고예정일', '발주등록일시', '입고1', '입고2', '위치'
         ];
 
         // 헤더 행 추가
         headers.forEach((header, index) => {
-            mainSheet.cell(1, index + 1).value(header);
+            const cell = mainSheet.cell(1, index + 1);
+            cell.value(header);
+            // 헤더 행에 회색 배경색 적용 (A~Z까지 모든 열)
+            cell.style("fill", {
+                type: "solid",
+                color: "D9D9D9" // 연한 회색
+            });
         });
 
         // 데이터 행 추가
         exportData.forEach((row, rowIndex) => {
+            // 확정수량과 스캔수량이 일치하지 않는지 확인
+            const isQuantityMismatch = row.확정수량 !== row.스캔수량;
+            
             Object.values(row).forEach((value, colIndex) => {
-                mainSheet.cell(rowIndex + 2, colIndex + 1).value(value);
+                const cell = mainSheet.cell(rowIndex + 2, colIndex + 1);
+                cell.value(value);
+                
+                // 수량 불일치 시 노란색 배경 적용
+                if (isQuantityMismatch) {
+                    cell.style("fill", {
+                        type: "solid",
+                        color: "FFFF00" // 노란색
+                    });
+                }
             });
         });
 
