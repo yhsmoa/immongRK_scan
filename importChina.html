@@ -406,6 +406,7 @@
                     <label for="sortDropdown" style="margin-right: 10px; font-weight: bold;">정렬 기준:</label>
                     <select id="sortDropdown" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; cursor: pointer; background-color: #f9f9f9;">
                         <option value="none">- 선택 -</option>
+                        <option value="logisticsCenter">물류센터</option>
                         <option value="boxName">박스번호</option>
                         <option value="orderNumber">중국번호</option>
                         <option value="productName">상품명</option>
@@ -785,8 +786,60 @@
             }
 
             const sortedData = [...globalData].sort((a, b) => {
+                // '물류센터' 기준 선택 시 다중 정렬 적용
+                if (field === 'logisticsCenter') {
+                    // 1. 출고코드 기준 정렬
+                    const shipmentCodeA = (a.shipmentCode || '').toString();
+                    const shipmentCodeB = (b.shipmentCode || '').toString();
+                    
+                    if (shipmentCodeA !== shipmentCodeB) {
+                        return shipmentCodeA.localeCompare(shipmentCodeB);
+                    }
+                    
+                    // 2. 출고예정일 기준 정렬
+                    const dateA = (a.shippingDate || '').toString();
+                    const dateB = (b.shippingDate || '').toString();
+                    
+                    if (dateA !== dateB) {
+                        return dateA.localeCompare(dateB);
+                    }
+                    
+                    // 3. 센터(물류센터) 기준 정렬 - availableOrders에서 센터 추출
+                    const getCenterFromAvailableOrders = (availableOrders) => {
+                        if (!availableOrders) return '';
+                        const match = availableOrders.match(/^\d+-(.*)-\d+$/);
+                        return match ? match[1] : '';
+                    };
+                    
+                    const centerA = getCenterFromAvailableOrders(a.availableOrders);
+                    const centerB = getCenterFromAvailableOrders(b.availableOrders);
+                    
+                    if (centerA !== centerB) {
+                        return centerA.localeCompare(centerB);
+                    }
+                    
+                    // 4. 발주번호 기준 정렬 - availableOrders에서 발주번호 추출
+                    const getOrderNumberFromAvailableOrders = (availableOrders) => {
+                        if (!availableOrders) return '';
+                        const match = availableOrders.match(/^(\d+)-.*-\d+$/);
+                        return match ? match[1] : '';
+                    };
+                    
+                    const orderNumA = getOrderNumberFromAvailableOrders(a.availableOrders);
+                    const orderNumB = getOrderNumberFromAvailableOrders(b.availableOrders);
+                    
+                    if (orderNumA !== orderNumB) {
+                        return orderNumA.localeCompare(orderNumB);
+                    }
+                    
+                    // 5. 상품명 기준 정렬
+                    const productNameA = (a.productName || '').toString().toLowerCase();
+                    const productNameB = (b.productName || '').toString().toLowerCase();
+                    
+                    return productNameA.localeCompare(productNameB);
+                }
                 // '출고예정' 기준 선택 시 이중 정렬 적용 (출고예정일 > 출고예정)
-                if (field === 'availableOrders') {
+                else if (field === 'availableOrders') {
                     // 1. 출고예정일 기준 정렬
                     const dateA = (a.shippingDate || '').toString();
                     const dateB = (b.shippingDate || '').toString();
@@ -1062,7 +1115,8 @@
                 }
 
                 const result = await response.json();
-                alert(`${type === 'import1' ? '입고1' : '입고2'} 정리가 완료되었습니다.`);
+                // 서버에서 받은 메시지가 있으면 표시, 없으면 기본 메시지 표시
+                alert(result.message || `${type === 'import1' ? '입고1' : '입고2'} 정리가 완료되었습니다.`);
                 
                 // 모달 닫기
                 if (type === 'import1') {

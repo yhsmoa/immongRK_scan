@@ -909,21 +909,56 @@ app.delete('/api/importChina/delete/:shipmentCode', async (req, res) => {
 app.post('/api/importChina/organize', async (req, res) => {
     try {
         // 1. 중국입고 데이터 가져오기
-        const chinaImports = await ChinaImport.find({});
-        console.log(`총 ${chinaImports.length}개의 중국입고 데이터를 조회했습니다.`);
+        const allChinaImports = await ChinaImport.find({});
         
-        // 2. 모든 바코드 추출 (중복 제거)
-        const allBarcodes = [...new Set(chinaImports.map(item => item.barcode))];
-        console.log(`총 ${allBarcodes.length}개의 고유 바코드가 발견되었습니다.`);
-        
-        // 3. 필요한 바코드를 가진 발주서만 조회
-        const orders = await Order.find({ 
-            '상품정보.상품바코드': { $in: allBarcodes } 
+        // 원본 데이터만 필터링 (availableOrders가 비어있거나 발주번호-센터-개수 형태가 아닌 데이터)
+        const originalChinaImports = allChinaImports.filter(item => {
+            const availableOrders = item.availableOrders || '';
+            // availableOrders가 비어있거나, 발주번호-센터-개수 형태가 아닌 경우만 처리 대상
+            return !availableOrders || !availableOrders.match(/^\d+-.*-\d+$/);
         });
-        console.log(`총 ${orders.length}개의 관련 발주서를 조회했습니다.`);
         
-        // 4. 바코드별 발주서 정보 맵 생성
+        // 이미 처리된 출고 데이터는 그대로 유지
+        const processedShipmentData = allChinaImports.filter(item => {
+            const availableOrders = item.availableOrders || '';
+            // 발주번호-센터-개수 형태인 데이터는 이미 처리된 것으로 간주
+            return availableOrders && availableOrders.match(/^\d+-.*-\d+$/);
+        });
+        
+        console.log(`CN 입고 정리: 총 ${allChinaImports.length}개 중 ${originalChinaImports.length}개 처리, ${processedShipmentData.length}개 기존 출고 데이터 유지`);
+        
+        // 2. 이미 출고된 수량을 바코드별, 발주번호별로 계산
+        const existingShipmentMap = new Map();
+        processedShipmentData.forEach(item => {
+            const barcode = item.barcode;
+            const availableOrders = item.availableOrders || '';
+            const match = availableOrders.match(/^(\d+)-.*-(\d+)$/);
+            
+            if (match) {
+                const orderNumber = match[1];
+                const quantity = parseInt(match[2]) || 0;
+                
+                if (!existingShipmentMap.has(barcode)) {
+                    existingShipmentMap.set(barcode, new Map());
+                }
+                
+                const barcodeMap = existingShipmentMap.get(barcode);
+                const currentQuantity = barcodeMap.get(orderNumber) || 0;
+                barcodeMap.set(orderNumber, currentQuantity + quantity);
+            }
+        });
+        
+        // 3. 모든 바코드 추출 (중복 제거) - 원본 데이터에서만
+        const uniqueBarcodes = [...new Set(originalChinaImports.map(item => item.barcode))];
+        
+        // 4. 필요한 바코드를 가진 발주서만 조회
+        const orders = await Order.find({ 
+            '상품정보.상품바코드': { $in: uniqueBarcodes } 
+        });
+        
+        // 5. 바코드별 발주서 정보 맵 생성
         const orderProductMap = new Map();
+        let newShipmentCount = 0;
         
         orders.forEach(order => {
             order.상품정보.forEach(product => {
@@ -933,11 +968,22 @@ app.post('/api/importChina/organize', async (req, res) => {
                     orderProductMap.set(product.상품바코드, []);
                 }
                 
-                // 출고 가능 수량 계산 (확정수량 - 스캔수량)
-                const availableQuantity = product.확정수량 - (product.스캔수량 || 0);
+                // 실제 출고 가능 수량 계산: 발주수량 - 스캔수량 - 입고1 - 입고2
+                const 스캔수량 = parseInt(product.스캔수량) || 0;
+                const 입고1 = product.입고1 && product.입고1 !== '-' ? parseInt(product.입고1) || 0 : 0;
+                const 입고2 = product.입고2 && product.입고2 !== '-' ? parseInt(product.입고2) || 0 : 0;
+                const totalAvailableQuantity = product.확정수량 - 스캔수량 - 입고1 - 입고2;
                 
-                // 출고 가능 수량이 있는 경우만 추가
-                if (availableQuantity > 0) {
+                // 이미 출고된 수량 확인
+                const existingQuantity = existingShipmentMap.has(product.상품바코드) && 
+                                       existingShipmentMap.get(product.상품바코드).has(order.발주번호) ?
+                                       existingShipmentMap.get(product.상품바코드).get(order.발주번호) : 0;
+                
+                // 실제 필요한 출고 수량 = 전체 출고 가능 수량 - 이미 출고된 수량
+                const neededQuantity = Math.max(0, totalAvailableQuantity - existingQuantity);
+                
+                // 필요한 출고 수량이 있는 경우만 추가
+                if (neededQuantity > 0) {
                     orderProductMap.get(product.상품바코드).push({
                         order: {
                             발주번호: order.발주번호,
@@ -945,33 +991,22 @@ app.post('/api/importChina/organize', async (req, res) => {
                             입고예정일: order.입고예정일
                         },
                         product: product,
-                        availableQuantity: availableQuantity
+                        availableQuantity: neededQuantity
                     });
                 }
             });
         });
         
-        // 각 바코드별 출고 가능 발주서 정보 출력
-        orderProductMap.forEach((entries, barcode) => {
-            console.log(`바코드 ${barcode}의 출고 가능 발주서: ${entries.length}개`);
-            entries.forEach(entry => {
-                console.log(`  - ${entry.order.발주번호} (${entry.order.물류센터}): ${entry.availableQuantity}개`);
-            });
-        });
+        // 6. 결과 배열 생성 - 기존 출고 데이터부터 추가
+        const finalResults = [...processedShipmentData];
         
-        // 5. 결과 배열 생성
-        const finalResults = [];
-        
-        // 6. 중국입고 데이터 처리
-        for (const chinaImport of chinaImports) {
+        // 7. 원본 중국입고 데이터만 처리
+        for (const chinaImport of originalChinaImports) {
             const barcode = chinaImport.barcode;
             const totalQuantity = parseInt(chinaImport.quantity) || 0;
             
-            console.log(`중국입고 처리: ${chinaImport.boxName}, 바코드 ${barcode}, 수량 ${totalQuantity}`);
-            
-            // 해당 바코드의 발주서가 없거나 모든 발주서의 수량이 0인 경우 - 창고 행만 생성
+            // 해당 바코드의 발주서가 없거나 모든 발주서의 수량이 0인 경우 - 원래 데이터를 그대로 유지
             if (!orderProductMap.has(barcode) || orderProductMap.get(barcode).length === 0) {
-                console.log(`  - 해당 바코드의 발주서 없음: 전체 수량 ${totalQuantity}개를 창고로 지정`);
                 finalResults.push({
                     shipmentCode: chinaImport.shipmentCode,
                     pallet: chinaImport.pallet,
@@ -980,7 +1015,7 @@ app.post('/api/importChina/organize', async (req, res) => {
                     productName: chinaImport.productName,
                     quantity: chinaImport.quantity,
                     barcode: barcode,
-                    availableOrders: `000000000-창고-${totalQuantity}`
+                    availableOrders: chinaImport.availableOrders || ''
                 });
                 continue;
             }
@@ -990,18 +1025,16 @@ app.post('/api/importChina/organize', async (req, res) => {
                 .sort((a, b) => new Date(a.order.입고예정일) - new Date(b.order.입고예정일));
             
             let remainingQuantity = totalQuantity;
-            let hasDistributed = false;
+            let allocatedQuantity = 0;
             
-            // 각 발주서에 대해 처리
+            // 각 발주서에 대해 처리 - 출고될 부분만 새 데이터로 추가
             for (const entry of matchingEntries) {
                 if (remainingQuantity <= 0) break;
                 
                 const assignQuantity = Math.min(remainingQuantity, entry.availableQuantity);
                 
                 if (assignQuantity > 0) {
-                    console.log(`  - 발주서 ${entry.order.발주번호} (${entry.order.물류센터})에 ${assignQuantity}개 할당`);
-                    
-                    // 새 문서 생성
+                    // 출고 데이터만 새로 생성
                     finalResults.push({
                         shipmentCode: chinaImport.shipmentCode,
                         pallet: chinaImport.pallet,
@@ -1014,40 +1047,39 @@ app.post('/api/importChina/organize', async (req, res) => {
                         shippingDate: entry.order.입고예정일 || ''
                     });
                     
+                    newShipmentCount++;
                     // 발주서의 가용 수량 감소
                     entry.availableQuantity -= assignQuantity;
                     remainingQuantity -= assignQuantity;
-                    hasDistributed = true;
+                    allocatedQuantity += assignQuantity;
                 }
             }
             
-            // 남은 수량이 있으면 창고 행 추가
-            if (remainingQuantity > 0) {
-                console.log(`  - 남은 수량 ${remainingQuantity}개를 창고로 지정`);
+            // 원래 데이터는 출고된 만큼 차감하여 유지 (빈 값으로 남겨둠)
+            const finalQuantity = totalQuantity - allocatedQuantity;
+            if (finalQuantity > 0) {
                 finalResults.push({
                     shipmentCode: chinaImport.shipmentCode,
                     pallet: chinaImport.pallet,
                     boxName: chinaImport.boxName,
                     orderNumber: chinaImport.orderNumber,
                     productName: chinaImport.productName,
-                    quantity: chinaImport.quantity,
+                    quantity: finalQuantity.toString(),
                     barcode: barcode,
-                    availableOrders: `000000000-창고-${remainingQuantity}`,
-                    shippingDate: ''
+                    availableOrders: chinaImport.availableOrders || '',
+                    shippingDate: chinaImport.shippingDate || ''
                 });
             }
         }
         
-        // 7. 결과 저장
+        // 8. 결과 저장
         await ChinaImport.deleteMany({});
-        console.log(`기존 데이터 삭제 완료. 새로운 데이터 ${finalResults.length}개 저장 시작`);
         
-        // 기존 insertMany로는 중복키 문제가 발생할 수 있으므로 for 루프로 하나씩 저장
         if (finalResults.length > 0) {
             await ChinaImport.insertMany(finalResults, { ordered: false });
         }
         
-        console.log(`데이터 저장 완료. 총 ${finalResults.length}개 항목 처리됨`);
+        console.log(`CN 입고 정리 완료: 총 ${finalResults.length}개 항목, 새 출고 데이터 ${newShipmentCount}개 생성`);
         res.json(finalResults);
     } catch (error) {
         console.error('발주서 정리 중 오류:', error);
