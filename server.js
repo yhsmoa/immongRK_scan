@@ -20,6 +20,12 @@ const io = socketIo(server);
 
 const PORT = process.env.PORT || 3001;
 
+// UTF-8 인코딩 설정
+app.use((req, res, next) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  next();
+});
+
 // MongoDB Atlas 연결
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://immongorder1:djajskek1@cluster0.wo05sle.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0";
 mongoose.connect(MONGODB_URI, {
