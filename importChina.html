@@ -950,7 +950,7 @@
             }
             
             try {
-                const response = await fetch(`/api/importChina/delete/${selectedShipmentCode}`, {
+                const response = await fetch(`/api/importChina/delete/${encodeURIComponent(selectedShipmentCode)}`, {
                     method: 'DELETE'
                 });
                 
