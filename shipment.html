@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>쿠팡 로켓 쉽먼트</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -306,6 +307,11 @@
             box-shadow: 0 0 5px rgba(76, 175, 80, 0.2);
         }
 
+        .invoice-input.error {
+            border-color: #dc3545;
+            border-width: 2px;
+        }
+
         .modal-header {
             display: flex;
             justify-content: space-between;
@@ -339,6 +345,43 @@
 
         .save-invoice-btn:hover {
             background-color: #45a049;
+        }
+
+        /* 엑셀 업로드 영역 스타일 */
+        .excel-upload-area {
+            margin: 15px 0 20px 0;
+            padding: 30px;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            text-align: center;
+            background-color: #f9f9f9;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .excel-upload-area:hover {
+            border-color: #4CAF50;
+            background-color: #f0f8f0;
+        }
+
+        .excel-upload-area.dragover {
+            border-color: #4CAF50;
+            background-color: #e8f5e9;
+        }
+
+        .excel-upload-area p {
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .excel-upload-area p:first-child {
+            font-weight: bold;
+            color: #333;
+            font-size: 16px;
+        }
+
+        #excelFileInput {
+            display: none;
         }
 
         .summary-board {
@@ -508,6 +551,14 @@
                 <h2>송장번호 입력</h2>
                 <span class="close" onclick="closeInvoiceModal()">&times;</span>
             </div>
+
+            <!-- 엑셀 업로드 영역 -->
+            <div class="excel-upload-area" id="excelUploadArea">
+                <p>📁 엑셀 파일 업로드</p>
+                <p>클릭하여 파일 선택 또는 드래그 앤 드롭</p>
+            </div>
+            <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleExcelFile(event)">
+
             <div id="invoiceSection"></div>
             <div class="modal-footer">
                 <button class="save-invoice-btn" onclick="saveInvoiceNumbers()">저장</button>
@@ -871,6 +922,9 @@
                 });
 
                 modal.style.display = 'block';
+
+                // 엑셀 업로드 영역 이벤트 설정
+                initializeExcelUploadEvents();
             } catch (error) {
                 console.error('Error:', error);
                 alert('주문 정보를 가져오는데 실패했습니다.');
@@ -880,24 +934,53 @@
         // 송장번호 저장 함수
         function saveInvoiceNumbers() {
             const inputs = document.querySelectorAll('.invoice-input');
+            const emptyInputs = [];
+
+            // 먼저 모든 에러 스타일 제거
+            inputs.forEach(input => {
+                input.classList.remove('error');
+            });
+
+            // 빈 입력 체크
+            inputs.forEach(input => {
+                const value = input.value.trim();
+                if (!value) {
+                    input.classList.add('error');
+                    emptyInputs.push(input);
+                }
+            });
+
+            // 빈 입력이 있으면 경고 및 중단
+            if (emptyInputs.length > 0) {
+                alert('송장번호를 모두 입력해주세요.');
+                return;
+            }
+
+            // 모든 입력이 완료되면 저장
             invoiceNumbers = {};
-            
             inputs.forEach(input => {
                 const orderNumber = input.dataset.orderNumber;
                 const boxNumber = input.dataset.boxNumber;
                 const value = input.value.trim();
-                
-                if (value) {
-                    if (!invoiceNumbers[orderNumber]) {
-                        invoiceNumbers[orderNumber] = {};
-                    }
-                    invoiceNumbers[orderNumber][boxNumber] = value;
+
+                if (!invoiceNumbers[orderNumber]) {
+                    invoiceNumbers[orderNumber] = {};
                 }
+                invoiceNumbers[orderNumber][boxNumber] = value;
             });
 
             closeInvoiceModal();
             exportSelectedOrders();
         }
+
+        // 송장번호 입력 시 에러 스타일 제거
+        document.addEventListener('input', (e) => {
+            if (e.target.classList.contains('invoice-input')) {
+                if (e.target.value.trim()) {
+                    e.target.classList.remove('error');
+                }
+            }
+        });
 
         // 모달 닫기 함수 수정
         function closeInvoiceModal() {
@@ -1240,6 +1323,191 @@
             } catch (error) {
                 alert(error.message);
             }
+        }
+
+        // 엑셀 파일 업로드 처리 함수
+        function handleExcelFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    // 첫 번째 시트 선택
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+
+                    // 엑셀 데이터를 JSON으로 변환
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                    // 엑셀 데이터 파싱 및 송장번호 자동 입력
+                    processExcelData(jsonData);
+
+                } catch (error) {
+                    console.error('엑셀 파일 처리 오류:', error);
+                    alert('엑셀 파일 처리 중 오류가 발생했습니다.');
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
+
+            // 파일 처리 후 input 초기화
+            event.target.value = '';
+        }
+
+        // 엑셀 데이터 처리 및 송장번호 자동 입력
+        function processExcelData(jsonData) {
+            let matchedCount = 0;
+            let totalRows = jsonData.length;
+            const invoiceMap = new Map(); // 발주번호-박스번호를 키로, 송장번호 리스트를 값으로 저장
+
+            console.log('엑셀 데이터 행 수:', totalRows);
+
+            // 1단계: 엑셀 데이터에서 송장번호 수집
+            for (let i = 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+
+                // H열: 운송장번호 (인덱스 7)
+                // U열: 받는분 (물류센터) (인덱스 20)
+                // Z열: 발주번호 - 박스번호 (인덱스 25)
+                const invoiceNumber = row[7]; // H열
+                const center = row[20]; // U열
+                const orderBoxInfo = row[25]; // Z열
+
+                if (!invoiceNumber || !center || !orderBoxInfo) {
+                    continue;
+                }
+
+                // Z열 데이터 파싱: "120800199 - BOX1" -> ["120800199", "BOX1"]
+                const parts = orderBoxInfo.split(' - ');
+                if (parts.length !== 2) {
+                    continue;
+                }
+
+                const orderNumber = parts[0].trim();
+                const boxNumber = parts[1].trim();
+                const key = `${orderNumber}|${boxNumber}|${center}`;
+
+                console.log(`엑셀 행 ${i + 1}: 발주번호=${orderNumber}, 박스=${boxNumber}, 물류센터=${center}, 송장=${invoiceNumber}`);
+
+                // 동일한 발주번호-박스번호-물류센터 조합의 송장번호 수집
+                if (!invoiceMap.has(key)) {
+                    invoiceMap.set(key, []);
+                }
+                invoiceMap.get(key).push(invoiceNumber);
+            }
+
+            // 2단계: 수집된 송장번호를 입력 폼에 매칭
+            const inputs = document.querySelectorAll('.invoice-input');
+            inputs.forEach(input => {
+                const inputOrderNumber = input.dataset.orderNumber;
+                const inputBoxNumber = input.dataset.boxNumber;
+
+                // 해당 발주서의 물류센터 정보 확인
+                const orderSection = input.closest('.order-section');
+                const orderTitle = orderSection.querySelector('h3').textContent;
+
+                // "주문번호: 120800199 (물류센터명)" 형식에서 물류센터명 추출
+                const centerMatch = orderTitle.match(/\(([^)]+)\)/);
+                const orderCenter = centerMatch ? centerMatch[1] : '';
+
+                const key = `${inputOrderNumber}|${inputBoxNumber}|${orderCenter}`;
+
+                if (invoiceMap.has(key)) {
+                    const invoiceNumbers = invoiceMap.get(key);
+                    // 여러 송장번호가 있으면 쉼표로 구분하여 입력
+                    input.value = invoiceNumbers.join(', ');
+                    matchedCount += invoiceNumbers.length;
+                    console.log(`✓ 매칭 성공: ${inputOrderNumber} - ${inputBoxNumber} (${orderCenter}) -> ${invoiceNumbers.join(', ')}`);
+                }
+            });
+
+            console.log(`엑셀 데이터 처리 완료: 총 ${matchedCount}개 송장번호가 자동 입력되었습니다.`);
+        }
+
+        // 엑셀 업로드 영역 이벤트 초기화 함수
+        function initializeExcelUploadEvents() {
+            const uploadArea = document.getElementById('excelUploadArea');
+            const fileInput = document.getElementById('excelFileInput');
+
+            if (!uploadArea || !fileInput) {
+                console.error('엑셀 업로드 요소를 찾을 수 없습니다.');
+                return;
+            }
+
+            // 기존 이벤트 리스너 제거 (중복 방지)
+            const newUploadArea = uploadArea.cloneNode(true);
+            uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
+
+            const newFileInput = fileInput.cloneNode(true);
+            fileInput.parentNode.replaceChild(newFileInput, fileInput);
+
+            // 클릭 이벤트
+            newUploadArea.addEventListener('click', () => {
+                newFileInput.click();
+            });
+
+            // 파일 선택 이벤트
+            newFileInput.addEventListener('change', handleExcelFile);
+
+            // 드래그 오버 이벤트
+            newUploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                newUploadArea.classList.add('dragover');
+            });
+
+            // 드래그 떠남 이벤트
+            newUploadArea.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                newUploadArea.classList.remove('dragover');
+            });
+
+            // 드롭 이벤트
+            newUploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                newUploadArea.classList.remove('dragover');
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+
+                    // 엑셀 파일만 허용
+                    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                        // 파일 읽기 및 처리
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            try {
+                                const data = new Uint8Array(e.target.result);
+                                const workbook = XLSX.read(data, { type: 'array' });
+
+                                // 첫 번째 시트 선택
+                                const firstSheetName = workbook.SheetNames[0];
+                                const worksheet = workbook.Sheets[firstSheetName];
+
+                                // 엑셀 데이터를 JSON으로 변환
+                                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                                // 엑셀 데이터 파싱 및 송장번호 자동 입력
+                                processExcelData(jsonData);
+
+                            } catch (error) {
+                                console.error('엑셀 파일 처리 오류:', error);
+                                alert('엑셀 파일 처리 중 오류가 발생했습니다.');
+                            }
+                        };
+
+                        reader.readAsArrayBuffer(file);
+                    } else {
+                        alert('엑셀 파일만 업로드 가능합니다.');
+                    }
+                }
+            });
         }
     </script>
 </body>
