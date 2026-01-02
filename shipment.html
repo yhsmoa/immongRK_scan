@@ -65,11 +65,14 @@
             font-weight: bold;
         }
         .order-row {
-            cursor: pointer;
             background-color: #f8f9fa;
         }
         .order-row:hover {
             background-color: #e9ecef;
+        }
+        .order-number-cell {
+            cursor: pointer;
+            user-select: none;
         }
         .order-details {
             display: none;
@@ -475,6 +478,7 @@
                         <button class="search-btn" onclick="searchOrders()">조회</button>
                     </div>
                     <button class="export-btn" onclick="expandAllOrders()">발주서 펼쳐보기</button>
+                    <button class="export-btn" onclick="exportCJExcel()">CJ 엑셀</button>
                     <button class="export-btn" onclick="exportSelectedOrders()">쉽먼트 저장</button>
                 </div>
             </div>
@@ -573,9 +577,9 @@
                 const mainRow = document.createElement('tr');
                 mainRow.className = 'order-row';
                 mainRow.onclick = (e) => {
-                    // 체크박스 클릭 시 토글 이벤트 중복 방지
-                    if (!e.target.closest('.order-checkbox')) {
-                        toggleOrderDetails(order.발주번호);
+                    // 체크박스와 발주번호 클릭은 이벤트 버블링 방지
+                    if (!e.target.closest('.order-checkbox') && !e.target.closest('.order-number-cell')) {
+                        toggleRowCheckbox(order.발주번호);
                     }
                 };
 
@@ -584,10 +588,10 @@
 
                 mainRow.innerHTML = `
                     <td>
-                        <input type="checkbox" class="order-checkbox" value="${order.발주번호}" 
+                        <input type="checkbox" class="order-checkbox" value="${order.발주번호}"
                                onclick="event.stopPropagation()">
                     </td>
-                    <td>${order.발주번호}</td>
+                    <td><span class="order-number-cell" onclick="toggleOrderDetails('${order.발주번호}'); event.stopPropagation();">${order.발주번호}</span></td>
                     <td>${order.물류센터}</td>
                     <td>${scannedProducts.length}</td>
                     <td>${totalScanCount}</td>
@@ -669,6 +673,14 @@
         function toggleOrderDetails(orderNumber) {
             const detailsRow = document.getElementById(`details-${orderNumber}`);
             detailsRow.classList.toggle('show');
+        }
+
+        // 행 클릭 시 체크박스 토글
+        function toggleRowCheckbox(orderNumber) {
+            const checkbox = document.querySelector(`.order-checkbox[value="${orderNumber}"]`);
+            if (checkbox) {
+                checkbox.checked = !checkbox.checked;
+            }
         }
 
         // 스캔수량 수정 이벤트 처리
@@ -1188,6 +1200,47 @@
                 searchOrders();
             }
         });
+
+        // CJ 엑셀 다운로드 함수
+        async function exportCJExcel() {
+            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
+                .map(checkbox => checkbox.value);
+
+            if (selectedOrders.length === 0) {
+                alert('다운로드할 발주서를 선택해주세요.');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/shipment/export-cj', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        orderNumbers: selectedOrders
+                    })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const contentDisposition = response.headers.get('Content-Disposition');
+                    const filenameMatch = contentDisposition && contentDisposition.match(/filename=(.+)$/);
+                    a.download = filenameMatch ? decodeURIComponent(filenameMatch[1]) : 'CJ_shipment.xlsx';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    throw new Error('CJ 엑셀 다운로드에 실패했습니다.');
+                }
+            } catch (error) {
+                alert(error.message);
+            }
+        }
     </script>
 </body>
 </html> 

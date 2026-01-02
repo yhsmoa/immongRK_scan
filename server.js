@@ -674,6 +674,115 @@ app.post('/api/shipment/export', async (req, res) => {
     }
 });
 
+// CJ 엑셀 다운로드 API
+app.post('/api/shipment/export-cj', async (req, res) => {
+    try {
+        const { orderNumbers } = req.body;
+
+        // 선택된 발주서만 조회
+        const query = orderNumbers && orderNumbers.length > 0
+            ? { 발주번호: { $in: orderNumbers }, 스캔수량: { $gt: 0 } }
+            : { 스캔수량: { $gt: 0 } };
+
+        const orders = await Order.find(query);
+
+        // xlsx-populate를 사용하여 새 워크북 생성
+        const workbook = await XlsxPopulate.fromBlankAsync();
+
+        // 메인 시트 설정
+        const mainSheet = workbook.sheet(0);
+        mainSheet.name("CJ운송장");
+
+        // 헤더 추가
+        const headers = ['물류센터', '담당자', '연락처', '박스타입', '발주번호'];
+
+        // 헤더 행 추가 및 스타일 적용
+        headers.forEach((header, index) => {
+            const cell = mainSheet.cell(1, index + 1);
+            cell.value(header);
+            // 회색 배경
+            cell.style('fill', 'd3d3d3');
+            // 검은색 테두리
+            cell.style('border', true);
+            cell.style('borderColor', '000000');
+            cell.style('borderStyle', 'thin');
+        });
+
+        // 데이터 수집 및 중복 제거
+        const cjData = [];
+        const processedBoxes = new Set(); // 중복 체크용
+
+        orders.forEach(order => {
+            // 박스정보가 있는 스캔된 상품만 필터링
+            const scannedProducts = order.상품정보.filter(product =>
+                product.스캔수량 > 0 && product.박스정보 && product.박스정보 !== '-'
+            );
+
+            scannedProducts.forEach(product => {
+                // 박스정보에서 박스번호와 박스타입 추출 (예: "BOX1-대1" -> "BOX1", "대1")
+                const boxParts = product.박스정보.split('-');
+                const boxNumber = boxParts[0];
+                const boxType = boxParts[1] || '';
+
+                // 발주번호-박스타입 조합으로 중복 체크
+                const uniqueKey = `${order.발주번호}-${boxType}`;
+
+                if (!processedBoxes.has(uniqueKey)) {
+                    processedBoxes.add(uniqueKey);
+
+                    cjData.push({
+                        물류센터: order.물류센터,
+                        담당자: '',
+                        연락처: '',
+                        박스타입: boxType,
+                        발주번호: order.발주번호
+                    });
+                }
+            });
+        });
+
+        // 데이터 행 추가 (2행부터)
+        cjData.forEach((data, index) => {
+            const rowIndex = index + 2;
+
+            mainSheet.cell(rowIndex, 1).value(data.물류센터);
+            mainSheet.cell(rowIndex, 2).value(data.담당자);
+            mainSheet.cell(rowIndex, 3).value(data.연락처);
+            mainSheet.cell(rowIndex, 4).value(data.박스타입);
+            mainSheet.cell(rowIndex, 5).value(data.발주번호);
+
+            // 모든 셀에 테두리 적용
+            for (let col = 1; col <= 5; col++) {
+                const cell = mainSheet.cell(rowIndex, col);
+                cell.style('border', true);
+                cell.style('borderColor', '000000');
+                cell.style('borderStyle', 'thin');
+            }
+        });
+
+        // 파일명 생성 (YYMMDD_HHMM 형식)
+        const now = new Date();
+        const yy = String(now.getFullYear()).slice(-2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const timestamp = `${yy}${mm}${dd}_${hh}${min}`;
+        const filename = `로켓배송 CJ 운송장 접수_${timestamp}`;
+
+        // 엑셀 파일 생성
+        const buffer = await workbook.outputAsync();
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename + '.xlsx')}`);
+        res.send(buffer);
+
+    } catch (error) {
+        console.error('CJ 엑셀 다운로드 중 오류 발생:', error);
+        res.status(500).json({ error: 'CJ 엑셀 다운로드에 실패했습니다.' });
+    }
+});
+
 // 발주서 내보내기 API
 app.post('/api/orders/export', async (req, res) => {
     try {
