@@ -804,12 +804,15 @@
         function toggleSelectAll(checkbox) {
             const checkboxes = document.querySelectorAll('.order-checkbox:not(#selectAll)');
             checkboxes.forEach(cb => {
-                cb.checked = checkbox.checked;
                 const row = cb.closest('tr');
-                if (checkbox.checked) {
-                    row.classList.add('checked-row');
-                } else {
-                    row.classList.remove('checked-row');
+                // 보이는 행만 선택/해제
+                if (row && row.style.display !== 'none') {
+                    cb.checked = checkbox.checked;
+                    if (checkbox.checked) {
+                        row.classList.add('checked-row');
+                    } else {
+                        row.classList.remove('checked-row');
+                    }
                 }
             });
         }
