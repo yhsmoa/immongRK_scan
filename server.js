@@ -694,7 +694,7 @@ app.post('/api/shipment/export-cj', async (req, res) => {
         mainSheet.name("CJ운송장");
 
         // 헤더 추가
-        const headers = ['물류센터', '담당자', '연락처', '박스타입', '발주번호'];
+        const headers = ['물류센터', '연락처', '주소', '박스타입', '발주번호'];
 
         // 헤더 행 추가 및 스타일 적용
         headers.forEach((header, index) => {
@@ -724,18 +724,18 @@ app.post('/api/shipment/export-cj', async (req, res) => {
                 const boxNumber = boxParts[0];
                 const boxType = boxParts[1] || '';
 
-                // 발주번호-박스타입 조합으로 중복 체크
-                const uniqueKey = `${order.발주번호}-${boxType}`;
+                // 발주번호-박스번호 조합으로 중복 체크
+                const uniqueKey = `${order.발주번호}-${boxNumber}`;
 
                 if (!processedBoxes.has(uniqueKey)) {
                     processedBoxes.add(uniqueKey);
 
                     cjData.push({
                         물류센터: order.물류센터,
-                        담당자: '',
                         연락처: '',
+                        주소: '',
                         박스타입: boxType,
-                        발주번호: order.발주번호
+                        발주번호: `${order.발주번호} - ${boxNumber}`
                     });
                 }
             });
@@ -746,8 +746,8 @@ app.post('/api/shipment/export-cj', async (req, res) => {
             const rowIndex = index + 2;
 
             mainSheet.cell(rowIndex, 1).value(data.물류센터);
-            mainSheet.cell(rowIndex, 2).value(data.담당자);
-            mainSheet.cell(rowIndex, 3).value(data.연락처);
+            mainSheet.cell(rowIndex, 2).value(data.연락처);
+            mainSheet.cell(rowIndex, 3).value(data.주소);
             mainSheet.cell(rowIndex, 4).value(data.박스타입);
             mainSheet.cell(rowIndex, 5).value(data.발주번호);
 
