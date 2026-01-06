@@ -74,6 +74,7 @@
             <a href="/shipment" class="menu-item" id="menu-shipment">쉽먼트</a>
             <a href="/importChina" class="menu-item" id="menu-importChina">중국입고</a>
             <a href="/inventory" class="menu-item" id="menu-inventory">재고관리</a>
+            <a href="/warehouse" class="menu-item" id="menu-warehouse">쿠팡 물류센터</a>
         </div>
     </div>
 
@@ -87,9 +88,10 @@
                 '/scan': 'menu-scan',
                 '/shipment': 'menu-shipment',
                 '/importChina': 'menu-importChina',
-                '/inventory': 'menu-inventory'
+                '/inventory': 'menu-inventory',
+                '/warehouse': 'menu-warehouse'
             };
-            
+
             const activeMenuId = menuItems[path];
             if (activeMenuId) {
                 document.getElementById(activeMenuId).classList.add('active');

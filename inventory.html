@@ -71,11 +71,11 @@
             background-color: #d32f2f;
         }
         .location-save-btn {
-            background-color: #2196F3;
+            background-color: #4CAF50;
             color: white;
         }
         .location-save-btn:hover {
-            background-color: #1976D2;
+            background-color: #45a049;
         }
         .upload-btn {
             background-color: #4CAF50;
@@ -395,11 +395,11 @@
     <div class="container">
         <div class="content">
             <div class="upload-section">
-                <button id="upload2Btn" class="upload-btn" style="background-color: #FF9800;" onclick="document.getElementById('fileInput2').click()">엑셀업로드2</button>
-                <button id="registerBtn" class="upload-btn" style="background-color: #4CAF50;" onclick="openRegisterModal()">직접 등록</button>
-                <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
-                <button id="locationSaveBtn" class="location-save-btn" onclick="saveSelectedLocations()">위치저장</button>
+                <button id="upload2Btn" class="upload-btn" onclick="document.getElementById('fileInput2').click()">엑셀업로드2</button>
+                <button id="registerBtn" class="upload-btn" onclick="openRegisterModal()">직접 등록</button>
+                <button id="locationSaveBtn" class="upload-btn" onclick="saveSelectedLocations()">위치저장</button>
                 <button id="uploadBtn" class="upload-btn" onclick="document.getElementById('fileInput').click()">엑셀 업로드</button>
+                <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
                 <input type="file" id="fileInput" style="display: none" accept=".xlsx,.xls">
                 <input type="file" id="fileInput2" style="display: none" accept=".xlsx,.xls">
             </div>

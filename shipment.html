@@ -130,11 +130,11 @@
             padding: 8px;
             border: 1px solid #ddd;
             border-radius: 4px;
-            width: 150px;
+            width: 375px;
         }
         .search-btn {
             padding: 8px 16px;
-            background-color: #4CAF50;
+            background-color: #FF9800;
             color: white;
             border: none;
             border-radius: 4px;
@@ -142,7 +142,7 @@
             font-size: 14px;
         }
         .search-btn:hover {
-            background-color: #45a049;
+            background-color: #F57C00;
         }
         .page-title {
             font-size: 24px;
@@ -202,7 +202,7 @@
             font-size: 14px;
             transition: background-color 0.2s;
         }
-        
+
         .export-btn:hover {
             background-color: #45a049;
         }
@@ -486,16 +486,129 @@
             background-color: #ffcdd2; /* 경고 시 더 뚜렷한 배경색 */
             color: #d32f2f;
         }
+
+        /* 페이지 헤더 스타일 */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .page-header h1 {
+            margin: 0;
+        }
+
+        .summary-btn {
+            padding: 10px 20px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+
+        .summary-btn:hover {
+            background-color: #0b7dda;
+        }
+
+        /* 슬라이드 모달 오버레이 */
+        .slide-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+            cursor: pointer;
+        }
+
+        .slide-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* 슬라이드 패널 */
+        .slide-panel {
+            position: fixed;
+            top: 0;
+            right: -50%;
+            width: 50%;
+            height: 100%;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.3);
+            z-index: 1000;
+            overflow-y: auto;
+            transition: right 0.3s ease;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .slide-panel.active {
+            right: 0;
+        }
+
+        @media (max-width: 768px) {
+            .slide-panel {
+                right: -100%;
+                width: 100%;
+            }
+        }
+
+        .slide-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .slide-panel-header h2 {
+            margin: 0;
+            font-size: 22px;
+            color: #333;
+        }
+
+        .close-slide-btn {
+            background: none;
+            border: none;
+            font-size: 30px;
+            color: #999;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+        }
+
+        .close-slide-btn:hover {
+            color: #333;
+        }
+
+        /* summary-board 숨김 */
+        .summary-board {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div id="header-container"></div>
     <div class="container">
-        <h1>쉽먼트 관리</h1>
+        <div class="page-header">
+            <h1>쉽먼트 관리</h1>
+            <button class="summary-btn" onclick="openSummaryPanel()">요약</button>
+        </div>
 
-        <!-- 요약 보드 추가 -->
+        <!-- 요약 보드 (숨김 처리 - 슬라이드 패널로 이동) -->
         <div id="summary-board" class="summary-board">
-            <h2>스캔 결과 요약</h2>
             <table class="summary-table" id="summary-table">
                 <thead>
                     <tr>
@@ -520,6 +633,8 @@
                         <input type="text" class="search-input" id="searchInput" placeholder="날짜 또는 물류센터 검색">
                         <button class="search-btn" onclick="searchOrders()">조회</button>
                     </div>
+                </div>
+                <div class="button-group">
                     <button class="export-btn" onclick="expandAllOrders()">발주서 펼쳐보기</button>
                     <button class="export-btn" onclick="exportCJExcel()">CJ 엑셀</button>
                     <button class="export-btn" onclick="exportSelectedOrders()">쉽먼트 저장</button>
@@ -1509,6 +1624,73 @@
                 }
             });
         }
+
+        // ==================== 슬라이드 패널 관련 함수 ====================
+
+        // 슬라이드 패널 열기
+        function openSummaryPanel() {
+            // 요약 테이블 복제하여 슬라이드 패널에 삽입
+            const summaryTableClone = document.getElementById('summary-table').cloneNode(true);
+            summaryTableClone.id = 'slide-summary-table';
+
+            const panelContent = document.getElementById('slide-panel-content');
+            panelContent.innerHTML = '';
+            panelContent.appendChild(summaryTableClone);
+
+            // 오버레이와 패널 활성화
+            document.getElementById('slide-overlay').classList.add('active');
+            document.getElementById('slide-panel').classList.add('active');
+        }
+
+        // 슬라이드 패널 닫기
+        function closeSummaryPanel() {
+            document.getElementById('slide-overlay').classList.remove('active');
+            document.getElementById('slide-panel').classList.remove('active');
+        }
+
+        // 슬라이드 패널 이벤트 리스너 초기화 (페이지 로드 후 실행)
+        (function initSlidePanelEvents() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    setupSlidePanelEvents();
+                });
+            } else {
+                // DOM이 이미 로드된 경우
+                setupSlidePanelEvents();
+            }
+        })();
+
+        function setupSlidePanelEvents() {
+            // 오버레이 클릭 시 패널 닫기
+            const overlay = document.getElementById('slide-overlay');
+            if (overlay) {
+                overlay.addEventListener('click', closeSummaryPanel);
+            }
+
+            // 슬라이드 패널 클릭 시 이벤트 전파 중지 (패널 내부 클릭해도 닫히지 않게)
+            const panel = document.getElementById('slide-panel');
+            if (panel) {
+                panel.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+            }
+        }
+
+        // ==================== 슬라이드 패널 함수 끝 ====================
     </script>
+
+    <!-- 슬라이드 오버레이 -->
+    <div class="slide-overlay" id="slide-overlay"></div>
+
+    <!-- 슬라이드 패널 -->
+    <div class="slide-panel" id="slide-panel">
+        <div class="slide-panel-header">
+            <h2>스캔 결과 요약</h2>
+            <button class="close-slide-btn" onclick="closeSummaryPanel()">&times;</button>
+        </div>
+        <div id="slide-panel-content">
+            <!-- 요약 테이블이 동적으로 삽입됩니다 -->
+        </div>
+    </div>
 </body>
 </html> 

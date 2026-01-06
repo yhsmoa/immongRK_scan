@@ -13,6 +13,7 @@ const upload = require('./middleware/upload');
 const XlsxPopulate = require('xlsx-populate');
 const fs = require('fs');
 const ChinaImport = require('./models/chinaImport');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const server = http.createServer(app);
@@ -686,6 +687,22 @@ app.post('/api/shipment/export-cj', async (req, res) => {
 
         const orders = await Order.find(query);
 
+        // Supabase에서 물류센터 정보 조회
+        const { data: centerData } = await supabase
+            .from('coupang_centers')
+            .select('center, contact, address');
+
+        // 물류센터명을 키로 하는 Map 생성
+        const centerMap = new Map();
+        if (centerData) {
+            centerData.forEach(item => {
+                centerMap.set(item.center, {
+                    contact: item.contact || '',
+                    address: item.address || ''
+                });
+            });
+        }
+
         // xlsx-populate를 사용하여 새 워크북 생성
         const workbook = await XlsxPopulate.fromBlankAsync();
 
@@ -707,6 +724,13 @@ app.post('/api/shipment/export-cj', async (req, res) => {
             cell.style('borderColor', '000000');
             cell.style('borderStyle', 'thin');
         });
+
+        // 열 너비 설정
+        mainSheet.column(1).width(15); // A열(물류센터) - 기본 유지
+        mainSheet.column(2).width(30); // B열(연락처) - 기본 10 * 3배 = 30
+        mainSheet.column(3).width(75); // C열(주소) - 기본 15 * 5배 = 75
+        mainSheet.column(4).width(15); // D열(박스타입) - 기본 유지
+        mainSheet.column(5).width(25); // E열(발주번호) - 기본 10 * 2.5배 = 25
 
         // 데이터 수집 및 중복 제거
         const cjData = [];
@@ -730,10 +754,13 @@ app.post('/api/shipment/export-cj', async (req, res) => {
                 if (!processedBoxes.has(uniqueKey)) {
                     processedBoxes.add(uniqueKey);
 
+                    // Supabase에서 물류센터 정보 조회
+                    const centerInfo = centerMap.get(order.물류센터);
+
                     cjData.push({
                         물류센터: order.물류센터,
-                        연락처: '',
-                        주소: '',
+                        연락처: centerInfo?.contact || '',
+                        주소: centerInfo?.address || '',
                         박스타입: boxType,
                         발주번호: `${order.발주번호} - ${boxNumber}`
                     });
@@ -1388,6 +1415,209 @@ app.post('/api/orders/resetImport12', async (req, res) => {
 app.get('/inventory', (req, res) => {
     res.sendFile(path.join(__dirname, 'inventory.html'));
 });
+
+// 쿠팡 물류센터 페이지 라우트
+app.get('/warehouse', (req, res) => {
+    res.sendFile(path.join(__dirname, 'warehouse.html'));
+});
+
+// Supabase 클라이언트 초기화
+const supabase = createClient(
+    process.env.supabase_url,
+    process.env.supabase_service_role_key
+);
+
+// ==================== 쿠팡 물류센터 API ====================
+
+// 물류센터 목록 조회
+app.get('/api/warehouse/centers', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('coupang_centers')
+            .select('*')
+            .order('center', { ascending: true });
+
+        if (error) throw error;
+
+        res.json(data || []);
+    } catch (error) {
+        console.error('물류센터 조회 오류:', error);
+        res.status(500).json({ error: '물류센터 목록을 불러오는데 실패했습니다.' });
+    }
+});
+
+// 물류센터 추가 (직접추가)
+app.post('/api/warehouse/centers', async (req, res) => {
+    try {
+        const { center, contact, address, note } = req.body;
+
+        if (!center || !contact || !address) {
+            return res.status(400).json({ error: '필수 항목을 입력해주세요.' });
+        }
+
+        // 중복 체크
+        const { data: existing } = await supabase
+            .from('coupang_centers')
+            .select('center')
+            .eq('center', center)
+            .single();
+
+        if (existing) {
+            return res.json({ duplicate: true, center });
+        }
+
+        // 데이터 추가
+        const { data, error } = await supabase
+            .from('coupang_centers')
+            .insert([{ center, contact, address }])
+            .select();
+
+        if (error) throw error;
+
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('물류센터 추가 오류:', error);
+        res.status(500).json({ error: '물류센터 추가에 실패했습니다.' });
+    }
+});
+
+// 물류센터 수정
+app.put('/api/warehouse/centers/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { center, contact, address, note } = req.body;
+
+        if (!center || !contact || !address) {
+            return res.status(400).json({ error: '필수 항목을 입력해주세요.' });
+        }
+
+        // 중복 체크 (자기 자신 제외)
+        const { data: existing } = await supabase
+            .from('coupang_centers')
+            .select('id, center')
+            .eq('center', center)
+            .neq('id', id)
+            .single();
+
+        if (existing) {
+            return res.json({ duplicate: true, center });
+        }
+
+        // 데이터 수정
+        const { data, error } = await supabase
+            .from('coupang_centers')
+            .update({ center, contact, address })
+            .eq('id', id)
+            .select();
+
+        if (error) throw error;
+
+        res.json({ success: true, data });
+    } catch (error) {
+        console.error('물류센터 수정 오류:', error);
+        res.status(500).json({ error: '물류센터 수정에 실패했습니다.' });
+    }
+});
+
+// 물류센터 삭제
+app.delete('/api/warehouse/centers', async (req, res) => {
+    try {
+        const { ids } = req.body;
+
+        if (!ids || ids.length === 0) {
+            return res.status(400).json({ error: '삭제할 항목을 선택해주세요.' });
+        }
+
+        const { error } = await supabase
+            .from('coupang_centers')
+            .delete()
+            .in('id', ids);
+
+        if (error) throw error;
+
+        res.json({ success: true, deleted: ids.length });
+    } catch (error) {
+        console.error('물류센터 삭제 오류:', error);
+        res.status(500).json({ error: '물류센터 삭제에 실패했습니다.' });
+    }
+});
+
+// 엑셀 업로드
+app.post('/api/warehouse/centers/upload', async (req, res) => {
+    try {
+        const { centers } = req.body;
+
+        console.log('업로드 요청 받음, 데이터 개수:', centers?.length);
+
+        if (!centers || centers.length === 0) {
+            return res.status(400).json({ error: '업로드할 데이터가 없습니다.' });
+        }
+
+        // 기존 물류센터 목록 조회
+        console.log('기존 물류센터 조회 시작...');
+        const { data: existingCenters, error: selectError } = await supabase
+            .from('coupang_centers')
+            .select('center');
+
+        if (selectError) {
+            console.error('Supabase 조회 오류:', selectError);
+            throw selectError;
+        }
+
+        console.log('기존 물류센터 개수:', existingCenters?.length || 0);
+
+        const existingNames = new Set((existingCenters || []).map(c => c.center));
+        const duplicates = [];
+        const toAdd = [];
+
+        centers.forEach(center => {
+            if (existingNames.has(center.center)) {
+                duplicates.push(center.center);
+            } else {
+                // 중복 제거 (동일한 물류센터가 엑셀 내에 여러번 있는 경우)
+                if (!toAdd.find(item => item.center === center.center)) {
+                    toAdd.push({
+                        center: center.center,
+                        contact: center.contact,
+                        address: center.address
+                    });
+                    existingNames.add(center.center); // 다음 루프에서 중복으로 처리하도록
+                }
+            }
+        });
+
+        console.log('추가할 항목:', toAdd.length, '중복 항목:', duplicates.length);
+
+        // 중복되지 않은 항목만 추가
+        if (toAdd.length > 0) {
+            console.log('Supabase에 데이터 삽입 시작...');
+            const { error: insertError } = await supabase
+                .from('coupang_centers')
+                .insert(toAdd);
+
+            if (insertError) {
+                console.error('Supabase 삽입 오류:', insertError);
+                throw insertError;
+            }
+            console.log('삽입 완료');
+        }
+
+        res.json({
+            success: true,
+            added: toAdd.length,
+            duplicates: duplicates.length > 0 ? duplicates : null
+        });
+    } catch (error) {
+        console.error('엑셀 업로드 오류 상세:', error);
+        console.error('오류 스택:', error.stack);
+        res.status(500).json({
+            error: '엑셀 업로드에 실패했습니다.',
+            detail: error.message
+        });
+    }
+});
+
+// ==================== 쿠팡 물류센터 API 끝 ====================
 
 // 재고 데이터 모델
 const inventorySchema = new mongoose.Schema({
