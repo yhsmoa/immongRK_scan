@@ -52,7 +52,7 @@
             margin-bottom: 20px;
             gap: 5px;
         }
-        .delete-btn, .location-save-btn, .upload-btn {
+        .delete-btn, .location-save-btn, .upload-btn, .discontinue-btn {
             display: inline-block;
             padding: 8px 15px;
             border: none;
@@ -69,6 +69,13 @@
         }
         .delete-btn:hover {
             background-color: #d32f2f;
+        }
+        .discontinue-btn {
+            background-color: #2196F3;
+            color: white;
+        }
+        .discontinue-btn:hover {
+            background-color: #0b7dda;
         }
         .location-save-btn {
             background-color: #4CAF50;
@@ -208,6 +215,7 @@
                 flex-wrap: nowrap;
             }
             .delete-btn,
+            .discontinue-btn,
             .location-save-btn,
             .upload-btn {
                 padding: 8px 10px;
@@ -399,6 +407,7 @@
                 <button id="registerBtn" class="upload-btn" onclick="openRegisterModal()">직접 등록</button>
                 <button id="locationSaveBtn" class="upload-btn" onclick="saveSelectedLocations()">위치저장</button>
                 <button id="uploadBtn" class="upload-btn" onclick="document.getElementById('fileInput').click()">엑셀 업로드</button>
+                <button id="discontinueBtn" class="discontinue-btn" onclick="generateDiscontinueDoc()">단종</button>
                 <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
                 <input type="file" id="fileInput" style="display: none" accept=".xlsx,.xls">
                 <input type="file" id="fileInput2" style="display: none" accept=".xlsx,.xls">
@@ -1048,6 +1057,53 @@
                 loadingOverlay.classList.remove('active');
                 console.error('Error:', error);
                 alert('상품 등록 중 오류가 발생했습니다.');
+            });
+        }
+
+        // 단종 워드 문서 생성
+        function generateDiscontinueDoc() {
+            const selectedItems = Array.from(document.querySelectorAll('.item-checkbox:checked'))
+                .map(checkbox => {
+                    const row = checkbox.closest('tr');
+                    return {
+                        skuId: row.querySelector('td:nth-child(2)').textContent,
+                        productName: row.querySelector('td:nth-child(3)').textContent
+                    };
+                });
+
+            if (selectedItems.length === 0) {
+                alert('단종 문서를 생성할 항목을 선택해주세요.');
+                return;
+            }
+
+            // 서버로 단종 문서 생성 요청
+            fetch('/api/inventory/generate-discontinue-doc', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ items: selectedItems })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('문서 생성 실패');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // 파일 다운로드
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '단종공문.docx';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('단종 문서 생성 중 오류가 발생했습니다.');
             });
         }
 
