@@ -1423,8 +1423,8 @@ app.get('/warehouse', (req, res) => {
 
 // Supabase 클라이언트 초기화
 const supabase = createClient(
-    process.env.supabase_url,
-    process.env.supabase_service_role_key
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // ==================== 쿠팡 물류센터 API ====================
