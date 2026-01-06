@@ -1,4 +1,11 @@
 require('dotenv').config();
+
+// 환경변수 확인
+console.log('=== 환경변수 확인 ===');
+console.log('SUPABASE_URL:', process.env.SUPABASE_URL || '없음');
+console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? '설정됨' : '없음');
+console.log('====================');
+
 const express = require('express');
 const mongoose = require('mongoose');
 const multer = require('multer');
