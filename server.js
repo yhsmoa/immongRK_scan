@@ -1421,16 +1421,29 @@ app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));
 });
 
-// Supabase 클라이언트 초기화
-const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// Supabase 클라이언트 초기화 (조건부)
+let supabase = null;
+
+if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    console.log('Supabase 연결 성공');
+} else {
+    console.log('Supabase 환경변수가 설정되지 않았습니다. 쿠팡 물류센터 기능이 작동하지 않습니다.');
+    console.log('SUPABASE_URL:', process.env.SUPABASE_URL ? '설정됨' : '없음');
+    console.log('SUPABASE_SERVICE_ROLE_KEY:', process.env.SUPABASE_SERVICE_ROLE_KEY ? '설정됨' : '없음');
+}
 
 // ==================== 쿠팡 물류센터 API ====================
 
 // 물류센터 목록 조회
 app.get('/api/warehouse/centers', async (req, res) => {
+    if (!supabase) {
+        return res.status(503).json({ error: 'Supabase 연결이 설정되지 않았습니다.' });
+    }
+
     try {
         const { data, error } = await supabase
             .from('coupang_centers')
