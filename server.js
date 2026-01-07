@@ -1711,52 +1711,29 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
         }
 
         const PizZip = require('pizzip');
-        const templatePath = path.join(__dirname, '아이엠몽 단종공문 (유블리).docx');
+        const templatePath = path.join(__dirname, '단종공문.docx');
 
         // 템플릿 파일 읽기
         const content = fs.readFileSync(templatePath);
         const zip = new PizZip(content);
 
         // document.xml 읽기
-        let docXml = zip.file('word/document.xml').asText();
-
-        // SKU 테이블의 기존 데이터 행 제거 (두 번째 테이블의 데이터 행들)
-        // 두 번째 테이블의 tr (행) 중 데이터 행만 찾아서 제거
-        const tableRegex = /<w:tbl>[\s\S]*?<\/w:tbl>/g;
-        const tables = docXml.match(tableRegex);
-
-        if (tables && tables.length >= 2) {
-            const skuTable = tables[1]; // 두 번째 테이블
-
-            // 헤더 행과 데이터 행 분리
-            const rowRegex = /<w:tr[\s\S]*?<\/w:tr>/g;
-            const rows = skuTable.match(rowRegex);
-
-            if (rows && rows.length >= 2) {
-                const headerRow = rows[0]; // SKU ID, SKU NAME 헤더
-                const firstDataRow = rows[1]; // 첫 번째 데이터 행을 템플릿으로 사용
-
-                // 새로운 데이터 행들 생성
-                let newDataRows = '';
-                items.forEach(item => {
-                    let newRow = firstDataRow;
-                    // SKU ID 셀의 텍스트를 실제 데이터로 교체
-                    newRow = newRow.replace(/33427\d+/, item.skuId || '');
-                    // SKU NAME 셀의 텍스트를 실제 데이터로 교체
-                    newRow = newRow.replace(/유블리[\s\S]*?(?=<\/w:t>)/, item.productName || '');
-                    newDataRows += newRow;
-                });
-
-                // 새 테이블 생성
-                const newTable = skuTable.replace(rowRegex, (match, index) => {
-                    if (index === 0) return headerRow;
-                    return '';
-                }).replace(headerRow, headerRow + newDataRows);
-
-                // 원본 문서의 두 번째 테이블을 새 테이블로 교체
-                docXml = docXml.replace(tables[1], newTable);
-            }
+        const docXmlFile = zip.file('word/document.xml');
+        if (!docXmlFile) {
+            console.error('word/document.xml을 찾을 수 없습니다.');
+            return res.status(500).json({ error: '템플릿 파일 구조가 올바르지 않습니다.' });
         }
+        let docXml = docXmlFile.asText();
+
+        // "sku 입력 ->" 텍스트를 찾아서 SKU ID들로 교체
+        // 여러 개인 경우 줄바꿈으로 각각 입력
+        const skuReplacement = items.map(item => item.skuId || '').join('\n');
+        docXml = docXml.replace(/sku 입력 -&gt;/g, escapeXml(skuReplacement));
+
+        // "상품명 입력 ->" 텍스트를 찾아서 상품명들로 교체
+        // 여러 개인 경우 줄바꿈으로 각각 입력
+        const productNameReplacement = items.map(item => item.productName || '').join('\n');
+        docXml = docXml.replace(/상품명 입력 -&gt;/g, escapeXml(productNameReplacement));
 
         // 수정된 document.xml을 zip에 다시 넣기
         zip.file('word/document.xml', docXml);
@@ -1769,7 +1746,7 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
 
         // 파일 다운로드 응답
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        res.setHeader('Content-Disposition', 'attachment; filename=discontinue.docx');
+        res.setHeader('Content-Disposition', 'attachment; filename=단종공문.docx');
         res.send(buf);
 
     } catch (error) {
@@ -1777,6 +1754,16 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
         res.status(500).json({ error: '문서 생성 중 오류가 발생했습니다.' });
     }
 });
+
+// XML 특수문자 이스케이프 함수
+function escapeXml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
 
 // 선택된 재고 데이터 삭제 API
 app.post('/api/inventory/delete-selected', async (req, res) => {
