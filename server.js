@@ -1711,7 +1711,7 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
         }
 
         const PizZip = require('pizzip');
-        const templatePath = path.join(__dirname, '단종공문.docx');
+        const templatePath = path.join(__dirname, '아이엠몽 단종공문 (유블리).docx');
 
         // 템플릿 파일 읽기
         const content = fs.readFileSync(templatePath);
