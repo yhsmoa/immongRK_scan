@@ -1795,12 +1795,23 @@ app.post('/api/inventory/search', async (req, res) => {
         }
 
         // 검색어가 있는 경우 SKU ID, 바코드, 상품명에서 검색
+        // 콤마(,)로 구분된 여러 검색어 지원
         if (searchTerm) {
-            query.$or = [
-                { skuId: new RegExp(searchTerm, 'i') },
-                { barcode: new RegExp(searchTerm, 'i') },
-                { name: new RegExp(searchTerm, 'i') }
-            ];
+            const searchTerms = searchTerm.split(',').map(term => term.trim()).filter(term => term);
+
+            if (searchTerms.length > 0) {
+                const orConditions = [];
+
+                searchTerms.forEach(term => {
+                    orConditions.push(
+                        { skuId: new RegExp(term, 'i') },
+                        { barcode: new RegExp(term, 'i') },
+                        { name: new RegExp(term, 'i') }
+                    );
+                });
+
+                query.$or = orConditions;
+            }
         }
 
         const results = await Inventory.find(query);
