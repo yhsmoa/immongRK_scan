@@ -1727,8 +1727,9 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
 
         // "sku 입력" 텍스트를 찾아서 SKU ID들로 교체
         // 여러 개인 경우 Word XML 줄바꿈(<w:br/>)으로 구분
+        // XML에서 "sku"와 " 입력"이 분리되어 있으므로 패턴 매칭
         const skuReplacement = items.map(item => escapeXml(item.skuId || '')).join('<w:br/>');
-        docXml = docXml.replace(/sku 입력/g, skuReplacement);
+        docXml = docXml.replace(/<w:t>sku<\/w:t><\/w:r><w:proofErr w:type="spellEnd"\/><w:r><w:rPr><w:rFonts w:eastAsiaTheme="minorHAnsi" w:hint="eastAsia"\/><w:bCs\/><w:szCs w:val="20"\/><\/w:rPr><w:t xml:space="preserve"> 입력<\/w:t>/g, `<w:t>${skuReplacement}</w:t>`);
 
         // "상품명 입력" 텍스트를 찾아서 상품명들로 교체
         // 여러 개인 경우 Word XML 줄바꿈(<w:br/>)으로 구분
