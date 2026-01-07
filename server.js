@@ -1725,6 +1725,16 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
         }
         let docXml = docXmlFile.asText();
 
+        // 오늘 날짜를 "2025 .  01 . 07" 형식으로 생성
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const dateString = `${year} .  ${month} . ${day}`;
+
+        // 날짜 교체 (2023 .  03 . 06 패턴)
+        docXml = docXml.replace(/\d{4} \.\s+\d{2} \. \d{2}/g, dateString);
+
         // "sku 입력" 텍스트를 찾아서 SKU ID들로 교체
         // 여러 개인 경우 Word XML 줄바꿈(<w:br/>)으로 구분
         // XML에서 "sku"와 " 입력"이 분리되어 있으므로 패턴 매칭
