@@ -1725,15 +1725,15 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
         }
         let docXml = docXmlFile.asText();
 
-        // "sku 입력 ->" 텍스트를 찾아서 SKU ID들로 교체
-        // 여러 개인 경우 줄바꿈으로 각각 입력
-        const skuReplacement = items.map(item => item.skuId || '').join('\n');
-        docXml = docXml.replace(/sku 입력 -&gt;/g, escapeXml(skuReplacement));
+        // "sku 입력" 텍스트를 찾아서 SKU ID들로 교체
+        // 여러 개인 경우 Word XML 줄바꿈(<w:br/>)으로 구분
+        const skuReplacement = items.map(item => escapeXml(item.skuId || '')).join('<w:br/>');
+        docXml = docXml.replace(/sku 입력/g, skuReplacement);
 
-        // "상품명 입력 ->" 텍스트를 찾아서 상품명들로 교체
-        // 여러 개인 경우 줄바꿈으로 각각 입력
-        const productNameReplacement = items.map(item => item.productName || '').join('\n');
-        docXml = docXml.replace(/상품명 입력 -&gt;/g, escapeXml(productNameReplacement));
+        // "상품명 입력" 텍스트를 찾아서 상품명들로 교체
+        // 여러 개인 경우 Word XML 줄바꿈(<w:br/>)으로 구분
+        const productNameReplacement = items.map(item => escapeXml(item.productName || '')).join('<w:br/>');
+        docXml = docXml.replace(/상품명 입력/g, productNameReplacement);
 
         // 수정된 document.xml을 zip에 다시 넣기
         zip.file('word/document.xml', docXml);
@@ -1745,8 +1745,9 @@ app.post('/api/inventory/generate-discontinue-doc', async (req, res) => {
         });
 
         // 파일 다운로드 응답
+        const filename = encodeURIComponent('단종공문.docx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        res.setHeader('Content-Disposition', 'attachment; filename=단종공문.docx');
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
         res.send(buf);
 
     } catch (error) {
