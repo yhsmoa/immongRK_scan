@@ -21,6 +21,7 @@ const XlsxPopulate = require('xlsx-populate');
 const fs = require('fs');
 const ChinaImport = require('./models/chinaImport');
 const { createClient } = require('@supabase/supabase-js');
+const libre = require('libreoffice-convert');
 
 const app = express();
 const server = http.createServer(app);
@@ -65,6 +66,16 @@ app.get('/scan', (req, res) => {
 // ✅ 쉽먼트 페이지 라우트 추가
 app.get('/shipment', (req, res) => {
   res.sendFile(path.join(__dirname, 'shipment.html'));
+});
+
+// ✅ Word to PDF 페이지 라우트 추가
+app.get('/wordtopdf', (req, res) => {
+  res.sendFile(path.join(__dirname, 'wordtopdf.html'));
+});
+
+// ✅ 판매데이터 페이지 라우트 추가
+app.get('/salesdata', (req, res) => {
+  res.sendFile(path.join(__dirname, 'salesdata.html'));
 });
 
 app.get('/header', (req, res) => {
@@ -1433,6 +1444,127 @@ const supabase = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+// ========================================
+// 판매데이터 - 쿠팡 재고 조회
+// ========================================
+
+// 상품명 정규화 함수
+function normalizeProductName(name) {
+    if (!name) return '';
+    return name
+        .replace(/아이엠몽|이유몽|아동|여성|여아|남아/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+app.post('/api/salesdata/coupang-stock', async (req, res) => {
+    try {
+        const { productNames } = req.body;
+
+        if (!productNames || !Array.isArray(productNames) || productNames.length === 0) {
+            return res.status(400).json({ error: '상품명 목록이 필요합니다.' });
+        }
+
+        console.log(`쿠팡 재고 조회 시작: ${productNames.length}개 상품`);
+
+        const stockMap = {}; // 원본 상품명 -> stock
+        const normalizedMap = {}; // 정규화된 이름 -> 원본 이름
+
+        // 1단계: 상품명 정규화
+        productNames.forEach(name => {
+            const normalized = normalizeProductName(name);
+            if (normalized) {
+                normalizedMap[normalized] = name;
+            }
+        });
+
+        const normalizedNames = Object.keys(normalizedMap);
+        console.log(`정규화된 상품명: ${normalizedNames.length}개`);
+
+        // 2단계: Supabase에서 모든 재고 데이터 가져오기 (페이지네이션)
+        let allStocks = [];
+        let page = 0;
+        const pageSize = 1000;
+        let hasMore = true;
+
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('coupang_stocks')
+                .select('product_name, qty')
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (error) {
+                console.error('Supabase 조회 오류:', error);
+                return res.status(500).json({ error: 'DB 조회 실패' });
+            }
+
+            if (data && data.length > 0) {
+                allStocks = allStocks.concat(data);
+                console.log(`페이지 ${page + 1} 조회 완료: ${data.length}개 (누적: ${allStocks.length}개)`);
+                hasMore = data.length === pageSize;
+                page++;
+            } else {
+                hasMore = false;
+            }
+        }
+
+        console.log(`Supabase 전체 재고 데이터: ${allStocks.length}개`);
+
+        // 3단계: 정규화된 이름으로 정확 매칭
+        const matched = new Set();
+        if (allStocks) {
+            allStocks.forEach(item => {
+                const normalizedDbName = normalizeProductName(item.product_name);
+
+                // 정확히 일치하는 경우
+                if (normalizedMap[normalizedDbName]) {
+                    const originalName = normalizedMap[normalizedDbName];
+                    stockMap[originalName] = item.qty;
+                    matched.add(normalizedDbName);
+                }
+            });
+        }
+
+        console.log(`1단계 정확 매칭: ${matched.size}개`);
+
+        // 4단계: 매칭 실패한 상품 - 포함 검색 (includes)
+        const unmatchedNames = normalizedNames.filter(name => !matched.has(name));
+        console.log(`2단계 포함 검색 대상: ${unmatchedNames.length}개`);
+
+        if (unmatchedNames.length > 0 && allStocks) {
+            for (const normalized of unmatchedNames) {
+                // 포함 검색
+                const found = allStocks.find(item => {
+                    const normalizedDbName = normalizeProductName(item.product_name);
+                    return normalizedDbName.includes(normalized) || normalized.includes(normalizedDbName);
+                });
+
+                if (found) {
+                    const originalName = normalizedMap[normalized];
+                    stockMap[originalName] = found.qty;
+                    matched.add(normalized);
+                }
+            }
+        }
+
+        console.log(`최종 매칭 완료: ${Object.keys(stockMap).length}개`);
+
+        res.json({
+            success: true,
+            stocks: stockMap,
+            stats: {
+                total: productNames.length,
+                matched: Object.keys(stockMap).length,
+                unmatched: productNames.length - Object.keys(stockMap).length
+            }
+        });
+
+    } catch (error) {
+        console.error('쿠팡 재고 조회 오류:', error);
+        res.status(500).json({ error: '서버 오류가 발생했습니다.' });
+    }
+});
 console.log('✅ Supabase 연결 성공');
 
 // ==================== 쿠팡 물류센터 API ====================
@@ -2807,6 +2939,49 @@ app.post('/api/neworders/register', async (req, res) => {
     } catch (error) {
         console.error('발주서 등록 중 오류:', error);
         res.status(500).json({ message: '서버 오류가 발생했습니다.' });
+    }
+});
+
+// Word to PDF 변환 API
+const wordUpload = multer({
+    storage: multer.memoryStorage(),
+    fileFilter: (req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (ext !== '.doc' && ext !== '.docx') {
+            return cb(new Error('Word 파일만 업로드 가능합니다.'));
+        }
+        cb(null, true);
+    }
+});
+
+app.post('/api/convert-word-to-pdf', wordUpload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
+        }
+
+        const wordBuffer = req.file.buffer;
+        const ext = path.extname(req.file.originalname).toLowerCase();
+
+        // libreoffice-convert를 사용하여 PDF로 변환
+        libre.convert(wordBuffer, ext, undefined, (err, pdfBuffer) => {
+            if (err) {
+                console.error('PDF 변환 오류:', err);
+                return res.status(500).json({ error: 'PDF 변환에 실패했습니다.' });
+            }
+
+            // PDF 파일명 생성
+            const pdfFileName = req.file.originalname.replace(/\.(doc|docx)$/i, '.pdf');
+
+            // PDF 파일 전송
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(pdfFileName)}"`);
+            res.send(pdfBuffer);
+        });
+
+    } catch (error) {
+        console.error('Word to PDF 변환 오류:', error);
+        res.status(500).json({ error: '파일 변환 중 오류가 발생했습니다.' });
     }
 });
 

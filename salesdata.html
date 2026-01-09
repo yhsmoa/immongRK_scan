@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>판매데이터</title>
+    <style>
+        /* Reset */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Body */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        /* Top Menu */
+        .top-menu {
+            background-color: #333;
+            padding: 10px 0;
+            margin: -40px -20px 20px -20px;
+        }
+
+        .menu-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 0 20px;
+        }
+
+        .menu-item {
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+        }
+
+        .menu-item:hover {
+            background-color: #444;
+        }
+
+        .menu-item.active {
+            background-color: #666;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        /* Content Section */
+        .content {
+            background-color: transparent;
+            padding: 0;
+        }
+
+        /* Control Section (Upload Buttons) */
+        .upload-section {
+            margin-bottom: 30px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 16px;
+            border: 1px solid #e9ecef;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        /* Button Styles */
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            min-width: 160px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .delete-btn {
+            background-color: #f44336;
+            color: white;
+            min-width: 120px;
+        }
+
+        .delete-btn:hover {
+            background-color: #d32f2f;
+        }
+
+        .discontinue-btn {
+            background: #3498db;
+            color: white;
+        }
+
+        .discontinue-btn:hover {
+            background: #2980b9;
+        }
+
+        .location-save-btn {
+            background: #3498db;
+            color: white;
+        }
+
+        .location-save-btn:hover {
+            background: #2980b9;
+        }
+
+        .upload-btn {
+            background: #3498db;
+            color: white;
+        }
+
+        .upload-btn:hover {
+            background: #2980b9;
+        }
+
+        /* Search Section */
+        .search-section {
+            margin-bottom: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 16px;
+            border: 1px solid #e9ecef;
+        }
+
+        .search-form {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+
+        .search-input {
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .search-form select.search-input {
+            min-width: 150px;
+        }
+
+        .search-form > div {
+            flex: 1;
+            display: flex;
+        }
+
+        .search-form input.search-input {
+            width: 100%;
+        }
+
+        .search-btn {
+            background: #3498db;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            min-width: 100px;
+        }
+
+        .search-btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        /* Table Container */
+        .table-container {
+            margin-top: 20px;
+            overflow-x: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        /* Table Styles */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+        }
+
+        thead {
+            background: #3498db;
+            color: white;
+        }
+
+        th {
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            background: #3498db;
+            z-index: 10;
+            border-bottom: 1px solid #2980b9;
+        }
+
+        td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        /* 특정 열 가운데 정렬 */
+        th:nth-child(4), td:nth-child(4), /* 발주 */
+        th:nth-child(5), td:nth-child(5), /* 쿠팡예측 */
+        th:nth-child(6), td:nth-child(6), /* 창고재고 */
+        th:nth-child(7), td:nth-child(7), /* 쿠팡 재고 */
+        th:nth-child(8), td:nth-child(8), /* 주문개수 */
+        th:nth-child(9), td:nth-child(9)  /* 사입 */
+        {
+            text-align: center;
+        }
+
+        tbody tr:hover {
+            background: #f5f5f5;
+        }
+
+        tbody tr:nth-child(even) {
+            background: #fafafa;
+        }
+
+        tbody tr:nth-child(even):hover {
+            background: #f0f0f0;
+        }
+
+        /* Checkbox Styles */
+        .item-checkbox, #selectAll {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-screen.hidden {
+            display: none;
+        }
+
+        .loading-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        .loading-text {
+            font-size: 16px;
+            color: #333;
+            font-weight: bold;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Hidden Utility */
+        .hidden {
+            display: none;
+        }
+
+        /* 모달 스타일 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+            width: 40px;
+            height: 40px;
+            min-width: auto;
+            padding: 0;
+            box-shadow: none;
+        }
+
+        .modal-close:hover {
+            color: #333;
+            transform: none;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-textarea {
+            width: 100%;
+            min-height: 300px;
+            padding: 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        .modal-textarea:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .modal-btn {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .modal-btn-cancel {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .modal-btn-cancel:hover {
+            background: #7f8c8d;
+        }
+
+        .modal-btn-submit {
+            background: #3498db;
+            color: white;
+        }
+
+        .modal-btn-submit:hover {
+            background: #2980b9;
+        }
+
+        /* 툴팁 스타일 */
+        .tooltip {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .tooltip-content {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2c3e50;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: pre-line;
+            margin-bottom: 5px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 1000;
+            min-width: 150px;
+            text-align: center;
+        }
+
+        .tooltip:hover .tooltip-content {
+            opacity: 1;
+        }
+
+        .tooltip-content::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #2c3e50;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 20px 10px;
+            }
+
+            .top-menu {
+                margin: -20px -10px 20px -10px;
+            }
+
+            .container {
+                padding: 20px;
+                border-radius: 10px;
+            }
+
+            .upload-section,
+            .search-section {
+                padding: 15px;
+                border-radius: 10px;
+            }
+
+            .search-form {
+                flex-direction: column;
+            }
+
+            .search-form select.search-input,
+            .search-form input.search-input {
+                width: 100%;
+            }
+
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                max-height: 80vh;
+                overflow-y: auto;
+            }
+
+            table {
+                font-size: 14px;
+                min-width: 450px;
+            }
+
+            th, td {
+                padding: 8px;
+            }
+
+            button {
+                padding: 10px 20px;
+                font-size: 13px;
+            }
+
+            .upload-section {
+                justify-content: stretch;
+            }
+
+            .upload-section button {
+                flex: 1;
+                min-width: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 로딩 화면 -->
+    <div class="loading-screen hidden" id="loadingScreen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">판매 데이터를 불러오는 중...</div>
+        </div>
+    </div>
+
+    <!-- 시트 주문 모달 -->
+    <div class="modal-overlay" id="sheetOrderModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">시트 주문 데이터 입력</h2>
+                <button class="modal-close" onclick="ModalManager.closeSheetOrderModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #666; margin-bottom: 10px; font-size: 14px;">
+                    구글 시트에서 복사한 데이터를 아래에 붙여넣기 하세요.
+                </p>
+                <textarea id="sheetDataInput" class="modal-textarea" placeholder="여기에 구글 시트 데이터를 붙여넣기..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" onclick="ModalManager.closeSheetOrderModal()">취소</button>
+                <button class="modal-btn modal-btn-submit" onclick="EventHandlers.handleSheetOrderSubmit()">추가</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="header-container"></div>
+    <div class="container">
+        <div class="content">
+            <div class="upload-section">
+                <button class="upload-btn">⬆️ 발주서.xlsx</button>
+                <button class="upload-btn">⬆️ 쿠팡 예측.xlsx</button>
+                <button class="upload-btn">시트 주문</button>
+                <button class="upload-btn">⬆️ 창고 재고.xlsx</button>
+                <button class="discontinue-btn">📡 쿠팡 재고</button>
+                <button class="delete-btn">삭제</button>
+            </div>
+
+            <div class="search-section">
+                <form class="search-form">
+                    <select class="search-input">
+                        <option value="전체" selected>전체</option>
+                        <option value="정상">정상</option>
+                        <option value="일시중단">일시중단</option>
+                        <option value="불가">불가</option>
+                    </select>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="text" class="search-input" placeholder="SKU ID, 바코드, 상품명 검색 (콤마로 여러 개 검색 가능)" style="flex: 1;">
+                    </div>
+                    <button type="submit" class="search-btn">검색</button>
+                </form>
+            </div>
+
+            <div class="table-container">
+                <table id="salesTable">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAll"></th>
+                            <th>SKU / Barcode</th>
+                            <th>상품명</th>
+                            <th>발주</th>
+                            <th>쿠팡예측</th>
+                            <th>창고재고</th>
+                            <th>쿠팡 재고</th>
+                            <th>주문개수</th>
+                            <th>사입</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        // ========================================
+        // 전역 데이터 저장소
+        // ========================================
+        const AppData = {
+            salesData: new Map(), // key: SKU, value: 상품 객체
+
+            // 상품 추가 또는 업데이트
+            addOrUpdateProduct(product, createIfNotExists = true) {
+                const sku = product.sku;
+                if (this.salesData.has(sku)) {
+                    // 기존 데이터가 있으면 병합
+                    const existing = this.salesData.get(sku);
+                    this.salesData.set(sku, { ...existing, ...product });
+                } else if (createIfNotExists) {
+                    // 새로운 데이터 (createIfNotExists가 true일 때만)
+                    this.salesData.set(sku, product);
+                }
+            },
+
+            // 바코드로 상품 찾기
+            findByBarcode(barcode) {
+                for (const [sku, product] of this.salesData.entries()) {
+                    if (product.barcode === barcode) {
+                        return product;
+                    }
+                }
+                return null;
+            },
+
+            // 발주 수량 추가 (누적)
+            addOrderQuantity(sku, quantity) {
+                if (this.salesData.has(sku)) {
+                    const product = this.salesData.get(sku);
+                    product.orderQty = (product.orderQty || 0) + quantity;
+                }
+            },
+
+            // 모든 데이터 가져오기
+            getAllProducts() {
+                return Array.from(this.salesData.values());
+            },
+
+            // 데이터 초기화
+            clear() {
+                this.salesData.clear();
+            }
+        };
+
+        // ========================================
+        // 구글 시트 데이터 처리 유틸리티
+        // ========================================
+        const SheetUtils = {
+            // TSV 데이터 파싱 (탭으로 구분된 데이터)
+            parseSheetData(text) {
+                const lines = text.trim().split('\n');
+                const result = [];
+
+                // 3행부터 데이터 (1~2행은 헤더)
+                for (let i = 2; i < lines.length; i++) {
+                    const cells = lines[i].split('\t');
+                    if (cells.length < 28) continue; // 최소 AB열(27)까지 있어야 함
+
+                    const barcode = cells[10]?.trim(); // K열 (index 10)
+                    const progressQty = parseInt(cells[20]) || 0; // U열 (index 20)
+                    const shipQty1 = parseInt(cells[23]) || 0; // X열 (index 23)
+                    const shipQty2 = parseInt(cells[24]) || 0; // Y열 (index 24)
+                    const shipNumber = cells[27]?.trim() || ''; // AB열 (index 27)
+                    const boxCount = cells[28]?.trim() || ''; // AC열 (index 28)
+
+                    if (!barcode) continue;
+
+                    result.push({
+                        barcode,
+                        progressQty,
+                        shipQty1,
+                        shipQty2,
+                        totalShipQty: shipQty1 + shipQty2,
+                        shipNumber,
+                        boxCount,
+                        shipInfo: shipNumber && boxCount ? `${shipNumber} - ${boxCount}` : ''
+                    });
+                }
+
+                return result;
+            },
+
+            // 바코드별로 데이터 병합 (동일 바코드는 수량 합산, shipInfo 병합)
+            mergeByBarcode(sheetData) {
+                const merged = new Map();
+
+                sheetData.forEach(item => {
+                    if (merged.has(item.barcode)) {
+                        const existing = merged.get(item.barcode);
+                        existing.totalShipQty += item.totalShipQty;
+                        if (item.shipInfo) {
+                            existing.shipInfoList.push(item.shipInfo);
+                        }
+                    } else {
+                        merged.set(item.barcode, {
+                            barcode: item.barcode,
+                            totalShipQty: item.totalShipQty,
+                            shipInfoList: item.shipInfo ? [item.shipInfo] : []
+                        });
+                    }
+                });
+
+                return merged;
+            }
+        };
+
+        // ========================================
+        // 엑셀 파일 처리 유틸리티
+        // ========================================
+        const ExcelUtils = {
+            // 파일들을 읽어서 발주서 데이터 추출
+            async processOrderFiles(files) {
+                const orderData = new Map(); // key: SKU, value: {sku, barcode, name, qty}
+
+                for (const file of files) {
+                    try {
+                        const data = await this.readExcelFile(file);
+                        this.mergeOrderData(data, orderData);
+                    } catch (error) {
+                        console.error(`파일 처리 오류 (${file.name}):`, error);
+                        throw error;
+                    }
+                }
+
+                return Array.from(orderData.values());
+            },
+
+            // 쿠팡 예측 파일 처리
+            async processForecastFiles(files) {
+                const forecastData = new Map(); // key: SKU, value: forecast count
+
+                for (const file of files) {
+                    try {
+                        const data = await this.readExcelFile(file);
+                        this.mergeForecastData(data, forecastData);
+                    } catch (error) {
+                        console.error(`파일 처리 오류 (${file.name}):`, error);
+                        throw error;
+                    }
+                }
+
+                return forecastData;
+            },
+
+            // 엑셀 파일 읽기
+            readExcelFile(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                            resolve(jsonData);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+
+                    reader.onerror = () => reject(new Error('파일 읽기 실패'));
+                    reader.readAsArrayBuffer(file);
+                });
+            },
+
+            // 발주서 데이터 병합 (동일 SKU는 수량 합산)
+            mergeOrderData(excelData, orderMap) {
+                // 2행부터 데이터 (1행은 헤더)
+                for (let i = 1; i < excelData.length; i++) {
+                    const row = excelData[i];
+                    if (!row || row.length < 8) continue;
+
+                    const sku = row[4]?.toString().trim(); // E열 (index 4)
+                    const barcode = row[5]?.toString().trim(); // F열
+                    const name = row[6]?.toString().trim(); // G열
+                    const qty = parseInt(row[7]) || 0; // H열
+
+                    if (!sku) continue;
+
+                    if (orderMap.has(sku)) {
+                        // 동일 SKU가 있으면 수량만 합산
+                        const existing = orderMap.get(sku);
+                        existing.qty += qty;
+                    } else {
+                        // 새로운 SKU
+                        orderMap.set(sku, {
+                            sku,
+                            barcode: barcode || '',
+                            name: name || '',
+                            qty
+                        });
+                    }
+                }
+            },
+
+            // 쿠팡 예측 데이터 병합
+            mergeForecastData(excelData, forecastMap) {
+                // 4행부터 데이터 (1~3행은 헤더)
+                for (let i = 3; i < excelData.length; i++) {
+                    const row = excelData[i];
+                    if (!row || row.length < 4) continue;
+
+                    const sku = row[1]?.toString().trim(); // B열 (index 1)
+                    const forecast = row[3]?.toString().trim() || '0'; // D열 (index 3) - 텍스트 그대로 유지
+
+                    if (!sku) continue;
+
+                    forecastMap.set(sku, forecast);
+                }
+            }
+        };
+
+        // ========================================
+        // UI 렌더링
+        // ========================================
+        const UIRenderer = {
+            // 테이블 렌더링
+            renderTable() {
+                const tbody = document.querySelector('#salesTable tbody');
+                tbody.innerHTML = '';
+
+                const products = AppData.getAllProducts();
+
+                if (products.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 50px; color: #999;">데이터가 없습니다</td></tr>';
+                    return;
+                }
+
+                products.forEach((product, index) => {
+                    const row = this.createTableRow(product, index);
+                    tbody.appendChild(row);
+                });
+            },
+
+            // 테이블 행 생성
+            createTableRow(product, index) {
+                const tr = document.createElement('tr');
+
+                const skuBarcode = `${product.sku || '-'}\n${product.barcode || '-'}`;
+
+                // 주문개수 셀 (툴팁 포함)
+                let orderCountCell;
+                if (product.orderCount && product.shipInfoList && product.shipInfoList.length > 0) {
+                    const tooltipContent = product.shipInfoList.join('\n');
+                    orderCountCell = `
+                        <td class="tooltip">
+                            ${product.orderCount}
+                            <div class="tooltip-content">${tooltipContent}</div>
+                        </td>
+                    `;
+                } else {
+                    orderCountCell = `<td>${product.orderCount || '-'}</td>`;
+                }
+
+                tr.innerHTML = `
+                    <td><input type="checkbox" class="item-checkbox" data-sku="${product.sku}"></td>
+                    <td style="white-space: pre-line; font-family: monospace; font-size: 13px;">${skuBarcode}</td>
+                    <td>${product.name || '-'}</td>
+                    <td>${product.orderQty || 0}</td>
+                    <td>${product.coupangForecast || '-'}</td>
+                    <td>${product.warehouseStock || '-'}</td>
+                    <td>${product.coupangStock || '-'}</td>
+                    ${orderCountCell}
+                    <td>${product.purchase || '-'}</td>
+                `;
+
+                return tr;
+            },
+
+            // 로딩 표시/숨김
+            showLoading(show, message = '처리 중...') {
+                const loadingScreen = document.getElementById('loadingScreen');
+                const loadingText = loadingScreen.querySelector('.loading-text');
+                loadingText.textContent = message;
+
+                if (show) {
+                    loadingScreen.classList.remove('hidden');
+                } else {
+                    loadingScreen.classList.add('hidden');
+                }
+            }
+        };
+
+        // ========================================
+        // 모달 관리
+        // ========================================
+        const ModalManager = {
+            openSheetOrderModal() {
+                document.getElementById('sheetOrderModal').classList.add('active');
+                document.getElementById('sheetDataInput').value = '';
+                document.getElementById('sheetDataInput').focus();
+            },
+
+            closeSheetOrderModal() {
+                document.getElementById('sheetOrderModal').classList.remove('active');
+            }
+        };
+
+        // ========================================
+        // 이벤트 핸들러
+        // ========================================
+        const EventHandlers = {
+            // 발주서 업로드
+            async handleOrderUpload() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.xlsx, .xls';
+                input.multiple = true;
+
+                input.onchange = async (e) => {
+                    const files = Array.from(e.target.files);
+                    if (files.length === 0) return;
+
+                    try {
+                        UIRenderer.showLoading(true, '발주서 파일 처리 중...');
+
+                        // 엑셀 파일들 처리
+                        const orderData = await ExcelUtils.processOrderFiles(files);
+
+                        // AppData에 추가 (메모리에 전부 보관)
+                        orderData.forEach(item => {
+                            AppData.addOrUpdateProduct({
+                                sku: item.sku,
+                                barcode: item.barcode,
+                                name: item.name,
+                                orderQty: item.qty
+                            });
+                        });
+
+                        // 테이블 렌더링
+                        UIRenderer.renderTable();
+                    } catch (error) {
+                        console.error('발주서 업로드 오류:', error);
+                    } finally {
+                        UIRenderer.showLoading(false);
+                    }
+                };
+
+                input.click();
+            },
+
+            // 쿠팡 예측 업로드
+            async handleForecastUpload() {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.xlsx, .xls';
+                input.multiple = true;
+
+                input.onchange = async (e) => {
+                    const files = Array.from(e.target.files);
+                    if (files.length === 0) return;
+
+                    try {
+                        UIRenderer.showLoading(true, '쿠팡 예측 파일 처리 중...');
+
+                        // 엑셀 파일들 처리
+                        const forecastData = await ExcelUtils.processForecastFiles(files);
+
+                        // AppData에 추가 (기존 SKU만 업데이트, 새 SKU는 메모리에만 보관하고 테이블에 표시 안 함)
+                        forecastData.forEach((forecast, sku) => {
+                            AppData.addOrUpdateProduct({
+                                sku: sku,
+                                coupangForecast: forecast
+                            }, false); // createIfNotExists = false
+                        });
+
+                        // 테이블 렌더링
+                        UIRenderer.renderTable();
+                    } catch (error) {
+                        console.error('쿠팡 예측 업로드 오류:', error);
+                    } finally {
+                        UIRenderer.showLoading(false);
+                    }
+                };
+
+                input.click();
+            },
+
+            // 쿠팡 재고 조회 (Supabase에서)
+            async handleCoupangStock() {
+                try {
+                    UIRenderer.showLoading(true, '쿠팡 재고 조회 중...');
+
+                    // 현재 테이블에 있는 모든 상품명 추출
+                    const products = AppData.getAllProducts();
+                    const productNames = products
+                        .map(p => p.name)
+                        .filter(name => name && name !== '-');
+
+                    if (productNames.length === 0) {
+                        console.error('조회할 상품이 없습니다.');
+                        return;
+                    }
+
+                    console.log(`쿠팡 재고 조회 시작: ${productNames.length}개 상품`);
+
+                    // 서버에 재고 조회 요청
+                    const response = await fetch('/api/salesdata/coupang-stock', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ productNames })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('서버 응답 오류');
+                    }
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        // 재고 정보를 AppData에 업데이트
+                        Object.entries(result.stocks).forEach(([productName, stock]) => {
+                            // 상품명으로 해당 상품 찾기
+                            const product = products.find(p => p.name === productName);
+                            if (product) {
+                                AppData.addOrUpdateProduct({
+                                    sku: product.sku,
+                                    coupangStock: stock
+                                }, false);
+                            }
+                        });
+
+                        // 테이블 렌더링
+                        UIRenderer.renderTable();
+
+                        console.log(`쿠팡 재고 업데이트 완료: ${Object.keys(result.stocks).length}개 매칭`);
+                    }
+
+                } catch (error) {
+                    console.error('쿠팡 재고 조회 오류:', error);
+                } finally {
+                    UIRenderer.showLoading(false);
+                }
+            },
+
+            // 시트 주문 데이터 제출
+            handleSheetOrderSubmit() {
+                try {
+                    const sheetData = document.getElementById('sheetDataInput').value.trim();
+
+                    if (!sheetData) {
+                        console.error('데이터를 입력해주세요.');
+                        return;
+                    }
+
+                    UIRenderer.showLoading(true, '시트 데이터 처리 중...');
+
+                    // 데이터 파싱
+                    const parsedData = SheetUtils.parseSheetData(sheetData);
+                    console.log(`파싱 완료: ${parsedData.length}개 행`);
+
+                    // 바코드별로 병합
+                    const mergedData = SheetUtils.mergeByBarcode(parsedData);
+                    console.log(`병합 완료: ${mergedData.size}개 바코드`);
+
+                    // AppData에 매칭 및 업데이트
+                    let matchedCount = 0;
+                    mergedData.forEach((data, barcode) => {
+                        const product = AppData.findByBarcode(barcode);
+                        if (product) {
+                            AppData.addOrUpdateProduct({
+                                sku: product.sku,
+                                orderCount: data.totalShipQty,
+                                shipInfoList: data.shipInfoList
+                            }, false);
+                            matchedCount++;
+                        }
+                    });
+
+                    console.log(`매칭 완료: ${matchedCount}개 상품`);
+
+                    // 테이블 렌더링
+                    UIRenderer.renderTable();
+
+                    // 모달 닫기
+                    ModalManager.closeSheetOrderModal();
+
+                    UIRenderer.showLoading(false);
+
+                } catch (error) {
+                    console.error('시트 주문 데이터 처리 오류:', error);
+                    UIRenderer.showLoading(false);
+                }
+            },
+
+            // 전체 선택 체크박스
+            handleSelectAll(e) {
+                const checkboxes = document.querySelectorAll('.item-checkbox');
+                checkboxes.forEach(cb => cb.checked = e.target.checked);
+            }
+        };
+
+        // ========================================
+        // 초기화
+        // ========================================
+        document.addEventListener('DOMContentLoaded', function() {
+            // 헤더 로드
+            fetch('/header')
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('header-container').innerHTML = html;
+                });
+
+            // 버튼 이벤트 연결
+            const buttons = document.querySelectorAll('.upload-section button');
+            buttons[0].addEventListener('click', () => EventHandlers.handleOrderUpload()); // 발주서.xlsx
+            buttons[1].addEventListener('click', () => EventHandlers.handleForecastUpload()); // 쿠팡 예측.xlsx
+            buttons[2].addEventListener('click', () => ModalManager.openSheetOrderModal()); // 시트 주문
+            buttons[4].addEventListener('click', () => EventHandlers.handleCoupangStock()); // 쿠팡 재고
+
+            // 전체 선택 체크박스
+            document.getElementById('selectAll').addEventListener('change', EventHandlers.handleSelectAll);
+
+            // 모달 외부 클릭 시 닫기
+            document.getElementById('sheetOrderModal').addEventListener('click', (e) => {
+                if (e.target.id === 'sheetOrderModal') {
+                    ModalManager.closeSheetOrderModal();
+                }
+            });
+
+            // 로딩 숨김
+            UIRenderer.showLoading(false);
+        });
+    </script>
+</body>
+</html>
