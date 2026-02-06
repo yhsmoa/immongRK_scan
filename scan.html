@@ -77,6 +77,43 @@
             margin-bottom: 5px;
             font-weight: bold;
         }
+        .box-dropdown {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 18px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        /* 발주서 입력 영역 스타일 */
+        .order-input-area {
+            margin: 20px 0;
+            display: flex;
+            gap: 15px;
+        }
+        .order-input-field {
+            flex: 1;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 18px;
+            text-align: center;
+        }
+        .order-load-btn {
+            flex: 1;
+            padding: 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .order-load-btn:hover {
+            background-color: #45a049;
+        }
+        /* 박스 선택 영역 스타일 */
         .box-selection-area {
             margin: 15px 0;
             padding: 15px;
@@ -84,29 +121,12 @@
             border-radius: 3px;
             background-color: #f5f5f5;
         }
-        .box-selection-title {
-            font-weight: bold;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
         .box-selection-dropdowns {
             display: flex;
             gap: 15px;
         }
         .dropdown-container {
             flex: 1;
-        }
-        .dropdown-label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        .box-dropdown {
-            width: 100%;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 3px;
-            font-size: 18px;
         }
         .input-field {
             padding: 10px;
@@ -402,10 +422,17 @@
             <!-- 바코드 스캔 영역 -->
             <div class="section">
                 <div class="section-title">바코드 스캔 영역</div>
-                
+
+                <!-- 발주서 입력 영역 -->
+                <div class="order-input-area">
+                    <input type="text" id="orderNumber" class="order-input-field" placeholder="발주번호를 입력하세요">
+                    <button class="order-load-btn" onclick="loadOrder()">불러오기</button>
+                </div>
+
                 <!-- 박스 선택 영역 -->
                 <div class="box-selection-area">
                     <div class="box-selection-dropdowns">
+                        <!-- 박스 번호 선택 -->
                         <div class="dropdown-container">
                             <select id="boxNumber" class="box-dropdown">
                                 <option value="">박스 번호 선택</option>
@@ -418,8 +445,31 @@
                                 <option value="BOX7">BOX7</option>
                                 <option value="BOX8">BOX8</option>
                                 <option value="BOX9">BOX9</option>
+                                <option value="BOX10">BOX10</option>
+                                <option value="BOX11">BOX11</option>
+                                <option value="BOX12">BOX12</option>
+                                <option value="BOX13">BOX13</option>
+                                <option value="BOX14">BOX14</option>
+                                <option value="BOX15">BOX15</option>
+                                <option value="BOX16">BOX16</option>
+                                <option value="BOX17">BOX17</option>
+                                <option value="BOX18">BOX18</option>
+                                <option value="BOX19">BOX19</option>
+                                <option value="BOX20">BOX20</option>
+                                <option value="BOX21">BOX21</option>
+                                <option value="BOX22">BOX22</option>
+                                <option value="BOX23">BOX23</option>
+                                <option value="BOX24">BOX24</option>
+                                <option value="BOX25">BOX25</option>
+                                <option value="BOX26">BOX26</option>
+                                <option value="BOX27">BOX27</option>
+                                <option value="BOX28">BOX28</option>
+                                <option value="BOX29">BOX29</option>
+                                <option value="BOX30">BOX30</option>
                             </select>
                         </div>
+
+                        <!-- 박스 크기 선택 -->
                         <div class="dropdown-container">
                             <select id="boxSize" class="box-dropdown">
                                 <option value="">박스 크기 선택</option>
@@ -431,9 +481,11 @@
                             </select>
                         </div>
                     </div>
-                    <div id="currentBoxInfo" class="current-box-info" style="display: none;">
-                        작업 중인 박스: <span id="currentBoxText">선택 안됨</span>
-                    </div>
+                </div>
+
+                <!-- 현재 박스 정보 표시 -->
+                <div id="currentBoxInfo" class="current-box-info" style="display: none;">
+                    작업 중인 박스: <span id="currentBoxText">선택 안됨</span>
                 </div>
 
                 <div class="input-area">
@@ -450,11 +502,7 @@
             <!-- 발주서 영역 -->
             <div class="section">
                 <div class="section-title">발주서 영역</div>
-                <div class="input-area">
-                    <input type="text" id="orderNumber" class="input-field" placeholder="발주번호를 입력하세요">
-                    <button class="scan-btn" onclick="loadOrder()">불러오기</button>
-                </div>
-                
+
                 <!-- 발주서 정보 표시 영역 추가 -->
                 <div id="orderInfo" class="order-info"></div>
                 
@@ -541,6 +589,27 @@
                         <option value="BOX7">BOX7</option>
                         <option value="BOX8">BOX8</option>
                         <option value="BOX9">BOX9</option>
+                        <option value="BOX10">BOX10</option>
+                        <option value="BOX11">BOX11</option>
+                        <option value="BOX12">BOX12</option>
+                        <option value="BOX13">BOX13</option>
+                        <option value="BOX14">BOX14</option>
+                        <option value="BOX15">BOX15</option>
+                        <option value="BOX16">BOX16</option>
+                        <option value="BOX17">BOX17</option>
+                        <option value="BOX18">BOX18</option>
+                        <option value="BOX19">BOX19</option>
+                        <option value="BOX20">BOX20</option>
+                        <option value="BOX21">BOX21</option>
+                        <option value="BOX22">BOX22</option>
+                        <option value="BOX23">BOX23</option>
+                        <option value="BOX24">BOX24</option>
+                        <option value="BOX25">BOX25</option>
+                        <option value="BOX26">BOX26</option>
+                        <option value="BOX27">BOX27</option>
+                        <option value="BOX28">BOX28</option>
+                        <option value="BOX29">BOX29</option>
+                        <option value="BOX30">BOX30</option>
                     </select>
                 </div>
                 <div>
@@ -636,6 +705,39 @@
         let lastScannedBarcode = null;
         let boxInfoMap = new Map(); // 박스 정보를 저장할 맵
 
+        // 박스 드롭다운 업데이트 함수 - 사용 중인 박스에 📦 이모지 표시
+        function updateBoxDropdown() {
+            const boxSelect = document.getElementById('boxNumber');
+            const currentValue = boxSelect.value;
+
+            // 모든 옵션을 다시 생성
+            boxSelect.innerHTML = '<option value="">박스 번호 선택</option>';
+
+            for (let i = 1; i <= 30; i++) {
+                const boxNumber = `BOX${i}`;
+                const option = document.createElement('option');
+                option.value = boxNumber;
+
+                // boxInfoMap에서 해당 박스번호가 사용 중인지 확인
+                let isUsed = false;
+                for (const [key, info] of boxInfoMap.entries()) {
+                    if (info.boxNumber === boxNumber) {
+                        isUsed = true;
+                        break;
+                    }
+                }
+
+                // 사용 중인 박스는 이모지 추가
+                option.textContent = isUsed ? `${boxNumber} 📦` : boxNumber;
+                boxSelect.appendChild(option);
+            }
+
+            // 이전 선택값 복원
+            if (currentValue) {
+                boxSelect.value = currentValue;
+            }
+        }
+
         async function loadOrder() {
             const orderNumber = document.getElementById('orderNumber').value;
             if (!orderNumber) {
@@ -713,7 +815,10 @@
                 
                 // 박스 정보 UI 업데이트
                 updateBoxInfoUI();
-                
+
+                // 박스 드롭다운 업데이트 (이모지 표시)
+                updateBoxDropdown();
+
                 // 박스 선택에 포커스
                 document.getElementById('boxNumber').focus();
             } catch (error) {
@@ -1037,7 +1142,10 @@
                 
                 // 박스 정보 UI 업데이트
                 updateBoxInfoUI();
-                
+
+                // 박스 드롭다운 업데이트 (이모지 표시)
+                updateBoxDropdown();
+
                 // 성공 효과음 재생
                 playSuccessSound();
                 
@@ -1159,6 +1267,9 @@
         // 초기 설정
         document.getElementById('boxNumber').disabled = true;
         document.getElementById('boxSize').disabled = true;
+
+        // 페이지 로드 시 박스 드롭다운 초기화
+        updateBoxDropdown();
         
         // 박스 선택 이벤트 핸들러
         document.getElementById('boxNumber').addEventListener('change', function() {
