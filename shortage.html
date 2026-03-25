@@ -486,10 +486,39 @@
                 <input type="text" id="searchInput" placeholder="SKU, 상품바코드 또는 상품이름 검색">
             </div>
 
+            <!-- ===== 액션 버튼 (항상 표시) ===== -->
+            <div class="action-bar" style="justify-content: space-between;">
+                <!-- 좌측: 기간 필터 + 불러오기 -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="date" class="date-filter" id="startDate" min="2020-01-01" max="2099-12-31">
+                    <span style="color:#999; font-size:10pt;">~</span>
+                    <input type="date" class="date-filter" id="endDate" min="2020-01-01" max="2099-12-31">
+                    <button class="btn btn-load" onclick="loadData()">불러오기</button>
+                </div>
+                <!-- 우측: 초기화 | xlsx업로드 | 입력목록+저장 | 사입복사 -->
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="btn btn-reset" onclick="handleReset()">초기화</button>
+                    <span class="btn-separator"></span>
+                    <button class="btn btn-forecast" onclick="document.getElementById('forecastFileInput').click()">쿠팡주간예상 xlsx</button>
+                    <input type="file" id="forecastFileInput" accept=".xlsx" style="display: none">
+                    <button class="btn btn-order-history" onclick="document.getElementById('orderHistoryFileInput').click()">쿠팡발주내역 xlsx</button>
+                    <input type="file" id="orderHistoryFileInput" accept=".xlsx" style="display: none">
+                    <span class="btn-separator"></span>
+                    <button class="btn btn-input-list" onclick="openInputPanel()">입력목록</button>
+                    <button class="btn btn-save" onclick="handleSave()">저장</button>
+                    <span class="btn-separator"></span>
+                    <button class="btn btn-copy" onclick="handleCopy()">사입복사</button>
+                </div>
+            </div>
+
             <!-- ===== 데이터 영역 ===== -->
-            <div id="loadingArea" class="loading">
+            <div id="loadingArea" class="loading" style="display:none;">
                 <div class="spinner"></div>
                 <p>데이터를 불러오는 중...</p>
+            </div>
+
+            <div id="initArea" class="empty-state">
+                <p>기간을 선택하고 [불러오기] 버튼을 클릭하세요.</p>
             </div>
 
             <div id="emptyArea" class="empty-state" style="display:none;">
@@ -497,30 +526,6 @@
             </div>
 
             <div id="tableArea" style="display:none;">
-                <!-- ===== 액션 버튼 ===== -->
-                <div class="action-bar" style="justify-content: space-between;">
-                    <!-- 좌측: 기간 필터 + 불러오기 -->
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <input type="date" class="date-filter" id="startDate" min="2020-01-01" max="2099-12-31">
-                        <span style="color:#999; font-size:10pt;">~</span>
-                        <input type="date" class="date-filter" id="endDate" min="2020-01-01" max="2099-12-31">
-                        <button class="btn btn-load" onclick="loadData()">불러오기</button>
-                    </div>
-                    <!-- 우측: 초기화 | xlsx업로드 | 입력목록+저장 | 사입복사 -->
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button class="btn btn-reset" onclick="handleReset()">초기화</button>
-                        <span class="btn-separator"></span>
-                        <button class="btn btn-forecast" onclick="document.getElementById('forecastFileInput').click()">쿠팡주간예상 xlsx</button>
-                        <input type="file" id="forecastFileInput" accept=".xlsx" style="display: none">
-                        <button class="btn btn-order-history" onclick="document.getElementById('orderHistoryFileInput').click()">쿠팡발주내역 xlsx</button>
-                        <input type="file" id="orderHistoryFileInput" accept=".xlsx" style="display: none">
-                        <span class="btn-separator"></span>
-                        <button class="btn btn-input-list" onclick="openInputPanel()">입력목록</button>
-                        <button class="btn btn-save" onclick="handleSave()">저장</button>
-                        <span class="btn-separator"></span>
-                        <button class="btn btn-copy" onclick="handleCopy()">사입복사</button>
-                    </div>
-                </div>
 
                 <!-- ===== 테이블 ===== -->
                 <div class="table-container">
@@ -562,7 +567,7 @@
 
         /* ========== 초기화 ========== */
         document.addEventListener('DOMContentLoaded', () => {
-            loadSavedInputs().then(() => loadData());
+            loadSavedInputs();
             // Enter 키로 검색
             document.getElementById('searchInput').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') applyFilter();
@@ -717,6 +722,7 @@
             const emptyArea = document.getElementById('emptyArea');
             const tableArea = document.getElementById('tableArea');
 
+            document.getElementById('initArea').style.display = 'none';
             loadingArea.style.display = 'none';
 
             if (filteredData.length === 0) {
@@ -1114,6 +1120,7 @@
 
         /* ========== UI 헬퍼 ========== */
         function showLoading() {
+            document.getElementById('initArea').style.display = 'none';
             document.getElementById('loadingArea').style.display = '';
             document.getElementById('emptyArea').style.display = 'none';
             document.getElementById('tableArea').style.display = 'none';

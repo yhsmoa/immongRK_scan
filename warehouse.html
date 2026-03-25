@@ -11,15 +11,16 @@
             margin: 0;
             padding: 0;
             background-color: #f5f5f5;
+            font-size: 10pt;
         }
         .wh-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+            width: 100%;
+            padding: 10px 20px;
+            box-sizing: border-box;
         }
         .wh-content {
             background-color: #fff;
-            padding: 20px;
+            padding: 15px 20px;
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
@@ -57,23 +58,37 @@
         }
         .wh-table-container {
             overflow-x: auto;
+            max-height: 80vh;
+            overflow-y: auto;
         }
         .wh-table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 0;
         }
         .wh-table th, .wh-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: center;
+            font-size: 10pt;
+            white-space: nowrap;
         }
         .wh-table th {
-            background-color: #f8f8f8;
-            font-weight: bold;
+            color: #555;
+            font-weight: 600;
+            font-size: 9pt;
+            letter-spacing: 0.3px;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-bottom: 2px solid #333;
+            background-color: #f0f1f3;
+        }
+        .wh-table td {
+            border-bottom: 1px solid #eee;
+            color: #333;
         }
         .wh-table tbody tr:hover {
-            background-color: #f5f5f5;
+            background-color: #f5f7fa;
         }
         .wh-checkbox {
             width: 18px;

@@ -66,23 +66,115 @@
             margin-top: 30px;
         }
         .quick-link {
-            background-color: #f8f8f8;
-            padding: 20px;
-            border-radius: 5px;
+            background-color: #fff;
+            padding: 36px 24px;
+            border-radius: 16px;
             text-align: center;
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 1px solid #f0f0f0;
+            position: relative;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(20px);
+            animation: cardSlideIn 0.45s ease forwards;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            z-index: 0;
+        }
+        /* 물결 레이어 */
+        .quick-link::before,
+        .quick-link::after {
+            content: '';
+            position: absolute;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            border-radius: 40%;
+            transition: top 0.6s ease;
+            z-index: -1;
+        }
+        .quick-link::before {
+            top: 100%;
+            background: var(--wave, rgba(102, 126, 234, 0.08));
+            animation: none;
+        }
+        .quick-link::after {
+            top: 100%;
+            background: var(--wave, rgba(102, 126, 234, 0.05));
+            animation: none;
+        }
+        .quick-link:hover::before {
+            top: 60%;
+            animation: wave 6s linear infinite;
+        }
+        .quick-link:hover::after {
+            top: 65%;
+            animation: wave 8s linear infinite reverse;
+        }
+        /* 마우스 따라다니는 글로우 */
+        .quick-link .glow {
+            position: absolute;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--wave, rgba(102,126,234,0.18)) 0%, transparent 70%);
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -50%);
+            transition: opacity 0.25s ease;
+            z-index: 0;
+        }
+        .quick-link:hover .glow {
+            opacity: 1;
         }
         .quick-link:hover {
-            background-color: #e0e0e0;
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        }
+        .quick-link:active {
+            transform: translateY(0) scale(0.98);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            transition-duration: 0.1s;
         }
         .quick-link h2 {
             color: #333;
             margin-bottom: 10px;
+            font-size: 17px;
+            font-weight: 600;
+            transition: color 0.25s ease;
+            position: relative;
+            z-index: 1;
+        }
+        .quick-link:hover h2 {
+            color: #555;
         }
         .quick-link p {
-            color: #666;
+            color: #aaa;
+            font-size: 13px;
+            margin: 0;
+            line-height: 1.4;
+            position: relative;
+            z-index: 1;
         }
+        @keyframes wave {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes cardSlideIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .quick-links .quick-link:nth-child(1) { animation-delay: 0.05s; }
+        .quick-links .quick-link:nth-child(2) { animation-delay: 0.12s; }
+        .quick-links .quick-link:nth-child(3) { animation-delay: 0.19s; }
+        .row-2 .quick-link:nth-child(1) { animation-delay: 0.26s; }
+        .row-2 .quick-link:nth-child(2) { animation-delay: 0.33s; }
+        .row-2 .quick-link:nth-child(3) { animation-delay: 0.40s; }
+        .row-3 .quick-link:nth-child(1) { animation-delay: 0.47s; }
+        .row-3 .quick-link:nth-child(2) { animation-delay: 0.54s; }
+        .row-3 .quick-link:nth-child(3) { animation-delay: 0.61s; }
     </style>
 </head>
 <body>
@@ -94,43 +186,43 @@
                 <p>발주서 업로드, 조회, 스캔을 한 곳에서 관리하세요</p>
             </div>
             <div class="quick-links">
-                <div class="quick-link" onclick="location.href='/rocket'">
+                <div class="quick-link" style="--wave:rgba(102,126,234,0.10)" onclick="location.href='/rocket'">
                     <h2>발주서 관리</h2>
                     <p>발주서 업로드 및 조회</p>
                 </div>
-                <div class="quick-link" onclick="location.href='/scan'">
+                <div class="quick-link" style="--wave:rgba(240,147,251,0.10)" onclick="location.href='/scan'">
                     <h2>바코드 스캔</h2>
                     <p>상품 바코드 스캔 및 관리</p>
                 </div>
-                <div class="quick-link" onclick="location.href='/shipment'">
+                <div class="quick-link" style="--wave:rgba(79,172,254,0.10)" onclick="location.href='/shipment'">
                     <h2>쉽먼트</h2>
                     <p>스캔된 상품 및 박스 관리</p>
                 </div>
             </div>
-            <div class="quick-links" style="margin-top: 20px;">
-                <div class="quick-link" onclick="location.href='/importChina'">
+            <div class="quick-links row-2" style="margin-top: 20px;">
+                <div class="quick-link" style="--wave:rgba(67,233,123,0.10)" onclick="location.href='/importChina'">
                     <h2>중국입고</h2>
                     <p>중국 입고 상품 관리</p>
                 </div>
-                <div class="quick-link" onclick="location.href='/inventory'">
+                <div class="quick-link" style="--wave:rgba(250,112,154,0.10)" onclick="location.href='/inventory'">
                     <h2>재고관리</h2>
                     <p>재고 관리 및 조회</p>
                 </div>
-                <div class="quick-link" onclick="location.href='/shortage'">
+                <div class="quick-link" style="--wave:rgba(161,140,209,0.10)" onclick="location.href='/shortage'">
                     <h2>상품부족</h2>
                     <p>부족 상품 조회 및 관리</p>
                 </div>
             </div>
-            <div class="quick-links" style="margin-top: 20px;">
-                <div class="quick-link" onclick="location.href='/salesdata'">
+            <div class="quick-links row-3" style="margin-top: 20px;">
+                <div class="quick-link" style="--wave:rgba(255,158,159,0.10)" onclick="location.href='/salesdata'">
                     <h2>판매데이터</h2>
                     <p>판매 데이터 조회 및 분석</p>
                 </div>
-                <div class="quick-link" onclick="location.href='/warehouse'">
+                <div class="quick-link" style="--wave:rgba(255,154,158,0.10)" onclick="location.href='/warehouse'">
                     <h2>쿠팡 물류센터</h2>
                     <p>물류센터 재고 관리</p>
                 </div>
-                <div class="quick-link" onclick="location.href='/upcoming'">
+                <div class="quick-link" style="--wave:rgba(106,17,203,0.10)" onclick="location.href='/upcoming'">
                     <h2>생성예정</h2>
                     <p>생성 예정 기능</p>
                 </div>
@@ -145,6 +237,19 @@
             .then(html => {
                 document.getElementById('header-container').innerHTML = html;
             });
+
+        // 마우스 따라다니는 글로우 효과
+        document.querySelectorAll('.quick-link').forEach(card => {
+            const glow = document.createElement('div');
+            glow.className = 'glow';
+            card.appendChild(glow);
+
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                glow.style.left = (e.clientX - rect.left) + 'px';
+                glow.style.top = (e.clientY - rect.top) + 'px';
+            });
+        });
     </script>
 </body>
 </html>
