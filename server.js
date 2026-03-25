@@ -21,7 +21,6 @@ const XlsxPopulate = require('xlsx-populate');
 const fs = require('fs');
 const ChinaImport = require('./models/chinaImport');
 const { createClient } = require('@supabase/supabase-js');
-const libre = require('libreoffice-convert');
 
 const app = express();
 const server = http.createServer(app);
@@ -68,9 +67,9 @@ app.get('/shipment', (req, res) => {
   res.sendFile(path.join(__dirname, 'shipment.html'));
 });
 
-// ✅ Word to PDF 페이지 라우트 추가
-app.get('/wordtopdf', (req, res) => {
-  res.sendFile(path.join(__dirname, 'wordtopdf.html'));
+// ✅ 상품부족 페이지 라우트 추가
+app.get('/shortage', (req, res) => {
+  res.sendFile(path.join(__dirname, 'shortage.html'));
 });
 
 // ✅ 판매데이터 페이지 라우트 추가
@@ -2942,46 +2941,573 @@ app.post('/api/neworders/register', async (req, res) => {
     }
 });
 
-// Word to PDF 변환 API
-const wordUpload = multer({
-    storage: multer.memoryStorage(),
-    fileFilter: (req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        if (ext !== '.doc' && ext !== '.docx') {
-            return cb(new Error('Word 파일만 업로드 가능합니다.'));
+// ✅ 상품부족 API - 바코드 기준 발주수량 vs 스캔수량 부족 데이터 조회
+app.get('/api/shortage', async (req, res) => {
+    try {
+        // 0단계: 기간 필터 파라미터 파싱
+        const { startDate, endDate } = req.query;
+        const filterStart = startDate ? new Date(startDate) : null;
+        const filterEnd = endDate ? new Date(endDate + 'T23:59:59') : null;
+
+        // 날짜 필터 함수 (발주등록일시 String → Date 변환 후 범위 체크)
+        function isInDateRange(product) {
+            if (!filterStart && !filterEnd) return true;
+            const regDateStr = product.발주등록일시;
+            if (!regDateStr) return !filterStart && !filterEnd ? true : false;
+            const regDate = new Date(regDateStr);
+            if (isNaN(regDate.getTime())) return false;
+            if (filterStart && regDate < filterStart) return false;
+            if (filterEnd && regDate > filterEnd) return false;
+            return true;
         }
-        cb(null, true);
+
+        // 1단계: Orders + Inventory를 병렬로 조회
+        const [orders, inventoryItems] = await Promise.all([
+            Order.find().lean(),
+            Inventory.find({}, { barcode: 1, skuId: 1, _id: 0 }).lean()
+        ]);
+
+        // barcode → skuId 매핑
+        const barcodeToSku = new Map();
+        inventoryItems.forEach(item => {
+            if (item.barcode && item.skuId) {
+                barcodeToSku.set(item.barcode, item.skuId);
+            }
+        });
+
+        // 2단계: 상품바코드 기준으로 그룹화 (기간 필터 적용)
+        const barcodeMap = new Map();
+
+        orders.forEach(orderObj => {
+            const processedBarcodes = new Set();
+
+            // 박스정보 없는 원본 상품만 대상 (중복 방지 - /api/orders와 동일한 로직)
+            orderObj.상품정보.filter(p => !p.박스정보 && isInDateRange(p)).forEach(product => {
+                const barcode = product.상품바코드;
+                if (!barcode || processedBarcodes.has(barcode)) return;
+                processedBarcodes.add(barcode);
+
+                if (barcodeMap.has(barcode)) {
+                    const existing = barcodeMap.get(barcode);
+                    existing.총발주수량 += Number(product.발주수량) || 0;
+                    existing.총스캔수량 += Number(product.스캔수량) || 0;
+                    if (!existing.발주번호목록.includes(orderObj.발주번호)) {
+                        existing.발주번호목록.push(orderObj.발주번호);
+                    }
+                    if (orderObj.물류센터 && !existing.물류센터목록.includes(orderObj.물류센터)) {
+                        existing.물류센터목록.push(orderObj.물류센터);
+                    }
+                } else {
+                    barcodeMap.set(barcode, {
+                        상품바코드: barcode,
+                        상품번호: product.상품번호 || '',
+                        상품이름: product.상품이름 || '',
+                        총발주수량: Number(product.발주수량) || 0,
+                        총스캔수량: Number(product.스캔수량) || 0,
+                        발주번호목록: [orderObj.발주번호],
+                        물류센터목록: orderObj.물류센터 ? [orderObj.물류센터] : []
+                    });
+                }
+            });
+
+            // 원본이 없는 바코드 처리 (박스정보만 있는 경우, 기간 필터 적용)
+            orderObj.상품정보.filter(p => isInDateRange(p)).forEach(product => {
+                const barcode = product.상품바코드;
+                if (!barcode || processedBarcodes.has(barcode)) return;
+                processedBarcodes.add(barcode);
+
+                if (barcodeMap.has(barcode)) {
+                    const existing = barcodeMap.get(barcode);
+                    existing.총발주수량 += Number(product.발주수량) || 0;
+                    existing.총스캔수량 += Number(product.스캔수량) || 0;
+                    if (!existing.발주번호목록.includes(orderObj.발주번호)) {
+                        existing.발주번호목록.push(orderObj.발주번호);
+                    }
+                    if (orderObj.물류센터 && !existing.물류센터목록.includes(orderObj.물류센터)) {
+                        existing.물류센터목록.push(orderObj.물류센터);
+                    }
+                } else {
+                    barcodeMap.set(barcode, {
+                        상품바코드: barcode,
+                        상품번호: product.상품번호 || '',
+                        상품이름: product.상품이름 || '',
+                        총발주수량: Number(product.발주수량) || 0,
+                        총스캔수량: Number(product.스캔수량) || 0,
+                        발주번호목록: [orderObj.발주번호],
+                        물류센터목록: orderObj.물류센터 ? [orderObj.물류센터] : []
+                    });
+                }
+            });
+        });
+
+        // 3단계: 부족수량 계산 + SKU 수집 (부족수량 > 0만)
+        const shortageList = [];
+        const skuSet = new Set();
+
+        barcodeMap.forEach(item => {
+            const 부족수량 = item.총발주수량 - item.총스캔수량;
+            if (부족수량 > 0) {
+                const sku = barcodeToSku.get(item.상품바코드) || '';
+                if (sku) skuSet.add(sku);
+
+                shortageList.push({
+                    ...item,
+                    부족수량,
+                    부족률: item.총발주수량 > 0 ? Math.round((부족수량 / item.총발주수량) * 100 * 10) / 10 : 0,
+                    skuId: sku
+                });
+            }
+        });
+
+        // 4단계: 필요한 SKU만 Supabase에서 forecast 조회 (수백건만 조회)
+        const forecastMap = new Map();
+        const skuArray = [...skuSet];
+
+        if (skuArray.length > 0) {
+            try {
+                // Supabase .in() 은 URL 길이 제한이 있으므로 200개씩 배치 조회
+                const BATCH = 200;
+                for (let i = 0; i < skuArray.length; i += BATCH) {
+                    const batch = skuArray.slice(i, i + BATCH);
+                    const { data: forecastData, error: forecastError } = await supabase
+                        .from('coupang_weekly_forecast')
+                        .select('sku, forecast_0w, forecast_2w')
+                        .in('sku', batch);
+
+                    if (forecastError) {
+                        console.error('Supabase forecast 조회 오류:', forecastError);
+                        break;
+                    }
+
+                    if (forecastData) {
+                        forecastData.forEach(item => {
+                            forecastMap.set(item.sku, {
+                                cForecast: item.forecast_0w,
+                                cForecast2W: item.forecast_2w
+                            });
+                        });
+                    }
+                }
+            } catch (forecastErr) {
+                console.error('주간예상 데이터 조회 실패 (무시):', forecastErr);
+            }
+        }
+
+        // 5단계: forecast 데이터 병합
+        shortageList.forEach(item => {
+            const forecast = forecastMap.get(item.skuId) || {};
+            item.cForecast = forecast.cForecast || 0;
+            item.cForecast2W = forecast.cForecast2W || 0;
+        });
+
+        // 6단계: 발주내역 기반 14Ds/30Ds/60Ds/90Ds 집계
+        const allBarcodes = shortageList.map(i => i.상품바코드).filter(Boolean);
+        const now = new Date();
+        const cutoff14 = new Date(now); cutoff14.setDate(cutoff14.getDate() - 14);
+        const cutoff30 = new Date(now); cutoff30.setDate(cutoff30.getDate() - 30);
+        const cutoff60 = new Date(now); cutoff60.setDate(cutoff60.getDate() - 60);
+        const cutoff90 = new Date(now); cutoff90.setDate(cutoff90.getDate() - 90);
+
+        const historyMap = new Map(); // barcode → [{qty, date}]
+        if (allBarcodes.length > 0) {
+            try {
+                const BATCH = 50; // 배치당 바코드 수 줄여서 1000건 limit 방지
+                for (let i = 0; i < allBarcodes.length; i += BATCH) {
+                    const batch = allBarcodes.slice(i, i + BATCH);
+                    // 페이지네이션으로 전체 조회
+                    let from = 0;
+                    const PAGE = 1000;
+                    while (true) {
+                        const { data: histData, error: histError } = await supabase
+                            .from('coupang_order_history')
+                            .select('sku_barcode, order_qty, order_date')
+                            .in('sku_barcode', batch)
+                            .gte('order_date', cutoff90.toISOString())
+                            .range(from, from + PAGE - 1);
+
+                        if (histError) {
+                            console.error('Supabase 발주내역 조회 오류:', histError);
+                            break;
+                        }
+                        if (!histData || histData.length === 0) break;
+
+                        histData.forEach(r => {
+                            if (!historyMap.has(r.sku_barcode)) {
+                                historyMap.set(r.sku_barcode, []);
+                            }
+                            historyMap.get(r.sku_barcode).push({
+                                qty: r.order_qty || 0,
+                                date: new Date(r.order_date)
+                            });
+                        });
+
+                        if (histData.length < PAGE) break;
+                        from += PAGE;
+                    }
+                }
+            } catch (histErr) {
+                console.error('발주내역 집계 실패 (무시):', histErr);
+            }
+        }
+
+        shortageList.forEach(item => {
+            const records = historyMap.get(item.상품바코드) || [];
+            item.ds14 = records.filter(r => r.date >= cutoff14).reduce((s, r) => s + r.qty, 0);
+            item.ds30 = records.filter(r => r.date >= cutoff30).reduce((s, r) => s + r.qty, 0);
+            item.ds60 = records.filter(r => r.date >= cutoff60).reduce((s, r) => s + r.qty, 0);
+            item.ds90 = records.reduce((s, r) => s + r.qty, 0);
+        });
+
+        // 부족수량 내림차순 정렬
+        shortageList.sort((a, b) => b.부족수량 - a.부족수량);
+
+        res.json(shortageList);
+    } catch (error) {
+        console.error('상품부족 데이터 조회 오류:', error);
+        res.status(500).json({ error: '상품부족 데이터를 불러오는데 실패했습니다.' });
     }
 });
 
-app.post('/api/convert-word-to-pdf', wordUpload.single('file'), async (req, res) => {
+// ✅ 상품부족 엑셀 내보내기 API
+app.post('/api/shortage/export', async (req, res) => {
+    try {
+        const { data } = req.body;
+        if (!data || !data.length) {
+            return res.status(400).json({ error: '내보낼 데이터가 없습니다.' });
+        }
+
+        const workbook = await XlsxPopulate.fromBlankAsync();
+        const sheet = workbook.sheet(0).name('상품부족');
+
+        // 헤더
+        const headers = ['No.', '상품바코드', '상품이름', '총 발주수량', '총 스캔수량', '부족수량', '부족률(%)', '비고'];
+        headers.forEach((header, i) => {
+            sheet.cell(1, i + 1).value(header).style({
+                bold: true,
+                fill: 'f8f8f8',
+                border: true,
+                horizontalAlignment: 'center'
+            });
+        });
+
+        // 데이터
+        data.forEach((item, rowIdx) => {
+            const row = rowIdx + 2;
+            sheet.cell(row, 1).value(rowIdx + 1);
+            sheet.cell(row, 2).value(item.상품바코드 || '');
+            sheet.cell(row, 3).value(item.상품이름 || '');
+            sheet.cell(row, 4).value(item.총발주수량 || 0);
+            sheet.cell(row, 5).value(item.총스캔수량 || 0);
+            sheet.cell(row, 6).value(item.부족수량 || 0);
+            sheet.cell(row, 7).value(item.부족률 || 0);
+            sheet.cell(row, 8).value('');
+
+            // 셀 스타일
+            for (let col = 1; col <= 8; col++) {
+                sheet.cell(row, col).style({ border: true });
+            }
+        });
+
+        // 열 너비 설정
+        sheet.column(1).width(6);
+        sheet.column(2).width(18);
+        sheet.column(3).width(30);
+        sheet.column(4).width(14);
+        sheet.column(5).width(14);
+        sheet.column(6).width(12);
+        sheet.column(7).width(12);
+        sheet.column(8).width(20);
+
+        const buffer = await workbook.outputAsync();
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent('상품부족_' + new Date().toISOString().slice(0, 10) + '.xlsx')}"` );
+        res.send(buffer);
+    } catch (error) {
+        console.error('상품부족 엑셀 내보내기 오류:', error);
+        res.status(500).json({ error: '엑셀 내보내기에 실패했습니다.' });
+    }
+});
+
+// ==================== 쿠팡주간예상 업로드 API ====================
+// Supabase 테이블 생성 SQL (SQL Editor에서 실행):
+// CREATE TABLE coupang_weekly_forecast (
+//   id uuid default gen_random_uuid() primary key,
+//   vendor_id text,
+//   sku text not null,
+//   sku_name text,
+//   forecast_0w numeric default 0,
+//   forecast_1w numeric default 0,
+//   forecast_2w numeric default 0,
+//   forecast_3w numeric default 0,
+//   forecast_4w numeric default 0,
+//   created_at timestamptz default now()
+// );
+// CREATE INDEX idx_cwf_sku ON coupang_weekly_forecast(sku);
+
+app.post('/api/shortage/forecast/upload', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
         }
 
-        const wordBuffer = req.file.buffer;
-        const ext = path.extname(req.file.originalname).toLowerCase();
+        const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+        const worksheet = workbook.Sheets['Sheet 1'];
+        if (!worksheet) {
+            return res.status(400).json({ error: "'Sheet 1' 시트를 찾을 수 없습니다." });
+        }
 
-        // libreoffice-convert를 사용하여 PDF로 변환
-        libre.convert(wordBuffer, ext, undefined, (err, pdfBuffer) => {
-            if (err) {
-                console.error('PDF 변환 오류:', err);
-                return res.status(500).json({ error: 'PDF 변환에 실패했습니다.' });
+        const data = xlsx.utils.sheet_to_json(worksheet, { header: 'A', defval: '' });
+
+        if (data.length < 4) {
+            return res.status(400).json({ error: '데이터가 부족합니다. 최소 4행이 필요합니다.' });
+        }
+
+        // Row 4+ (index 3+): 실제 데이터
+        const dataRows = data.slice(3);
+        const records = [];
+
+        for (const row of dataRows) {
+            const sku = String(row['B'] || '').trim();
+            if (!sku) continue;
+
+            records.push({
+                vendor_id: String(row['A'] || '').trim(),
+                sku: sku,
+                sku_name: String(row['C'] || '').trim(),
+                forecast_0w: Number(row['D']) || 0,
+                forecast_1w: Number(row['E']) || 0,
+                forecast_2w: Number(row['F']) || 0,
+                forecast_3w: Number(row['G']) || 0,
+                forecast_4w: Number(row['H']) || 0,
+            });
+        }
+
+        if (records.length === 0) {
+            return res.status(400).json({ error: '유효한 데이터가 없습니다.' });
+        }
+
+        console.log(`쿠팡주간예상 업로드 시작: ${records.length}건`);
+
+        // 1단계: 기존 데이터 전체 삭제
+        const { error: deleteError } = await supabase
+            .from('coupang_weekly_forecast')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+
+        if (deleteError) {
+            console.error('Supabase 삭제 오류:', deleteError);
+            throw deleteError;
+        }
+
+        // 2단계: 배치 INSERT (1000건씩)
+        const BATCH_SIZE = 1000;
+        let insertedCount = 0;
+
+        for (let i = 0; i < records.length; i += BATCH_SIZE) {
+            const batch = records.slice(i, i + BATCH_SIZE);
+            const { error: insertError } = await supabase
+                .from('coupang_weekly_forecast')
+                .insert(batch);
+
+            if (insertError) {
+                console.error(`Supabase 삽입 오류 (batch ${Math.floor(i / BATCH_SIZE) + 1}):`, insertError);
+                throw insertError;
             }
+            insertedCount += batch.length;
+            console.log(`배치 ${Math.floor(i / BATCH_SIZE) + 1} 완료: ${insertedCount}/${records.length}`);
+        }
 
-            // PDF 파일명 생성
-            const pdfFileName = req.file.originalname.replace(/\.(doc|docx)$/i, '.pdf');
+        console.log(`쿠팡주간예상 업로드 완료: ${insertedCount}건`);
 
-            // PDF 파일 전송
-            res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(pdfFileName)}"`);
-            res.send(pdfBuffer);
+        res.json({
+            success: true,
+            message: `${insertedCount}건의 예측 데이터가 업로드되었습니다.`,
+            count: insertedCount
+        });
+    } catch (error) {
+        console.error('쿠팡주간예상 업로드 오류:', error);
+        res.status(500).json({ error: '예측 데이터 업로드에 실패했습니다.', detail: error.message });
+    }
+});
+
+// ==================== 쿠팡발주내역 업로드 API ====================
+// Supabase 테이블 생성 SQL (SQL Editor에서 실행):
+// CREATE TABLE coupang_order_history (
+//   id               uuid        default gen_random_uuid() primary key,
+//   order_number     text        not null,       -- A: 발주번호
+//   order_type       text,                       -- B: 발주유형
+//   order_status     text,                       -- C: 발주현황
+//   sku_id           text,                       -- D: SKU ID
+//   sku_name         text,                       -- E: SKU 이름
+//   sku_barcode      text        not null,       -- F: SKU Barcode
+//   logistics_center text,                       -- G: 물류센터
+//   scheduled_date   text,                       -- H: 입고예정일
+//   order_date       timestamptz,                -- I: 발주일
+//   order_qty        integer     default 0,      -- J: 발주수량
+//   confirmed_qty    integer     default 0,      -- K: 확정수량
+//   received_qty     integer     default 0,      -- L: 입고수량
+//   purchase_type    text,                       -- M: 매입유형
+//   immunity         text,                       -- N: 면역여부
+//   production_year  text,                       -- O: 생산년도
+//   manufacture_date text,                       -- P: 제조일자
+//   expiry_date      text,                       -- Q: 유통(소비)기한
+//   purchase_price   numeric     default 0,      -- R: 매입가
+//   supply_price     numeric     default 0,      -- S: 공급가
+//   vat              numeric     default 0,      -- T: 부가세
+//   total_purchase_amount numeric default 0,     -- U: 총발주 매입금
+//   receiving_amount numeric     default 0,      -- V: 입고금액
+//   xdock            text,                       -- W: Xdock
+//   created_at       timestamptz default now(),
+//   UNIQUE(order_number, sku_barcode)
+// );
+// CREATE INDEX idx_coh_sku_barcode ON coupang_order_history(sku_barcode);
+// CREATE INDEX idx_coh_order_date  ON coupang_order_history(order_date);
+
+app.post('/api/shortage/order-history/batch', async (req, res) => {
+    try {
+        const { rows } = req.body;
+        if (!rows || !Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ error: '데이터가 없습니다.' });
+        }
+
+        const { error } = await supabase
+            .from('coupang_order_history')
+            .upsert(rows, {
+                onConflict: 'order_number,sku_barcode',
+                ignoreDuplicates: true
+            });
+
+        if (error) {
+            console.error('Supabase 발주내역 삽입 오류:', error);
+            throw error;
+        }
+
+        res.json({ success: true, sent: rows.length });
+    } catch (error) {
+        console.error('발주내역 배치 저장 오류:', error);
+        res.status(500).json({ error: '발주내역 저장에 실패했습니다.', detail: error.message });
+    }
+});
+
+// 발주내역 총 건수 조회
+app.get('/api/shortage/order-history/count', async (req, res) => {
+    try {
+        const { count, error } = await supabase
+            .from('coupang_order_history')
+            .select('*', { count: 'exact', head: true });
+
+        if (error) throw error;
+        res.json({ count: count || 0 });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==================== 바코드별 월별 발주량 조회 API ====================
+app.get('/api/shortage/order-history/monthly/:barcode', async (req, res) => {
+    try {
+        const { barcode } = req.params;
+        if (!barcode) return res.status(400).json({ error: '바코드가 필요합니다.' });
+
+        // 전체 데이터 조회 (Supabase 기본 limit 1000 → 페이지네이션)
+        let allData = [];
+        let from = 0;
+        const PAGE = 1000;
+        while (true) {
+            const { data, error } = await supabase
+                .from('coupang_order_history')
+                .select('order_date, order_qty')
+                .eq('sku_barcode', barcode)
+                .not('order_date', 'is', null)
+                .order('order_date', { ascending: true })
+                .range(from, from + PAGE - 1);
+
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < PAGE) break;
+            from += PAGE;
+        }
+
+        // 월별 집계 (YYYY-MM 기준)
+        const monthlyMap = new Map();
+        allData.forEach(r => {
+            const d = new Date(r.order_date);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            monthlyMap.set(key, (monthlyMap.get(key) || 0) + (r.order_qty || 0));
         });
 
+        // 발주수량이 있는 월만 반환
+        const result = Array.from(monthlyMap.entries())
+            .filter(([, qty]) => qty > 0)
+            .map(([month, qty]) => ({ month, qty }));
+
+        res.json(result);
     } catch (error) {
-        console.error('Word to PDF 변환 오류:', error);
-        res.status(500).json({ error: '파일 변환 중 오류가 발생했습니다.' });
+        console.error('월별 발주량 조회 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ==================== 상품부족 입력값 임시저장 API ====================
+
+// GET: 저장된 입력값 전체 조회
+app.get('/api/shortage/save-temp', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('coupang_order_save_temp')
+            .select('barcode, qty');
+        if (error) throw error;
+        res.json(data || []);
+    } catch (error) {
+        console.error('임시저장 조회 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST: 입력값 일괄 저장 (DELETE-all + INSERT)
+app.post('/api/shortage/save-temp', async (req, res) => {
+    try {
+        const { items } = req.body;
+        if (!items || !Array.isArray(items)) {
+            return res.status(400).json({ error: '저장할 데이터가 없습니다.' });
+        }
+
+        // 1단계: 기존 데이터 전체 삭제
+        const { error: deleteError } = await supabase
+            .from('coupang_order_save_temp')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+        if (deleteError) throw deleteError;
+
+        // 2단계: 새 데이터 INSERT
+        if (items.length > 0) {
+            const { error: insertError } = await supabase
+                .from('coupang_order_save_temp')
+                .insert(items);
+            if (insertError) throw insertError;
+        }
+
+        res.json({ success: true, count: items.length });
+    } catch (error) {
+        console.error('임시저장 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE: 입력값 전체 초기화
+app.delete('/api/shortage/save-temp', async (req, res) => {
+    try {
+        const { error } = await supabase
+            .from('coupang_order_save_temp')
+            .delete()
+            .neq('id', '00000000-0000-0000-0000-000000000000');
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (error) {
+        console.error('임시저장 초기화 오류:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
