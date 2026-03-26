@@ -3113,7 +3113,7 @@ app.get('/api/shortage', async (req, res) => {
                     while (true) {
                         const { data: yiwuData, error: yiwuError } = await supabase
                             .from('yiwu_br_orders')
-                            .select('barcode, order_qty')
+                            .select('barcode, order_qty, cancel_qty')
                             .in('barcode', batch)
                             .range(from, from + PAGE - 1);
                         if (yiwuError) {
@@ -3122,7 +3122,7 @@ app.get('/api/shortage', async (req, res) => {
                         }
                         if (!yiwuData || yiwuData.length === 0) break;
                         yiwuData.forEach(r => {
-                            yiwuMap.set(r.barcode, (yiwuMap.get(r.barcode) || 0) + (r.order_qty || 0));
+                            yiwuMap.set(r.barcode, (yiwuMap.get(r.barcode) || 0) + (r.order_qty || 0) - (r.cancel_qty || 0));
                         });
                         if (yiwuData.length < PAGE) break;
                         from += PAGE;
