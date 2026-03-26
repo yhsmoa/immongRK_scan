@@ -752,9 +752,9 @@
                 const baseA = getBaseName(a.상품이름);
                 const baseB = getBaseName(b.상품이름);
 
-                // 같은 그룹: 부족수량 내림차순
+                // 같은 그룹: 상품이름 전체 오름차순
                 if (baseA === baseB) {
-                    return (b.부족수량 || 0) - (a.부족수량 || 0);
+                    return (a.상품이름 || '').localeCompare(b.상품이름 || '');
                 }
 
                 // 다른 그룹: 대표값 기준 정렬
