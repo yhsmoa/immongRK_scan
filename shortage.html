@@ -572,6 +572,23 @@
             document.getElementById('searchInput').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') applyFilter();
             });
+            // 시작일 입력 완료 시 → 종료일로 자동 포커스 (디바운스)
+            let startJumpTimer = null;
+            let startJumped = false;
+            const startEl = document.getElementById('startDate');
+            const endEl = document.getElementById('endDate');
+            startEl.addEventListener('input', () => {
+                clearTimeout(startJumpTimer);
+                if (startEl.value && !startJumped) {
+                    startJumpTimer = setTimeout(() => {
+                        if (document.activeElement === startEl) {
+                            startJumped = true;
+                            endEl.focus();
+                        }
+                    }, 500);
+                }
+            });
+            startEl.addEventListener('focus', () => { startJumped = false; });
         });
 
         /* ========== 임시저장 데이터 로드 ========== */
@@ -648,13 +665,29 @@
         function sortData() {
             const { key, order } = currentSort;
 
-            // 그룹별 대표값 (최대 부족수량) 계산
-            const groupMax = new Map();
+            // 그룹별 대표값 계산
+            const groupMax = new Map();     // 부족수량 max (기본)
+            const groupSortVal = new Map(); // 정렬키 대표값
+
             filteredData.forEach(item => {
                 const base = getBaseName(item.상품이름);
-                const val = item.부족수량 || 0;
-                if (!groupMax.has(base) || val > groupMax.get(base)) {
-                    groupMax.set(base, val);
+                const shortage = item.부족수량 || 0;
+                if (!groupMax.has(base) || shortage > groupMax.get(base)) {
+                    groupMax.set(base, shortage);
+                }
+                // 정렬키 대표값: 숫자→최대, 문자열→사전순 최소
+                if (key !== '부족수량' && key !== 'index') {
+                    const val = item[key];
+                    if (!groupSortVal.has(base)) {
+                        groupSortVal.set(base, val);
+                    } else {
+                        const cur = groupSortVal.get(base);
+                        if (typeof val === 'string') {
+                            if ((val || '').localeCompare(cur || '') < 0) groupSortVal.set(base, val);
+                        } else {
+                            if ((Number(val) || 0) > (Number(cur) || 0)) groupSortVal.set(base, val);
+                        }
+                    }
                 }
             });
 
@@ -662,28 +695,29 @@
                 const baseA = getBaseName(a.상품이름);
                 const baseB = getBaseName(b.상품이름);
 
-                // 같은 그룹 내부: 부족수량 내림차순
+                // 같은 그룹: 부족수량 내림차순
                 if (baseA === baseB) {
                     return (b.부족수량 || 0) - (a.부족수량 || 0);
                 }
 
-                // 그룹 간: 대표값 기준 정렬
+                // 다른 그룹: 대표값 기준 정렬
+                let cmp = 0;
                 if (key === '부족수량' || key === 'index') {
-                    const maxA = groupMax.get(baseA) || 0;
-                    const maxB = groupMax.get(baseB) || 0;
-                    return order === 'asc' ? maxA - maxB : maxB - maxA;
+                    cmp = (groupMax.get(baseA) || 0) - (groupMax.get(baseB) || 0);
+                    cmp = order === 'asc' ? cmp : -cmp;
+                } else {
+                    const valA = groupSortVal.get(baseA);
+                    const valB = groupSortVal.get(baseB);
+                    if (typeof valA === 'string' || typeof valB === 'string') {
+                        cmp = (valA || '').localeCompare(valB || '');
+                        cmp = order === 'asc' ? cmp : -cmp;
+                    } else {
+                        cmp = (Number(valA) || 0) - (Number(valB) || 0);
+                        cmp = order === 'asc' ? cmp : -cmp;
+                    }
                 }
-
-                // 기타 컬럼 정렬
-                let valA = a[key], valB = b[key];
-                if (typeof valA === 'string') {
-                    return order === 'asc'
-                        ? (valA || '').localeCompare(valB || '')
-                        : (valB || '').localeCompare(valA || '');
-                }
-                valA = Number(valA) || 0;
-                valB = Number(valB) || 0;
-                return order === 'asc' ? valA - valB : valB - valA;
+                // 동률이면 그룹명으로 안정 정렬 (그룹 분리 방지)
+                return cmp !== 0 ? cmp : baseA.localeCompare(baseB);
             });
         }
 
