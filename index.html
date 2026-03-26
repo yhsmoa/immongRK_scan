@@ -9,7 +9,7 @@
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f5f5f5;
+            background-color: #f0f2f5;
             font-size: 10pt;
         }
         .container {
@@ -18,139 +18,167 @@
             padding: 20px;
         }
         .content {
-            background-color: #fff;
             padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .welcome-message {
             text-align: center;
             margin-bottom: 30px;
         }
         .welcome-message h1 {
-            color: #333;
-            margin-bottom: 10px;
+            color: #1a1a2e;
+            margin-bottom: 8px;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
         }
         .welcome-message p {
-            color: #666;
-            font-size: 18px;
+            color: #888;
+            font-size: 14px;
         }
         .quick-links {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 20px;
-            margin-top: 30px;
+            margin-top: 24px;
         }
+
+        /* ===== 카드 기본 ===== */
         .quick-link {
-            background-color: #fff;
-            padding: 36px 24px;
-            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 40px 24px 32px;
+            border-radius: 20px;
             text-align: center;
             cursor: pointer;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            border: 1px solid #f0f0f0;
+            border: 1px solid rgba(255, 255, 255, 0.5);
             position: relative;
             overflow: hidden;
-            opacity: 0;
-            transform: translateY(20px);
-            animation: cardSlideIn 0.45s ease forwards;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
             z-index: 0;
+            box-shadow:
+                0 1px 2px rgba(0,0,0,0.04),
+                0 4px 16px rgba(0,0,0,0.03);
+            transition: box-shadow 0.4s ease;
+            transform-style: preserve-3d;
+            will-change: transform;
+            /* 슬라이드 인 */
+            opacity: 0;
+            transform: translateY(24px);
+            animation: cardIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        /* 물결 레이어 */
-        .quick-link::before,
+
+        /* ===== 쉬머 스윕 (빛 반사) ===== */
         .quick-link::after {
             content: '';
             position: absolute;
-            left: -50%;
-            width: 200%;
+            top: -50%; left: -60%;
+            width: 40%;
             height: 200%;
-            border-radius: 40%;
-            transition: top 0.6s ease;
-            z-index: -1;
-        }
-        .quick-link::before {
-            top: 100%;
-            background: var(--wave, rgba(102, 126, 234, 0.08));
-            animation: none;
-        }
-        .quick-link::after {
-            top: 100%;
-            background: var(--wave, rgba(102, 126, 234, 0.05));
-            animation: none;
-        }
-        .quick-link:hover::before {
-            top: 60%;
-            animation: wave 6s linear infinite;
+            background: linear-gradient(
+                105deg,
+                transparent 40%,
+                rgba(255,255,255,0.6) 45%,
+                rgba(255,255,255,0.9) 50%,
+                rgba(255,255,255,0.6) 55%,
+                transparent 60%
+            );
+            transform: translateX(-100%);
+            transition: none;
+            z-index: 2;
+            pointer-events: none;
         }
         .quick-link:hover::after {
-            top: 65%;
-            animation: wave 8s linear infinite reverse;
+            transform: translateX(420%);
+            transition: transform 0.7s ease;
         }
-        /* 마우스 따라다니는 글로우 */
-        .quick-link .glow {
+
+        /* ===== 호버 그림자 ===== */
+        .quick-link:hover {
+            box-shadow:
+                0 8px 32px var(--shadow, rgba(102,126,234,0.18)),
+                0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        /* ===== 클릭 ===== */
+        .quick-link:active {
+            transition-duration: 0.08s;
+        }
+
+        /* ===== 스포트라이트 (마우스 추적) ===== */
+        .quick-link .spotlight {
             position: absolute;
-            width: 180px;
-            height: 180px;
+            width: 200px;
+            height: 200px;
             border-radius: 50%;
-            background: radial-gradient(circle, var(--wave, rgba(102,126,234,0.18)) 0%, transparent 70%);
+            background: radial-gradient(
+                circle,
+                var(--glow, rgba(102,126,234,0.15)) 0%,
+                transparent 70%
+            );
             pointer-events: none;
             opacity: 0;
             transform: translate(-50%, -50%);
-            transition: opacity 0.25s ease;
-            z-index: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1;
         }
-        .quick-link:hover .glow {
+        .quick-link:hover .spotlight {
             opacity: 1;
         }
-        .quick-link:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.08);
-        }
-        .quick-link:active {
-            transform: translateY(0) scale(0.98);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-            transition-duration: 0.1s;
-        }
-        .quick-link h2 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 17px;
-            font-weight: 600;
-            transition: color 0.25s ease;
+
+        /* ===== 아이콘 ===== */
+        .card-icon {
+            font-size: 32px;
+            margin-bottom: 14px;
+            display: block;
             position: relative;
-            z-index: 1;
+            z-index: 3;
+            transition: transform 0.3s ease;
         }
-        .quick-link:hover h2 {
-            color: #555;
+        .quick-link:hover .card-icon {
+            transform: translateY(-2px) scale(1.08);
+        }
+
+        /* ===== 텍스트 ===== */
+        .quick-link h2 {
+            color: #1a1a2e;
+            margin-bottom: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            position: relative;
+            z-index: 3;
         }
         .quick-link p {
-            color: #aaa;
-            font-size: 13px;
+            color: #999;
+            font-size: 12px;
             margin: 0;
-            line-height: 1.4;
+            line-height: 1.5;
             position: relative;
-            z-index: 1;
+            z-index: 3;
         }
-        @keyframes wave {
-            0%   { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        @keyframes cardSlideIn {
+
+        /* ===== 애니메이션 ===== */
+        @keyframes cardIn {
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateY(0) perspective(600px) rotateX(0);
             }
         }
-        .quick-links .quick-link:nth-child(1) { animation-delay: 0.05s; }
-        .quick-links .quick-link:nth-child(2) { animation-delay: 0.12s; }
-        .quick-links .quick-link:nth-child(3) { animation-delay: 0.19s; }
-        .row-2 .quick-link:nth-child(1) { animation-delay: 0.26s; }
-        .row-2 .quick-link:nth-child(2) { animation-delay: 0.33s; }
-        .row-2 .quick-link:nth-child(3) { animation-delay: 0.40s; }
-        .row-3 .quick-link:nth-child(1) { animation-delay: 0.47s; }
-        .row-3 .quick-link:nth-child(2) { animation-delay: 0.54s; }
-        .row-3 .quick-link:nth-child(3) { animation-delay: 0.61s; }
+        .quick-links:nth-of-type(1) .quick-link:nth-child(1) { animation-delay: 0.04s; }
+        .quick-links:nth-of-type(1) .quick-link:nth-child(2) { animation-delay: 0.10s; }
+        .quick-links:nth-of-type(1) .quick-link:nth-child(3) { animation-delay: 0.16s; }
+        .quick-links:nth-of-type(2) .quick-link:nth-child(1) { animation-delay: 0.22s; }
+        .quick-links:nth-of-type(2) .quick-link:nth-child(2) { animation-delay: 0.28s; }
+        .quick-links:nth-of-type(2) .quick-link:nth-child(3) { animation-delay: 0.34s; }
+        .quick-links:nth-of-type(3) .quick-link:nth-child(1) { animation-delay: 0.40s; }
+        .quick-links:nth-of-type(3) .quick-link:nth-child(2) { animation-delay: 0.46s; }
+        .quick-links:nth-of-type(3) .quick-link:nth-child(3) { animation-delay: 0.52s; }
+
+        /* ===== 반응형 ===== */
+        @media (max-width: 768px) {
+            .quick-links {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -162,43 +190,52 @@
                 <p>발주서 업로드, 조회, 스캔을 한 곳에서 관리하세요</p>
             </div>
             <div class="quick-links">
-                <div class="quick-link" style="--wave:rgba(102,126,234,0.10)" onclick="location.href='/rocket'">
+                <div class="quick-link" style="--glow:rgba(99,102,241,0.18);--shadow:rgba(99,102,241,0.16)" onclick="location.href='/rocket'">
+                    <span class="card-icon">📋</span>
                     <h2>발주서 관리</h2>
                     <p>발주서 업로드 및 조회</p>
                 </div>
-                <div class="quick-link" style="--wave:rgba(240,147,251,0.10)" onclick="location.href='/scan'">
+                <div class="quick-link" style="--glow:rgba(236,72,153,0.18);--shadow:rgba(236,72,153,0.16)" onclick="location.href='/scan'">
+                    <span class="card-icon">📷</span>
                     <h2>바코드 스캔</h2>
                     <p>상품 바코드 스캔 및 관리</p>
                 </div>
-                <div class="quick-link" style="--wave:rgba(79,172,254,0.10)" onclick="location.href='/shipment'">
+                <div class="quick-link" style="--glow:rgba(14,165,233,0.18);--shadow:rgba(14,165,233,0.16)" onclick="location.href='/shipment'">
+                    <span class="card-icon">📦</span>
                     <h2>쉽먼트</h2>
                     <p>스캔된 상품 및 박스 관리</p>
                 </div>
             </div>
-            <div class="quick-links row-2" style="margin-top: 20px;">
-                <div class="quick-link" style="--wave:rgba(67,233,123,0.10)" onclick="location.href='/importChina'">
+            <div class="quick-links">
+                <div class="quick-link" style="--glow:rgba(34,197,94,0.18);--shadow:rgba(34,197,94,0.16)" onclick="location.href='/importChina'">
+                    <span class="card-icon">🚢</span>
                     <h2>중국입고</h2>
                     <p>중국 입고 상품 관리</p>
                 </div>
-                <div class="quick-link" style="--wave:rgba(250,112,154,0.10)" onclick="location.href='/inventory'">
+                <div class="quick-link" style="--glow:rgba(244,63,94,0.18);--shadow:rgba(244,63,94,0.16)" onclick="location.href='/inventory'">
+                    <span class="card-icon">📊</span>
                     <h2>재고관리</h2>
                     <p>재고 관리 및 조회</p>
                 </div>
-                <div class="quick-link" style="--wave:rgba(161,140,209,0.10)" onclick="location.href='/shortage'">
+                <div class="quick-link" style="--glow:rgba(168,85,247,0.18);--shadow:rgba(168,85,247,0.16)" onclick="location.href='/shortage'">
+                    <span class="card-icon">🔍</span>
                     <h2>상품부족</h2>
                     <p>부족 상품 조회 및 관리</p>
                 </div>
             </div>
-            <div class="quick-links row-3" style="margin-top: 20px;">
-                <div class="quick-link" style="--wave:rgba(255,158,159,0.10)" onclick="location.href='/salesdata'">
+            <div class="quick-links">
+                <div class="quick-link" style="--glow:rgba(245,158,11,0.18);--shadow:rgba(245,158,11,0.16)" onclick="location.href='/salesdata'">
+                    <span class="card-icon">💰</span>
                     <h2>판매데이터</h2>
                     <p>판매 데이터 조회 및 분석</p>
                 </div>
-                <div class="quick-link" style="--wave:rgba(255,154,158,0.10)" onclick="location.href='/warehouse'">
+                <div class="quick-link" style="--glow:rgba(6,182,212,0.18);--shadow:rgba(6,182,212,0.16)" onclick="location.href='/warehouse'">
+                    <span class="card-icon">🏭</span>
                     <h2>쿠팡 물류센터</h2>
                     <p>물류센터 재고 관리</p>
                 </div>
-                <div class="quick-link" style="--wave:rgba(106,17,203,0.10)" onclick="location.href='/upcoming'">
+                <div class="quick-link" style="--glow:rgba(107,114,128,0.18);--shadow:rgba(107,114,128,0.12)" onclick="location.href='/upcoming'">
+                    <span class="card-icon">⚙️</span>
                     <h2>생성예정</h2>
                     <p>생성 예정 기능</p>
                 </div>
@@ -209,21 +246,42 @@
     <script>
         // 헤더 로드
         fetch('/header')
-            .then(response => response.text())
+            .then(r => r.text())
             .then(html => {
                 document.getElementById('header-container').innerHTML = html;
             });
 
-        // 마우스 따라다니는 글로우 효과
+        // 3D 틸트 + 스포트라이트
         document.querySelectorAll('.quick-link').forEach(card => {
-            const glow = document.createElement('div');
-            glow.className = 'glow';
-            card.appendChild(glow);
+            const spot = document.createElement('div');
+            spot.className = 'spotlight';
+            card.appendChild(spot);
 
             card.addEventListener('mousemove', e => {
                 const rect = card.getBoundingClientRect();
-                glow.style.left = (e.clientX - rect.left) + 'px';
-                glow.style.top = (e.clientY - rect.top) + 'px';
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const cx = rect.width / 2;
+                const cy = rect.height / 2;
+
+                // 3D tilt
+                const rx = ((y - cy) / cy) * -6;
+                const ry = ((x - cx) / cx) * 6;
+                card.style.transform = `perspective(800px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-4px)`;
+
+                // spotlight
+                spot.style.left = x + 'px';
+                spot.style.top = y + 'px';
+            });
+
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = '';
+                card.style.transition = 'transform 0.5s ease, box-shadow 0.4s ease';
+                setTimeout(() => { card.style.transition = 'box-shadow 0.4s ease'; }, 500);
+            });
+
+            card.addEventListener('mouseenter', () => {
+                card.style.transition = 'box-shadow 0.4s ease';
             });
         });
     </script>

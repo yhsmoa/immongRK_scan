@@ -3100,21 +3100,56 @@ app.get('/api/shortage', async (req, res) => {
             item.cForecast2W = forecast.cForecast2W || 0;
         });
 
-        // 6단계: 발주내역 기반 14Ds/30Ds/60Ds/90Ds 집계
+        // 5.5단계: yiwu_br_orders 바코드별 입고수량(order_qty 합계) 조회
+        const yiwuMap = new Map(); // barcode → sum of order_qty
+        const yiwuBarcodes = shortageList.map(i => i.상품바코드).filter(Boolean);
+        if (yiwuBarcodes.length > 0) {
+            try {
+                const YBATCH = 50;
+                for (let yi = 0; yi < yiwuBarcodes.length; yi += YBATCH) {
+                    const batch = yiwuBarcodes.slice(yi, yi + YBATCH);
+                    let from = 0;
+                    const PAGE = 1000;
+                    while (true) {
+                        const { data: yiwuData, error: yiwuError } = await supabase
+                            .from('yiwu_br_orders')
+                            .select('barcode, order_qty')
+                            .in('barcode', batch)
+                            .range(from, from + PAGE - 1);
+                        if (yiwuError) {
+                            console.error('yiwu_br_orders 조회 오류:', yiwuError);
+                            break;
+                        }
+                        if (!yiwuData || yiwuData.length === 0) break;
+                        yiwuData.forEach(r => {
+                            yiwuMap.set(r.barcode, (yiwuMap.get(r.barcode) || 0) + (r.order_qty || 0));
+                        });
+                        if (yiwuData.length < PAGE) break;
+                        from += PAGE;
+                    }
+                }
+            } catch (yiwuErr) {
+                console.error('yiwu_br_orders 입고수량 조회 실패 (무시):', yiwuErr);
+            }
+        }
+        shortageList.forEach(item => {
+            item.yiwuTotalQty = yiwuMap.get(item.상품바코드) || 0;
+        });
+
+        // 6단계: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
         const allBarcodes = shortageList.map(i => i.상품바코드).filter(Boolean);
         const now = new Date();
         const cutoff14 = new Date(now); cutoff14.setDate(cutoff14.getDate() - 14);
-        const cutoff30 = new Date(now); cutoff30.setDate(cutoff30.getDate() - 30);
-        const cutoff60 = new Date(now); cutoff60.setDate(cutoff60.getDate() - 60);
-        const cutoff90 = new Date(now); cutoff90.setDate(cutoff90.getDate() - 90);
+        const cutoff28 = new Date(now); cutoff28.setDate(cutoff28.getDate() - 28);
+        const cutoff42 = new Date(now); cutoff42.setDate(cutoff42.getDate() - 42);
+        const cutoff56 = new Date(now); cutoff56.setDate(cutoff56.getDate() - 56);
 
         const historyMap = new Map(); // barcode → [{qty, date}]
         if (allBarcodes.length > 0) {
             try {
-                const BATCH = 50; // 배치당 바코드 수 줄여서 1000건 limit 방지
+                const BATCH = 50;
                 for (let i = 0; i < allBarcodes.length; i += BATCH) {
                     const batch = allBarcodes.slice(i, i + BATCH);
-                    // 페이지네이션으로 전체 조회
                     let from = 0;
                     const PAGE = 1000;
                     while (true) {
@@ -3122,7 +3157,7 @@ app.get('/api/shortage', async (req, res) => {
                             .from('coupang_order_history')
                             .select('sku_barcode, order_qty, order_date')
                             .in('sku_barcode', batch)
-                            .gte('order_date', cutoff90.toISOString())
+                            .gte('order_date', cutoff56.toISOString())
                             .range(from, from + PAGE - 1);
 
                         if (histError) {
@@ -3150,12 +3185,13 @@ app.get('/api/shortage', async (req, res) => {
             }
         }
 
+        // 각 상품별 exclusive 2주 구간 합산
         shortageList.forEach(item => {
             const records = historyMap.get(item.상품바코드) || [];
-            item.ds14 = records.filter(r => r.date >= cutoff14).reduce((s, r) => s + r.qty, 0);
-            item.ds30 = records.filter(r => r.date >= cutoff30).reduce((s, r) => s + r.qty, 0);
-            item.ds60 = records.filter(r => r.date >= cutoff60).reduce((s, r) => s + r.qty, 0);
-            item.ds90 = records.reduce((s, r) => s + r.qty, 0);
+            item.w12 = records.filter(r => r.date >= cutoff14).reduce((s, r) => s + r.qty, 0);
+            item.w34 = records.filter(r => r.date >= cutoff28 && r.date < cutoff14).reduce((s, r) => s + r.qty, 0);
+            item.w56 = records.filter(r => r.date >= cutoff42 && r.date < cutoff28).reduce((s, r) => s + r.qty, 0);
+            item.w78 = records.filter(r => r.date >= cutoff56 && r.date < cutoff42).reduce((s, r) => s + r.qty, 0);
         });
 
         // 부족수량 내림차순 정렬
@@ -3446,6 +3482,37 @@ app.get('/api/shortage/order-history/monthly/:barcode', async (req, res) => {
         res.json(result);
     } catch (error) {
         console.error('월별 발주량 조회 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ✅ yiwu_br_orders 바코드별 상세 조회 (입고 셀 팝업용)
+app.get('/api/shortage/yiwu-orders/:barcode', async (req, res) => {
+    try {
+        const { barcode } = req.params;
+        if (!barcode) return res.status(400).json({ error: '바코드가 필요합니다.' });
+
+        let allData = [];
+        let from = 0;
+        const PAGE = 1000;
+        while (true) {
+            const { data, error } = await supabase
+                .from('yiwu_br_orders')
+                .select('date, order_qty, cancel_qty, shipment_qty, second_shipment_qty, note, shipment_no')
+                .eq('barcode', barcode)
+                .order('date', { ascending: false })
+                .range(from, from + PAGE - 1);
+
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            allData = allData.concat(data);
+            if (data.length < PAGE) break;
+            from += PAGE;
+        }
+
+        res.json(allData);
+    } catch (error) {
+        console.error('yiwu_br_orders 상세 조회 오류:', error);
         res.status(500).json({ error: error.message });
     }
 });

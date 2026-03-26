@@ -210,10 +210,12 @@
         }
         td.name-cell {
             text-align: left;
-            max-width: 400px;
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        /* 숫자 열 너비 축소 */
+        .col-narrow { max-width: 55px; padding: 6px 4px; }
+        .col-week { max-width: 50px; padding: 6px 4px; }
         tbody tr:hover { background-color: #f5f7fa; }
 
         /* No. 열 좁게 */
@@ -273,6 +275,55 @@
 
         /* ========== Ds 셀 클릭 커서 ========== */
         td.ds-cell { cursor: pointer; }
+
+        /* ========== 입고 셀 클릭 커서 ========== */
+        td.yiwu-cell { cursor: pointer; }
+
+        /* ========== 입고 팝업 (tooltip-style, 마우스 위치) ========== */
+        .yiwu-popup {
+            display: none;
+            position: fixed;
+            z-index: 5000;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            padding: 12px 14px;
+            min-width: 420px;
+            max-height: 320px;
+            overflow-y: auto;
+            font-size: 11px;
+        }
+        .yiwu-popup.active { display: block; }
+        .yiwu-popup h4 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            color: #333;
+        }
+        .yiwu-popup table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .yiwu-popup th {
+            position: static;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+            padding: 4px 6px;
+            font-size: 10px;
+            color: #555;
+            white-space: nowrap;
+        }
+        .yiwu-popup td {
+            padding: 4px 6px;
+            font-size: 10px;
+            border-bottom: 1px solid #f0f0f0;
+            text-align: center;
+        }
+        .yiwu-popup .loading-text {
+            text-align: center;
+            padding: 16px;
+            color: #999;
+        }
 
         /* ========== 월별 발주량 모달 ========== */
         .monthly-modal-overlay {
@@ -452,6 +503,12 @@
         </div>
     </div>
 
+    <!-- ===== 입고 상세 팝업 (tooltip-style) ===== -->
+    <div class="yiwu-popup" id="yiwuPopup">
+        <h4 id="yiwuPopupTitle">입고 상세</h4>
+        <div id="yiwuPopupContent"></div>
+    </div>
+
     <!-- ===== 업로드 진행 모달 ===== -->
     <div class="upload-modal-overlay" id="uploadModal">
         <div class="upload-modal">
@@ -536,18 +593,18 @@
                                 <th data-sort="skuId">SKU <span class="sort-icon">▲▼</span></th>
                                 <th data-sort="상품바코드">상품바코드 <span class="sort-icon">▲▼</span></th>
                                 <th data-sort="상품이름">상품이름 <span class="sort-icon">▲▼</span></th>
-                                <th data-sort="총발주수량">총 발주수량 <span class="sort-icon">▲▼</span></th>
-                                <th data-sort="총스캔수량">총 스캔수량 <span class="sort-icon">▲▼</span></th>
-                                <th data-sort="부족수량">부족수량 <span class="sort-icon">▲▼</span></th>
+                                <th class="col-narrow" data-sort="총발주수량">Ord <span class="sort-icon">▲▼</span></th>
+                                <th class="col-narrow" data-sort="총스캔수량">Scan <span class="sort-icon">▲▼</span></th>
+                                <th class="col-narrow" data-sort="부족수량">Fail <span class="sort-icon">▲▼</span></th>
                                 <th id="inputHeader">입력</th>
                                 <th>입고</th>
                                 <th>재고</th>
                                 <th>C 예상</th>
                                 <th>C 예상/2W</th>
-                                <th>14Ds</th>
-                                <th>30Ds</th>
-                                <th>60Ds</th>
-                                <th>90Ds</th>
+                                <th class="col-week">-7-8W</th>
+                                <th class="col-week">-5-6W</th>
+                                <th class="col-week">-3-4W</th>
+                                <th class="col-week">-1-2W</th>
                             </tr>
                         </thead>
                         <tbody id="tableBody"></tbody>
@@ -749,6 +806,14 @@
             });
         }
 
+        /* ========== 주간 열 색상: 전주차 대비 증감 ========== */
+        function weekColor(cur, prev) {
+            const diff = (cur || 0) - (prev || 0);
+            if (diff > 10) return 'color:#d32f2f';   // 빨강: 증가
+            if (diff < -10) return 'color:#1976d2';  // 파랑: 감소
+            return '';                                // 검정: 차이 10 이내
+        }
+
         /* ========== 테이블 렌더링 ========== */
         function renderTable() {
             const tbody = document.getElementById('tableBody');
@@ -779,24 +844,25 @@
                     <td>${item.skuId || ''}</td>
                     <td>${item.상품바코드}</td>
                     <td class="name-cell" title="${item.상품이름}">${item.상품이름}</td>
-                    <td>${Number(item.총발주수량).toLocaleString()}</td>
-                    <td>${Number(item.총스캔수량).toLocaleString()}</td>
-                    <td><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
+                    <td class="col-narrow">${Number(item.총발주수량).toLocaleString()}</td>
+                    <td class="col-narrow">${Number(item.총스캔수량).toLocaleString()}</td>
+                    <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
                     <td class="input-cell" data-row="${idx}">${savedInputs.get(item.상품바코드) || ''}</td>
-                    <td></td>
+                    <td class="yiwu-cell" data-barcode="${item.상품바코드}">${item.yiwuTotalQty ? Number(item.yiwuTotalQty).toLocaleString() : ''}</td>
                     <td></td>
                     <td>${formatDecimalDim(item.cForecast)}</td>
                     <td>${formatDecimalDim(item.cForecast2W)}</td>
-                    <td class="ds-cell" data-barcode="${item.상품바코드}">${item.ds14 ? Number(item.ds14).toLocaleString() : ''}</td>
-                    <td class="ds-cell" data-barcode="${item.상품바코드}">${item.ds30 ? Number(item.ds30).toLocaleString() : ''}</td>
-                    <td class="ds-cell" data-barcode="${item.상품바코드}">${item.ds60 ? Number(item.ds60).toLocaleString() : ''}</td>
-                    <td class="ds-cell" data-barcode="${item.상품바코드}">${item.ds90 ? Number(item.ds90).toLocaleString() : ''}</td>
+                    <td class="ds-cell col-week" data-barcode="${item.상품바코드}">${item.w78 ? Number(item.w78).toLocaleString() : ''}</td>
+                    <td class="ds-cell col-week" data-barcode="${item.상품바코드}" style="${weekColor(item.w56, item.w78)}">${item.w56 ? Number(item.w56).toLocaleString() : ''}</td>
+                    <td class="ds-cell col-week" data-barcode="${item.상품바코드}" style="${weekColor(item.w34, item.w56)}">${item.w34 ? Number(item.w34).toLocaleString() : ''}</td>
+                    <td class="ds-cell col-week" data-barcode="${item.상품바코드}" style="${weekColor(item.w12, item.w34)}">${item.w12 ? Number(item.w12).toLocaleString() : ''}</td>
                 </tr>`;
             }).join('');
 
             updateSortIcons();
             bindInputCells();
             bindDsCells();
+            bindYiwuCells();
             updateInputHeaderCount();
         }
 
@@ -875,6 +941,92 @@
                         <tbody>
                             ${data.map(r => { const c = rankMap[r.month] || ''; return `<tr><td class="${c}">${r.month}</td><td class="${c}">${Number(r.qty).toLocaleString()}</td></tr>`; }).join('')}
                             <tr class="total-row"><td>합계</td><td>${total.toLocaleString()}</td></tr>
+                        </tbody>
+                    </table>`;
+            } catch (err) {
+                contentEl.innerHTML = `<div class="loading-text">오류: ${err.message}</div>`;
+            }
+        }
+
+        /* ========== 입고 셀 클릭 → yiwu 팝업 ========== */
+        function bindYiwuCells() {
+            document.querySelectorAll('td.yiwu-cell').forEach(cell => {
+                cell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const barcode = cell.dataset.barcode;
+                    if (barcode) showYiwuPopup(barcode, e.clientX, e.clientY);
+                });
+            });
+        }
+
+        async function showYiwuPopup(barcode, mouseX, mouseY) {
+            const popup = document.getElementById('yiwuPopup');
+            const titleEl = document.getElementById('yiwuPopupTitle');
+            const contentEl = document.getElementById('yiwuPopupContent');
+
+            // 팝업 내용 초기화 및 off-screen 표시 (크기 측정용)
+            titleEl.textContent = `입고 상세 - ${barcode}`;
+            contentEl.innerHTML = '<div class="loading-text">조회 중...</div>';
+            popup.style.left = '-9999px';
+            popup.style.top = '-9999px';
+            popup.classList.add('active');
+
+            // 실제 크기 측정 후 위치 계산 (화면 내 마우스 근처 배치)
+            requestAnimationFrame(() => {
+                const rect = popup.getBoundingClientRect();
+                const pw = rect.width || 420;
+                const ph = rect.height || 200;
+                let left = mouseX + 8;
+                let top = mouseY + 8;
+                if (left + pw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - pw - 8);
+                if (top + ph > window.innerHeight - 8) top = Math.max(8, window.innerHeight - ph - 8);
+                popup.style.left = left + 'px';
+                popup.style.top = top + 'px';
+            });
+
+            // 바깥 클릭 시 닫기 (다음 tick에 등록)
+            setTimeout(() => {
+                const closeOnClick = (e) => {
+                    if (!popup.contains(e.target)) {
+                        popup.classList.remove('active');
+                        document.removeEventListener('click', closeOnClick);
+                    }
+                };
+                document.addEventListener('click', closeOnClick);
+            }, 0);
+
+            // API 호출
+            try {
+                const res = await fetch(`/api/shortage/yiwu-orders/${encodeURIComponent(barcode)}`);
+                if (!res.ok) throw new Error('조회 실패');
+                const data = await res.json();
+
+                if (!data || data.length === 0) {
+                    contentEl.innerHTML = '<div class="loading-text">입고 데이터가 없습니다.</div>';
+                    return;
+                }
+
+                contentEl.innerHTML = `
+                    <table>
+                        <thead><tr>
+                            <th>날짜</th>
+                            <th>주문</th>
+                            <th>취소</th>
+                            <th>출고</th>
+                            <th>2차</th>
+                            <th style="text-align:left">메모</th>
+                            <th>운송장번호</th>
+                        </tr></thead>
+                        <tbody>
+                            ${data.map(r => `<tr>
+                                <td>${r.date || ''}</td>
+                                <td>${r.order_qty ? Number(r.order_qty).toLocaleString() : ''}</td>
+                                <td>${r.cancel_qty ? Number(r.cancel_qty).toLocaleString() : ''}</td>
+                                <td>${r.shipment_qty ? Number(r.shipment_qty).toLocaleString() : ''}</td>
+                                <td>${r.second_shipment_qty ? Number(r.second_shipment_qty).toLocaleString() : ''}</td>
+                                <td style="text-align:left">${r.note || ''}</td>
+                                <td>${r.shipment_no || ''}</td>
+                            </tr>`).join('')}
                         </tbody>
                     </table>`;
             } catch (err) {
