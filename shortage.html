@@ -564,7 +564,8 @@
                     <button class="btn btn-input-list" onclick="openInputPanel()">입력목록</button>
                     <button class="btn btn-save" onclick="handleSave()">저장</button>
                     <span class="btn-separator"></span>
-                    <button class="btn btn-copy" onclick="handleCopy()">사입복사</button>
+                    <button class="btn btn-copy" onclick="handleCopy()">이우 주문</button>
+                    <button class="btn btn-copy" onclick="handleCopyWeihai()">위해 주문</button>
                 </div>
             </div>
 
@@ -1272,6 +1273,46 @@
             const text = rows.join('\n');
             navigator.clipboard.writeText(text).then(() => {
                 alert(`${rows.length}건 복사 완료`);
+            }).catch(err => {
+                console.error('클립보드 복사 실패:', err);
+                alert('클립보드 복사에 실패했습니다.');
+            });
+        }
+
+        // [위해 주문] — 위해 주문용 클립보드 복사
+        function handleCopyWeihai() {
+            const rows = [];
+            filteredData.forEach(item => {
+                const qty = savedInputs.get(item.상품바코드);
+                if (!qty || qty <= 0) return;
+
+                const fullName = item.상품이름 || '';
+                const parts = fullName.split(',').map(s => s.trim());
+                const productName = parts[0] || '';
+                const optionName = parts.slice(1).join(', ');
+
+                // A~B 빈칸, C=상품명, D=옵션명, E=수량, F=바코드, G~T 빈칸, U=skuId
+                const cols = [
+                    '',              // A
+                    '',              // B
+                    productName,     // C
+                    optionName,      // D
+                    qty,             // E
+                    item.상품바코드,  // F
+                    '', '', '', '', '', // G~K
+                    '', '', '', '', '', '', '', '', '', // L~T
+                    item.skuId || '' // U
+                ];
+                rows.push(cols.join('\t'));
+            });
+
+            if (rows.length === 0) {
+                alert('입력된 수량이 있는 상품이 없습니다.');
+                return;
+            }
+
+            navigator.clipboard.writeText(rows.join('\n')).then(() => {
+                alert(`${rows.length}건 복사 완료 (위해)`);
             }).catch(err => {
                 console.error('클립보드 복사 실패:', err);
                 alert('클립보드 복사에 실패했습니다.');
