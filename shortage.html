@@ -1270,13 +1270,7 @@
                 return;
             }
 
-            const text = rows.join('\n');
-            navigator.clipboard.writeText(text).then(() => {
-                alert(`${rows.length}건 복사 완료`);
-            }).catch(err => {
-                console.error('클립보드 복사 실패:', err);
-                alert('클립보드 복사에 실패했습니다.');
-            });
+            copyToClipboard(rows.join('\n'), `${rows.length}건 복사 완료 (이우)`);
         }
 
         // [위해 주문] — 위해 주문용 클립보드 복사
@@ -1311,12 +1305,33 @@
                 return;
             }
 
-            navigator.clipboard.writeText(rows.join('\n')).then(() => {
-                alert(`${rows.length}건 복사 완료 (위해)`);
-            }).catch(err => {
-                console.error('클립보드 복사 실패:', err);
+            copyToClipboard(rows.join('\n'), `${rows.length}건 복사 완료 (위해)`);
+        }
+
+        // 클립보드 복사 (HTTP 환경 호환)
+        function copyToClipboard(text, successMsg) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert(successMsg);
+                }).catch(() => fallbackCopy(text, successMsg));
+            } else {
+                fallbackCopy(text, successMsg);
+            }
+        }
+        function fallbackCopy(text, successMsg) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                alert(successMsg);
+            } catch (e) {
                 alert('클립보드 복사에 실패했습니다.');
-            });
+            }
+            document.body.removeChild(ta);
         }
 
         // [초기화] — 기간필터 초기화 + 임시저장 데이터 전체 삭제
