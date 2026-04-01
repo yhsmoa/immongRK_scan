@@ -353,10 +353,10 @@ app.post('/api/orders/delete', async (req, res) => {
         const { orderNumbers, password } = req.body;
         
         // 패스워드 검증
-        if (password !== 'djajskek1!') {
+        if (password !== 'cheoqkr1!') {
             return res.status(403).json({ error: '패스워드가 올바르지 않습니다.' });
         }
-        
+
         await Order.deleteMany({ 발주번호: { $in: orderNumbers } });
         res.json({ message: '발주서가 성공적으로 삭제되었습니다.' });
     } catch (error) {
