@@ -105,8 +105,17 @@ function toItemRow(orderId, p) {
 
 // ==================== 마이그레이션 실행 ====================
 
+const CLEAN = process.env.CLEAN === '1'; // truncate 후 삽입 (정확한 최종 동기화용)
+
+async function truncate(table) {
+  const { error } = await supabase.from(table).delete().gt('id', 0);
+  if (error) throw error;
+  console.log(`  🧹 ${table} 비움`);
+}
+
 async function migrateCollection(collectionName, headerTable, itemTable) {
   console.log(`\n=== ${collectionName} → ${headerTable} / ${itemTable} ===`);
+  if (CLEAN) await truncate(headerTable); // items 는 FK cascade 로 함께 삭제
   const db = mongoose.connection.db;
   const docs = await db.collection(collectionName).find({}).toArray(); // 읽기 전용
   console.log(`  Mongo 문서: ${docs.length}건`);
@@ -151,13 +160,73 @@ async function migrateCollection(collectionName, headerTable, itemTable) {
   return { headerCount, itemCount };
 }
 
+// 날짜/타임스탬프 → ISO (형식 불명 시 null)
+function toISO(d) {
+  if (!d) return null;
+  const t = new Date(d);
+  return isNaN(t.getTime()) ? null : t.toISOString();
+}
+
+// ==================== 플랫(자식 없는) 컬렉션 배치 마이그레이션 ====================
+async function migrateFlat(collectionName, table, mapFn) {
+  console.log(`\n=== ${collectionName} → ${table} ===`);
+  if (CLEAN) await truncate(table);
+  const db = mongoose.connection.db;
+  const docs = await db.collection(collectionName).find({}).toArray(); // 읽기 전용
+  console.log(`  Mongo 문서: ${docs.length}건`);
+
+  const rows = docs.map(mapFn);
+  const BATCH = 1000;
+  let done = 0;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const chunk = rows.slice(i, i + BATCH);
+    const { error } = await supabase.from(table).upsert(chunk, { onConflict: 'mongo_id' });
+    if (error) {
+      console.error(`  ❌ 배치 ${i / BATCH + 1} upsert 실패:`, error.message);
+      throw error;
+    }
+    done += chunk.length;
+    console.log(`  ... ${done}/${rows.length}`);
+  }
+  console.log(`  ✅ ${done}건 복사 완료`);
+  return done;
+}
+
+const mapInventory = (d) => ({
+  mongo_id: String(d._id),
+  sku_id: emptyToNull(d.skuId),
+  name: emptyToNull(d.name),
+  barcode: emptyToNull(d.barcode),
+  order_status: emptyToNull(d.orderStatus),
+  quantity: d.quantity === undefined || d.quantity === null ? null : String(d.quantity), // '-' 등 placeholder 원본 유지
+  location: emptyToNull(d.location),
+  last_update: toISO(d.lastUpdate),
+});
+
+const mapChinaImport = (d) => ({
+  mongo_id: String(d._id),
+  shipment_code: emptyToNull(d.shipmentCode) ?? '',
+  pallet: emptyToNull(d.pallet),
+  box_name: emptyToNull(d.boxName),
+  order_number: emptyToNull(d.orderNumber),
+  product_name: emptyToNull(d.productName),
+  quantity: d.quantity === undefined || d.quantity === null ? null : String(d.quantity),
+  barcode: emptyToNull(d.barcode),
+  available_orders: emptyToNull(d.availableOrders),
+  shipping_date: emptyToNull(d.shippingDate),
+  created_at: toISO(d.createdAt) ?? undefined,
+});
+
 (async () => {
   console.log('MongoDB 연결 중...');
   await mongoose.connect(MONGODB_URI);
   console.log('✅ MongoDB 연결됨 (읽기 전용으로 사용)');
 
-  await migrateCollection('orders', 'rk_orders', 'rk_order_items');
-  await migrateCollection('newOrders', 'rk_new_orders', 'rk_new_order_items');
+  const only = process.argv[2]; // 선택 실행: node migrate-to-supabase.js inventories
+  if (!only || only === 'orders')       await migrateCollection('orders', 'rk_orders', 'rk_order_items');
+  if (!only || only === 'neworders')    await migrateCollection('newOrders', 'rk_new_orders', 'rk_new_order_items');
+  if (!only || only === 'inventories')  await migrateFlat('inventories', 'rk_inventories', mapInventory);
+  if (!only || only === 'chinaimports') await migrateFlat('chinaimports', 'rk_china_imports', mapChinaImport);
 
   await mongoose.disconnect();
   console.log('\n🎉 마이그레이션 완료. MongoDB 연결 해제됨.');

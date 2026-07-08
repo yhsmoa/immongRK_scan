@@ -93,6 +93,14 @@ app.get('/newOrder-v2', (req, res) => {
 // V2 조회 API (/api/v2/*) — Supabase 전용, 기존 API 무영향
 app.use(require('./routes/v2'));
 
+// ==================== 전면 전환: Supabase 라우터 (기존 Mongo 라우트보다 먼저 매칭) ====================
+// 문제 발생 시 아래 한 줄만 주석 처리하면 즉시 기존 MongoDB 로직으로 롤백됨.
+app.use(require('./routes/rkOrders')(io));
+app.use(require('./routes/rkOrdersExtra'));
+app.use(require('./routes/rkNewOrders'));
+app.use(require('./routes/rkInventory'));
+app.use(require('./routes/rkChinaImport'));
+
 // 발주서 목록 가져오기
 app.get('/api/orders', async (req, res) => {
     try {
@@ -2973,11 +2981,25 @@ app.get('/api/shortage', async (req, res) => {
             return true;
         }
 
-        // 1단계: Orders + Inventory를 병렬로 조회
-        const [orders, inventoryItems] = await Promise.all([
-            Order.find().lean(),
-            Inventory.find({}, { barcode: 1, skuId: 1, _id: 0 }).lean()
+        // 1단계: Orders + Inventory를 병렬로 조회 [전환] Mongo → Supabase(rk_*)
+        const rkShared = require('./routes/rkShared');
+        const [orders, invRows] = await Promise.all([
+            rkShared.listOrdersFull('rk_orders', 'rk_order_items'),
+            (async () => {
+                const all = [];
+                let from = 0;
+                while (true) {
+                    const { data, error } = await rkShared.supabase
+                        .from('rk_inventories').select('barcode, sku_id').range(from, from + 999);
+                    if (error) throw error;
+                    all.push(...data);
+                    if (data.length < 1000) break;
+                    from += 1000;
+                }
+                return all;
+            })(),
         ]);
+        const inventoryItems = invRows.map((r) => ({ barcode: r.barcode, skuId: r.sku_id }));
 
         // barcode → skuId 매핑
         const barcodeToSku = new Map();
