@@ -6,14 +6,14 @@
     <title>쿠팡 로켓 발주서</title>
     <style>
         :root{
-            --bg:#eef1f6; --card:#fff; --ink:#0f172a; --ink-soft:#475569; --muted:#94a3b8;
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
             --line:#eef2f7; --line-soft:#f1f5f9; --primary:#4f46e5; --primary-dark:#4338ca;
             --blue:#2563eb; --hover:#f8fafc;
         }
         *{box-sizing:border-box;}
         body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
         .page{max-width:1720px;width:96%;margin:22px auto;}
-        .card{background:var(--card);border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.06),0 10px 30px rgba(15,23,42,.04);padding:22px 24px 10px;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 10px;}
         .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
         .title-wrap{display:flex;align-items:baseline;gap:12px;}
         .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
@@ -27,23 +27,32 @@
         .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
         .sep{width:1px;height:22px;background:#e2e8f0;margin:0 2px;}
-        .search{position:relative;margin-bottom:16px;}
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .tabletop{display:flex;align-items:center;justify-content:flex-start;margin-bottom:8px;}
+        .page-size select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        .pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:16px 0 8px;flex-wrap:wrap;}
+        .pagination button{min-width:34px;height:34px;padding:0 10px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;font-size:13px;cursor:pointer;}
+        .pagination button:hover:not(:disabled):not(.active){background:#f8fafc;}
+        .pagination button.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .pagination button:disabled{opacity:.4;cursor:default;}
+        .pagination .ellipsis{padding:0 4px;color:#94a3b8;}
         .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
-        .search input{width:100%;height:48px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:12px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
         .search input::placeholder{color:var(--muted);}
         .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
-        .table-scroll{overflow:auto;max-height:calc(100vh - 250px);border-top:1px solid var(--line);}
+        .table-scroll{overflow:auto;max-height:calc(100vh - 250px);}
         table{width:100%;border-collapse:collapse;min-width:1200px;}
-        thead th{position:sticky;top:0;z-index:2;background:#fff;text-align:left;font-size:12.5px;font-weight:600;color:var(--muted);padding:12px;border-bottom:1.5px solid var(--line);white-space:nowrap;}
+        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 12px;border:1px solid #dfe3ea;white-space:nowrap;}
         thead th.num{text-align:right;}
-        tbody td{padding:12px;border-bottom:1px solid var(--line-soft);color:var(--ink-soft);white-space:nowrap;vertical-align:middle;}
+        tbody td{padding:8px 12px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;white-space:nowrap;vertical-align:middle;}
         tbody tr:hover td{background:var(--hover);}
         td.num{text-align:right;font-variant-numeric:tabular-nums;}
         td.order-no{font-weight:600;color:#1e293b;}
         td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;}
         .scan-zero{color:#cbd5e1;}
-        .scan-pos{color:var(--blue);font-weight:600;}
+        .scan-pos{color:#1e293b;font-weight:700;}
         .dash{color:#cbd5e1;}
+        .loc-disc{color:#e11d48;font-weight:600;}
         th.chk,td.chk{width:42px;text-align:center;padding-right:0;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
@@ -90,7 +99,17 @@
 
             <div class="search">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                <input id="searchInput" type="text" placeholder="발주번호 · 물류센터 · 상품명 · 상품바코드 · 위치 검색" oninput="applySearch()">
+                <input id="searchInput" type="text" placeholder="발주번호 · 물류센터 · 상품명 · 상품바코드 · 위치 검색 후 Enter" onkeydown="if(event.key==='Enter')applySearch()">
+            </div>
+
+            <div class="tabletop">
+                <div class="page-size">
+                    <select id="pageSize" onchange="changePageSize()">
+                        <option value="100" selected>100개씩</option>
+                        <option value="200">200개씩</option>
+                        <option value="500">500개씩</option>
+                    </select>
+                </div>
             </div>
 
             <div class="table-scroll">
@@ -99,12 +118,13 @@
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>발주번호</th><th>물류센터</th><th>입고예정일</th><th>상품번호</th><th>상품바코드</th><th>상품명</th>
-                            <th class="num">발주수량</th><th class="num">확정수량</th><th class="num">스캔수량</th><th>입고1</th><th>입고2</th><th>위치</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th>입고1</th><th>입고2</th><th>위치</th>
                         </tr>
                     </thead>
                     <tbody id="tbody"><tr class="state-row"><td colspan="13">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
+            <div class="pagination" id="pagination"></div>
         </div>
     </div>
 
@@ -125,8 +145,10 @@
         fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
 
         let allRows=[], viewRows=[];
+        let pageSize=100, currentPage=1;
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
+        const locCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':(String(v).trim()==='단종'?'<span class="loc-disc">단종</span>':esc(v));
 
         async function loadData(){
             try{
@@ -150,10 +172,15 @@
 
         function render(){
             const tb=document.getElementById('tbody');
-            if(viewRows.length===0){
+            const totalPages=Math.max(1,Math.ceil(viewRows.length/pageSize));
+            if(currentPage>totalPages)currentPage=totalPages;
+            const start=(currentPage-1)*pageSize;
+            const pageRows=viewRows.slice(start,start+pageSize);
+            if(pageRows.length===0){
                 tb.innerHTML=`<tr class="state-row"><td colspan="13">표시할 발주 상품이 없습니다.</td></tr>`;
             }else{
-                tb.innerHTML=viewRows.map((r,i)=>{
+                tb.innerHTML=pageRows.map((r,li)=>{
+                    const i=start+li;
                     const scanN=Number(r.스캔수량)||0;
                     return `<tr data-i="${i}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
@@ -161,13 +188,45 @@
                         <td>${esc(r.상품번호)}</td><td>${esc(r.상품바코드)}</td><td class="pname">${esc(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num ${scanN>0?'scan-pos':'scan-zero'}">${scanN}</td>
-                        <td>${dashCell(r.입고1)}</td><td>${dashCell(r.입고2)}</td><td>${dashCell(r.위치)}</td>
+                        <td>${dashCell(r.입고1)}</td><td>${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td>
                     </tr>`;
                 }).join('');
             }
             document.getElementById('rowCount').textContent=viewRows.length;
             document.getElementById('checkAll').checked=false;
+            renderPagination(totalPages);
             updateSel();
+        }
+
+        function renderPagination(totalPages){
+            const el=document.getElementById('pagination');
+            if(viewRows.length===0){el.innerHTML='';return;}
+            let html=`<button ${currentPage===1?'disabled':''} onclick="gotoPage(${currentPage-1})">이전</button>`;
+            for(const p of pageWindow(currentPage,totalPages)){
+                html+= p==='...' ? `<span class="ellipsis">…</span>` : `<button class="${p===currentPage?'active':''}" onclick="gotoPage(${p})">${p}</button>`;
+            }
+            html+=`<button ${currentPage===totalPages?'disabled':''} onclick="gotoPage(${currentPage+1})">다음</button>`;
+            el.innerHTML=html;
+        }
+        function pageWindow(cur,total){
+            const out=[];
+            if(total<=7){for(let i=1;i<=total;i++)out.push(i);return out;}
+            out.push(1);
+            if(cur>3)out.push('...');
+            for(let i=Math.max(2,cur-1);i<=Math.min(total-1,cur+1);i++)out.push(i);
+            if(cur<total-2)out.push('...');
+            out.push(total);
+            return out;
+        }
+        function gotoPage(p){
+            const total=Math.max(1,Math.ceil(viewRows.length/pageSize));
+            if(p<1||p>total)return;
+            currentPage=p;render();
+            const ts=document.querySelector('.table-scroll'); if(ts)ts.scrollTop=0;
+        }
+        function changePageSize(){
+            pageSize=Number(document.getElementById('pageSize').value)||100;
+            currentPage=1;render();
         }
 
         function applySearch(){
@@ -176,6 +235,7 @@
                 String(r.발주번호||'').toLowerCase().includes(q)||String(r.물류센터||'').toLowerCase().includes(q)||
                 String(r.상품명||'').toLowerCase().includes(q)||String(r.상품바코드||'').toLowerCase().includes(q)||
                 String(r.위치||'').toLowerCase().includes(q));
+            currentPage=1;
             render();
         }
 
