@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>쿠팡 로켓 발주서 V2 (Supabase)</title>
+    <style>
+        :root {
+            --bg: #eef1f6;
+            --card: #ffffff;
+            --ink: #0f172a;
+            --ink-soft: #475569;
+            --muted: #94a3b8;
+            --line: #eef2f7;
+            --line-soft: #f1f5f9;
+            --primary: #4f46e5;
+            --primary-dark: #4338ca;
+            --blue: #2563eb;
+            --hover: #f8fafc;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Malgun Gothic", sans-serif;
+            background: var(--bg);
+            color: var(--ink-soft);
+            font-size: 13.5px;
+            -webkit-font-smoothing: antialiased;
+        }
+        .page {
+            max-width: 1720px;
+            width: 96%;
+            margin: 22px auto;
+        }
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            box-shadow: 0 1px 3px rgba(15,23,42,.06), 0 10px 30px rgba(15,23,42,.04);
+            padding: 22px 24px 10px;
+        }
+        /* ── 상단 헤더 ── */
+        .head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .title-wrap { display: flex; align-items: baseline; gap: 12px; }
+        .title { font-size: 20px; font-weight: 700; color: var(--ink); margin: 0; letter-spacing: -.3px; }
+        .subtitle { font-size: 13px; color: var(--muted); font-weight: 500; }
+        .subtitle b { color: var(--primary); font-weight: 600; }
+        .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            height: 38px; padding: 0 15px;
+            border: 1px solid #e2e8f0; background: #fff; color: #334155;
+            border-radius: 9px; font-size: 13.5px; font-weight: 500; cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: background .12s, border-color .12s, box-shadow .12s;
+            white-space: nowrap;
+        }
+        .btn:hover { background: var(--hover); border-color: #cbd5e1; }
+        .btn:active { background: #f1f5f9; }
+        .btn.danger:hover { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+        .btn.primary {
+            background: var(--primary); color: #fff; border-color: var(--primary);
+            font-weight: 600; box-shadow: 0 1px 2px rgba(79,70,229,.25);
+        }
+        .btn.primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+        .sep { width: 1px; height: 22px; background: #e2e8f0; margin: 0 2px; }
+        /* ── 검색 ── */
+        .search {
+            position: relative; margin-bottom: 16px;
+        }
+        .search svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+        .search input {
+            width: 100%; height: 48px; padding: 0 16px 0 46px;
+            border: 1px solid #e5e9f0; border-radius: 12px; background: #fff;
+            font-size: 14px; color: var(--ink); outline: none;
+            transition: border-color .12s, box-shadow .12s;
+        }
+        .search input::placeholder { color: var(--muted); }
+        .search input:focus { border-color: #c7d2fe; box-shadow: 0 0 0 4px rgba(99,102,241,.10); }
+        /* ── 테이블 ── */
+        .table-scroll {
+            overflow: auto;
+            max-height: calc(100vh - 250px);
+            border-top: 1px solid var(--line);
+        }
+        table { width: 100%; border-collapse: collapse; min-width: 1200px; }
+        thead th {
+            position: sticky; top: 0; z-index: 2; background: #fff;
+            text-align: left; font-size: 12.5px; font-weight: 600; color: var(--muted);
+            padding: 12px 12px; border-bottom: 1.5px solid var(--line);
+            white-space: nowrap;
+        }
+        thead th.num { text-align: right; }
+        tbody td {
+            padding: 12px 12px; border-bottom: 1px solid var(--line-soft);
+            color: var(--ink-soft); white-space: nowrap; vertical-align: middle;
+        }
+        tbody tr:hover td { background: var(--hover); }
+        td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        td.order-no { font-weight: 600; color: #1e293b; }
+        td.pname { white-space: normal; min-width: 280px; max-width: 460px; color: #334155; }
+        .scan-zero { color: #cbd5e1; }
+        .scan-pos { color: var(--blue); font-weight: 600; }
+        .dash { color: #cbd5e1; }
+        th.chk, td.chk { width: 42px; text-align: center; padding-right: 0; }
+        input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
+        .state-row td { text-align: center; padding: 48px 12px; color: var(--muted); }
+        /* 스크롤바 */
+        .table-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+        .table-scroll::-webkit-scrollbar-thumb { background: #d7dee8; border-radius: 8px; border: 2px solid #fff; }
+        .table-scroll::-webkit-scrollbar-thumb:hover { background: #c2ccd9; }
+        /* 토스트 */
+        #toast {
+            position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%) translateY(20px);
+            background: #1e293b; color: #fff; padding: 13px 20px; border-radius: 10px;
+            font-size: 13.5px; line-height: 1.5; box-shadow: 0 8px 24px rgba(15,23,42,.25);
+            opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 9999;
+            max-width: 90vw; white-space: pre-line; text-align: center;
+        }
+        #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .badge {
+            font-size: 12px; font-weight: 600; color: #fff; background: #16a34a;
+            padding: 3px 9px; border-radius: 11px; vertical-align: middle; margin-left: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">발주서 관리 <span class="badge">V2 · Supabase</span></h1>
+                    <span class="subtitle">전체 <b id="rowCount">0</b>행 · <span id="selCount">0</span>개 선택</span>
+                </div>
+                <div class="actions">
+                    <button class="btn" onclick="loadLocations()">위치 불러오기</button>
+                    <button class="btn" onclick="changeCenter()">센터변경</button>
+                    <button class="btn" onclick="changeDate()">입고일 변경</button>
+                    <button class="btn" onclick="printRows()">인쇄</button>
+                    <button class="btn danger" onclick="deleteRows()">삭제</button>
+                    <span class="sep"></span>
+                    <button class="btn" onclick="saveOrders()">저장</button>
+                    <button class="btn primary" onclick="uploadExcel()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M5 12l7-7 7 7"/></svg>
+                        Excel 업로드
+                    </button>
+                </div>
+            </div>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="발주번호 · 물류센터 · 상품명 · 상품바코드 · 위치 검색" oninput="applySearch()">
+            </div>
+
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
+                            <th>발주번호</th>
+                            <th>물류센터</th>
+                            <th>입고예정일</th>
+                            <th>상품번호</th>
+                            <th>상품바코드</th>
+                            <th>상품명</th>
+                            <th class="num">발주수량</th>
+                            <th class="num">확정수량</th>
+                            <th class="num">스캔수량</th>
+                            <th>입고1</th>
+                            <th>입고2</th>
+                            <th>위치</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody">
+                        <tr class="state-row"><td colspan="13">데이터를 불러오는 중…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        // ── 헤더(상단 메뉴) 로드 ──
+        fetch('/header').then(r => r.text()).then(html => {
+            document.getElementById('header-container').innerHTML = html;
+        }).catch(() => {});
+
+        // ── 상태 ──
+        let allRows = [];      // 평면화된 전체 상품 행
+        let viewRows = [];     // 검색 필터 적용 후 현재 표시 행
+
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+        const dashCell = (v) => (v == null || v === '' || v === '-') ? '<span class="dash">-</span>' : esc(v);
+
+        // ── 데이터 로드: /api/v2/orders (Supabase) → 상품 단위로 평면화(그룹화 제거) ──
+        async function loadData() {
+            try {
+                const res = await fetch('/api/v2/orders');
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const orders = await res.json();
+                allRows = [];
+                for (const o of orders) {
+                    for (const p of (o.상품정보 || [])) {
+                        allRows.push({
+                            발주번호: o.발주번호, 물류센터: o.물류센터, 입고예정일: o.입고예정일,
+                            상품번호: p.상품번호, 상품바코드: p.상품바코드, 상품명: p.상품이름,
+                            발주수량: p.발주수량, 확정수량: p.확정수량, 스캔수량: p.스캔수량,
+                            입고1: p.입고1, 입고2: p.입고2, 위치: p.위치
+                        });
+                    }
+                }
+                applySearch();
+            } catch (e) {
+                document.getElementById('tbody').innerHTML =
+                    `<tr class="state-row"><td colspan="13">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        // ── 렌더 ──
+        function render() {
+            const tb = document.getElementById('tbody');
+            if (viewRows.length === 0) {
+                tb.innerHTML = `<tr class="state-row"><td colspan="13">표시할 발주 상품이 없습니다.</td></tr>`;
+            } else {
+                const html = viewRows.map((r, i) => {
+                    const scanN = Number(r.스캔수량) || 0;
+                    const scanCls = scanN > 0 ? 'scan-pos' : 'scan-zero';
+                    return `<tr data-i="${i}">
+                        <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
+                        <td class="order-no">${esc(r.발주번호)}</td>
+                        <td>${esc(r.물류센터)}</td>
+                        <td>${esc(r.입고예정일)}</td>
+                        <td>${esc(r.상품번호)}</td>
+                        <td>${esc(r.상품바코드)}</td>
+                        <td class="pname">${esc(r.상품명)}</td>
+                        <td class="num">${esc(r.발주수량)}</td>
+                        <td class="num">${esc(r.확정수량)}</td>
+                        <td class="num ${scanCls}">${scanN}</td>
+                        <td>${dashCell(r.입고1)}</td>
+                        <td>${dashCell(r.입고2)}</td>
+                        <td>${dashCell(r.위치)}</td>
+                    </tr>`;
+                }).join('');
+                tb.innerHTML = html;
+            }
+            document.getElementById('rowCount').textContent = viewRows.length;
+            document.getElementById('checkAll').checked = false;
+            updateSel();
+        }
+
+        // ── 검색 (발주번호·물류센터·상품명·상품바코드·위치) ──
+        function applySearch() {
+            const q = document.getElementById('searchInput').value.trim().toLowerCase();
+            if (!q) {
+                viewRows = allRows.slice();
+            } else {
+                viewRows = allRows.filter(r =>
+                    String(r.발주번호 || '').toLowerCase().includes(q) ||
+                    String(r.물류센터 || '').toLowerCase().includes(q) ||
+                    String(r.상품명 || '').toLowerCase().includes(q) ||
+                    String(r.상품바코드 || '').toLowerCase().includes(q) ||
+                    String(r.위치 || '').toLowerCase().includes(q)
+                );
+            }
+            render();
+        }
+
+        // ── 선택 ──
+        function toggleAll(el) {
+            document.querySelectorAll('.rowchk').forEach(c => { c.checked = el.checked; });
+            updateSel();
+        }
+        function updateSel() {
+            const checks = [...document.querySelectorAll('.rowchk')];
+            const n = checks.filter(c => c.checked).length;
+            document.getElementById('selCount').textContent = n;
+            const all = document.getElementById('checkAll');
+            all.checked = checks.length > 0 && n === checks.length;
+            all.indeterminate = n > 0 && n < checks.length;
+        }
+        function selectedRows() {
+            const out = [];
+            document.querySelectorAll('#tbody tr').forEach((tr) => {
+                const c = tr.querySelector('.rowchk');
+                if (c && c.checked) out.push(viewRows[Number(tr.dataset.i)]);
+            });
+            return out;
+        }
+
+        // ── 토스트 ──
+        let toastTimer;
+        function toast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+        }
+        const READONLY = (label) => toast(`🔒 발주서 V2는 현재 Supabase 조회 전용입니다.\n'${label}' 기능은 준비 중입니다. (원본 "발주서" 메뉴를 사용하세요)`);
+
+        // ── 인쇄 (실제 동작: 선택 행, 없으면 현재 표시 전체) ──
+        function printRows() {
+            const rows = selectedRows();
+            const data = rows.length ? rows : viewRows;
+            if (!data.length) { toast('인쇄할 행이 없습니다.'); return; }
+            const head = ['발주번호','물류센터','입고예정일','상품번호','상품바코드','상품명','발주수량','확정수량','스캔수량','입고1','입고2','위치'];
+            const body = data.map(r => `<tr>${[r.발주번호,r.물류센터,r.입고예정일,r.상품번호,r.상품바코드,r.상품명,r.발주수량,r.확정수량,r.스캔수량,r.입고1,r.입고2,r.위치].map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('');
+            const w = window.open('', '_blank');
+            w.document.write(`<html><head><title>발주서 인쇄 (V2)</title><style>
+                body{font-family:sans-serif;font-size:11px;padding:16px;}
+                h2{font-size:16px;margin:0 0 12px;}
+                table{border-collapse:collapse;width:100%;}
+                th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}
+                th{background:#f1f5f9;}
+            </style></head><body>
+                <h2>발주서 관리 V2 · 인쇄 (${data.length}건)</h2>
+                <table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>
+                <script>window.onload=function(){window.print();}<\/script>
+            </body></html>`);
+            w.document.close();
+        }
+
+        // ── 선택 필요 + 쓰기 차단(조회 전용) ──
+        function needSel(fn) {
+            if (selectedRows().length === 0) { toast('먼저 대상 행을 선택해주세요.'); return; }
+            fn();
+        }
+        function loadLocations() { needSel(() => READONLY('위치 불러오기')); }
+        function changeCenter()  { needSel(() => READONLY('센터변경')); }
+        function changeDate()    { needSel(() => READONLY('입고일 변경')); }
+        function deleteRows()    { needSel(() => READONLY('삭제')); }
+        function saveOrders()    { READONLY('저장(엑셀 내보내기)'); }
+        function uploadExcel()   { READONLY('Excel 업로드'); }
+
+        loadData();
+    </script>
+</body>
+</html>

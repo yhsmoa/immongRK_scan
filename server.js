@@ -81,6 +81,18 @@ app.get('/header', (req, res) => {
     res.sendFile(path.join(__dirname, 'header.html'));
 });
 
+// ==================== 발주서 V2 (Supabase) ====================
+// 전체 발주서 V2 페이지
+app.get('/rocket-v2', (req, res) => {
+    res.sendFile(path.join(__dirname, 'rocket-v2.html'));
+});
+// 신규 발주서 V2 페이지
+app.get('/newOrder-v2', (req, res) => {
+    res.sendFile(path.join(__dirname, 'newOrder-v2.html'));
+});
+// V2 조회 API (/api/v2/*) — Supabase 전용, 기존 API 무영향
+app.use(require('./routes/v2'));
+
 // 발주서 목록 가져오기
 app.get('/api/orders', async (req, res) => {
     try {
