@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>재고관리</title>
+    <style>
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --primary:#4f46e5; --primary-dark:#4338ca; --blue:#2563eb; --hover:#f8fafc;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 18px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:12px;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
+        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
+        .subtitle b{color:var(--primary);font-weight:600;}
+
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
+        .search input::placeholder{color:var(--muted);}
+        .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
+
+        .tabletop{display:flex;align-items:center;justify-content:flex-start;margin-bottom:8px;}
+        .page-size select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+
+        .table-scroll{overflow:auto;max-height:calc(100vh - 280px);}
+        table{width:100%;border-collapse:collapse;min-width:900px;table-layout:fixed;}
+        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
+        thead th.ctr{text-align:center;}
+        tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
+        tbody tr:hover td{background:var(--hover);}
+        td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        td.pname{white-space:normal;color:#334155;}
+        td.loc{font-weight:600;color:#1e293b;}
+        .dash{color:#cbd5e1;}
+        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
+        .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
+        .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .table-scroll::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
+
+        .pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:16px 0 4px;flex-wrap:wrap;}
+        .pagination button{min-width:34px;height:34px;padding:0 10px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;font-size:13px;cursor:pointer;}
+        .pagination button:hover:not(:disabled):not(.active){background:#f8fafc;}
+        .pagination button.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .pagination button:disabled{opacity:.4;cursor:default;}
+        .pagination .ellipsis{padding:0 4px;color:#94a3b8;}
+
+        /* 버튼 + 드롭다운 */
+        .actions{display:flex;align-items:center;gap:8px;}
+        .btn{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
+        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
+        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+        .xlsx-drop{position:relative;display:inline-block;}
+        .xlsx-menu{position:absolute;top:100%;right:0;margin-top:6px;min-width:160px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.12);padding:6px;display:none;z-index:50;}
+        .xlsx-menu::before{content:"";position:absolute;top:-6px;left:0;right:0;height:6px;} /* hover 브릿지 */
+        .xlsx-drop:hover .xlsx-menu{display:block;}
+        .xlsx-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:9px 12px;border-radius:7px;font-size:13.5px;color:#334155;cursor:pointer;}
+        .xlsx-menu button:hover{background:var(--hover);}
+        .xlsx-menu .dd-sep{height:1px;background:#eef2f7;margin:4px 6px;}
+
+        /* 토스트 */
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">재고관리</h1>
+                    <span class="subtitle">전체 <b id="rowCount">0</b>개</span>
+                </div>
+                <div class="actions">
+                    <div class="xlsx-drop">
+                        <button class="btn primary">
+                            xlsx
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="xlsx-menu">
+                            <button onclick="uploadStock('add')">재고 추가</button>
+                            <button onclick="uploadStock('deduct')">재고 차감</button>
+                            <div class="dd-sep"></div>
+                            <button onclick="downloadTemplate()">xlsx 양식</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <input type="file" id="stockFile" accept=".xlsx" style="display:none">
+            <div id="toast"></div>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="위치 · 상품번호 · 바코드 · 상품명 검색 후 Enter (콤마로 여러 개)" onkeydown="if(event.key==='Enter')applySearch()">
+            </div>
+
+            <div class="tabletop">
+                <div class="page-size">
+                    <select id="pageSize" onchange="changePageSize()">
+                        <option value="100" selected>100개씩</option>
+                        <option value="200">200개씩</option>
+                        <option value="500">500개씩</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-scroll">
+                <table>
+                    <colgroup>
+                        <col style="width:140px"><col style="width:130px"><col style="width:150px"><col><col style="width:90px"><col style="width:90px"><col style="width:200px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>위치</th><th>상품번호</th><th>바코드</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">시즌</th><th>비고</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="7">데이터를 불러오는 중…</td></tr></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+
+        let allRows=[], viewRows=[];
+        let pageSize=100, currentPage=1;
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
+
+        async function loadData(){
+            try{
+                const res=await fetch('/api/stocks'); // rk_stocks 테이블
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                const items=await res.json();
+                allRows=items.map(it=>({
+                    위치:it.location, 상품번호:it.skuId, 바코드:it.barcode, 상품명:it.itemName, 수량:it.qty, 시즌:it.season, 비고:it.note
+                }));
+                applySearch();
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="7">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        function render(){
+            const tb=document.getElementById('tbody');
+            const totalPages=Math.max(1,Math.ceil(viewRows.length/pageSize));
+            if(currentPage>totalPages)currentPage=totalPages;
+            const start=(currentPage-1)*pageSize;
+            const pageRows=viewRows.slice(start,start+pageSize);
+            if(pageRows.length===0){
+                tb.innerHTML=`<tr class="state-row"><td colspan="7">표시할 재고가 없습니다.</td></tr>`;
+            }else{
+                tb.innerHTML=pageRows.map(r=>`<tr>
+                    <td class="loc">${dashCell(r.위치)}</td>
+                    <td>${esc(r.상품번호)}</td>
+                    <td>${esc(r.바코드)}</td>
+                    <td class="pname">${esc(r.상품명)}</td>
+                    <td class="ctr">${dashCell(r.수량)}</td>
+                    <td class="ctr">${dashCell(r.시즌)}</td>
+                    <td>${dashCell(r.비고)}</td>
+                </tr>`).join('');
+            }
+            document.getElementById('rowCount').textContent=viewRows.length;
+            renderPagination(totalPages);
+        }
+
+        function renderPagination(totalPages){
+            const el=document.getElementById('pagination');
+            if(viewRows.length===0){el.innerHTML='';return;}
+            let html=`<button ${currentPage===1?'disabled':''} onclick="gotoPage(${currentPage-1})">이전</button>`;
+            for(const p of pageWindow(currentPage,totalPages)){
+                html+= p==='...' ? `<span class="ellipsis">…</span>` : `<button class="${p===currentPage?'active':''}" onclick="gotoPage(${p})">${p}</button>`;
+            }
+            html+=`<button ${currentPage===totalPages?'disabled':''} onclick="gotoPage(${currentPage+1})">다음</button>`;
+            el.innerHTML=html;
+        }
+        function pageWindow(cur,total){
+            const out=[];
+            if(total<=7){for(let i=1;i<=total;i++)out.push(i);return out;}
+            out.push(1);
+            if(cur>3)out.push('...');
+            for(let i=Math.max(2,cur-1);i<=Math.min(total-1,cur+1);i++)out.push(i);
+            if(cur<total-2)out.push('...');
+            out.push(total);
+            return out;
+        }
+        function gotoPage(p){
+            const total=Math.max(1,Math.ceil(viewRows.length/pageSize));
+            if(p<1||p>total)return;
+            currentPage=p;render();
+            const ts=document.querySelector('.table-scroll'); if(ts)ts.scrollTop=0;
+        }
+        function changePageSize(){
+            pageSize=Number(document.getElementById('pageSize').value)||100;
+            currentPage=1;render();
+        }
+
+        function applySearch(){
+            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+            if(terms.length===0){ viewRows=allRows.slice(); }
+            else{
+                viewRows=allRows.filter(r=>{
+                    const hay=[r.위치,r.상품번호,r.바코드,r.상품명,r.시즌,r.비고].map(v=>String(v||'').toLowerCase());
+                    return terms.some(t=>hay.some(h=>h.includes(t)));
+                });
+            }
+            currentPage=1;
+            render();
+        }
+
+        // ── 토스트 ──
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
+
+        // ── xlsx 양식 다운로드 ──
+        function downloadTemplate(){
+            const a=document.createElement('a');
+            a.href='/api/stocks/template';
+            a.download='재고업로드양식.xlsx';
+            document.body.appendChild(a);a.click();a.remove();
+        }
+
+        // ── 재고 추가/차감 업로드 ──
+        let uploadMode=null;
+        function uploadStock(mode){
+            uploadMode=mode;
+            document.getElementById('stockFile').click();
+        }
+        document.getElementById('stockFile').addEventListener('change', async function(){
+            const file=this.files[0];
+            this.value='';
+            if(!file||!uploadMode)return;
+            if(!file.name.endsWith('.xlsx')){toast('Excel(.xlsx) 파일만 업로드 가능합니다.');return;}
+            const fd=new FormData();fd.append('file',file);fd.append('mode',uploadMode);
+            toast(uploadMode==='add'?'재고 추가 처리 중…':'재고 차감 처리 중…');
+            try{
+                const res=await fetch('/api/stocks/upload',{method:'POST',body:fd});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'업로드 실패');
+                toast(data.message||'완료');
+                await loadData();
+            }catch(e){toast('업로드 실패: '+e.message);}
+            uploadMode=null;
+        });
+
+        loadData();
+    </script>
+</body>
+</html>

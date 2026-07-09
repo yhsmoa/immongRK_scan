@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>재고관리</title>
+    <title>상품관리</title>
     <style>
         :root{
             --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
@@ -26,7 +26,7 @@
         .upload-section{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
         .delete-btn, .location-save-btn, .upload-btn, .discontinue-btn {
             height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;
-            cursor:pointer;font-size:13.5px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;
+            cursor:pointer;font-size:13.5px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;
             transition:background .12s,border-color .12s;
         }
         .delete-btn:hover, .location-save-btn:hover, .upload-btn:hover, .discontinue-btn:hover{background:var(--hover);border-color:#cbd5e1;}
@@ -315,7 +315,7 @@
         <div class="card">
             <div class="head">
                 <div class="title-wrap">
-                    <h1 class="title">재고관리 <span class="flag">📦</span></h1>
+                    <h1 class="title">상품관리 <span class="flag">📦</span></h1>
                     <span class="subtitle">전체 <b id="rowCount">0</b>개 · <span id="selCount">0</span>개 선택</span>
                 </div>
                 <div class="actions upload-section">
@@ -501,32 +501,12 @@
             });
         }
 
-        // 버튼 너비 맞추기 함수
+        // 버튼 너비 맞추기 (발주서 스타일에서는 버튼이 내용 기준 자동 너비 → 강제 너비 제거)
         function equalizeButtonWidths() {
-            const deleteBtn = document.getElementById('deleteBtn');
-            const locationSaveBtn = document.getElementById('locationSaveBtn');
-            const uploadBtn = document.getElementById('uploadBtn');
-            
-            if (!deleteBtn || !locationSaveBtn || !uploadBtn) return;
-            
-            // 일단 모든 버튼의 너비를 자동으로 설정
-            deleteBtn.style.width = 'auto';
-            locationSaveBtn.style.width = 'auto';
-            uploadBtn.style.width = 'auto';
-            
-            // 버튼들의 너비 계산
-            const deleteBtnWidth = deleteBtn.offsetWidth;
-            const uploadBtnWidth = uploadBtn.offsetWidth;
-            
-            // 가장 큰 너비 찾기
-            const maxWidth = Math.max(deleteBtnWidth, uploadBtnWidth);
-            
-            // 모든 버튼에 동일한 너비 적용
-            if (maxWidth > 0) {
-                deleteBtn.style.width = maxWidth + 'px';
-                locationSaveBtn.style.width = maxWidth + 'px';
-                uploadBtn.style.width = maxWidth + 'px';
-            }
+            ['deleteBtn', 'locationSaveBtn', 'uploadBtn'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.width = '';
+            });
         }
 
         // 재고 데이터 삭제

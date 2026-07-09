@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>입고정리</title>
+    <style>
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --primary:#4f46e5; --primary-dark:#4338ca; --blue:#2563eb; --hover:#f8fafc;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 18px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:12px;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
+        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
+        .subtitle b{color:var(--primary);font-weight:600;}
+        .actions{display:flex;align-items:center;gap:8px;}
+        .btn{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
+        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
+        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
+        .search input::placeholder{color:var(--muted);}
+        .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
+
+        .actions select{height:38px;padding:0 10px;border:1px solid #e2e8f0;border-radius:9px;background:#fff;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        .actions select:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .actions .sel-code{min-width:160px;}
+
+        .tabbar{display:flex;justify-content:flex-start;gap:6px;margin-bottom:8px;}
+        .tab{height:34px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+        .tab:hover{background:var(--hover);}
+        .tab.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .tab .cnt{font-size:11.5px;opacity:.8;}
+
+        .table-scroll{overflow:auto;max-height:calc(100vh - 300px);}
+        table{width:100%;border-collapse:collapse;min-width:1000px;}
+        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
+        thead th.ctr{text-align:center;}
+        tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
+        tbody tr:hover td{background:var(--hover);}
+        td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        td.pname{white-space:normal;color:#334155;}
+        td.code{font-weight:600;color:#1e293b;}
+        td.ord{font-weight:600;color:#1e293b;}
+        .dash{color:#cbd5e1;}
+        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
+        .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
+        .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .table-scroll::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
+
+        /* 오른쪽 슬라이드 패널 (발주서 선택) */
+        .side-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10001;}
+        .side-back.show{opacity:1;pointer-events:auto;}
+        .side-panel{position:fixed;top:0;right:0;height:100vh;width:560px;max-width:92vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10002;display:flex;flex-direction:column;}
+        .side-panel.show{transform:translateX(0);}
+        .side-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;font-size:15px;font-weight:600;color:#0f172a;}
+        .side-head .sub{font-size:12px;font-weight:500;color:#94a3b8;margin-left:8px;}
+        .side-head button.x{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .side-tools{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1px solid #eef2f7;gap:10px;}
+        .side-tools label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#334155;cursor:pointer;}
+        .side-list{overflow-y:auto;padding:4px 4px 16px;flex:1;}
+        .side-date{display:inline-block;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:6px;margin:14px 6px 9px;user-select:none;cursor:pointer;}
+        .side-date:hover{background:#1d4ed8;}
+        .side-date.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
+        .side-orders{display:flex;flex-wrap:wrap;gap:8px;padding:0 8px 8px;}
+        .side-order{padding:8px 12px;border:1px solid #e5e9f0;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;}
+        .side-order:hover{background:#f8fafc;}
+        .side-order.sel{background:#eef2ff;border-color:#c7d2fe;}
+        .side-order .so-body{display:flex;flex-direction:column;}
+        .so-no{font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;}
+        .so-cnt{color:#94a3b8;font-weight:500;font-size:12px;}
+        .so-center{font-size:12px;color:#1e293b;margin-top:2px;}
+        .side-foot{padding:12px 18px;border-top:1px solid #eef2f7;display:flex;justify-content:flex-end;gap:8px;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
+
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">입고정리</h1>
+                    <span class="subtitle">표시 <b id="rowCount">0</b>건</span>
+                </div>
+                <div class="actions">
+                    <select id="yearSel" onchange="onYearChange()"></select>
+                    <select id="monthSel" onchange="onMonthChange()"></select>
+                    <select id="codeSel" class="sel-code" onchange="onCodeChange()"></select>
+                    <button class="btn primary" onclick="openOrderPanel()">출고준비</button>
+                </div>
+            </div>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="출고코드 · 박스명 · 중국번호 · 상품명 · 바코드 · 출고번호 검색 후 Enter" onkeydown="if(event.key==='Enter')render()">
+            </div>
+
+            <div class="tabbar">
+                <button class="tab active" id="tab-shipping" onclick="switchTab('shipping')">출고리스트 <span class="cnt" id="cnt-shipping">0</span></button>
+                <button class="tab" id="tab-stock" onclick="switchTab('stock')">남은상품 <span class="cnt" id="cnt-stock">0</span></button>
+            </div>
+
+            <div class="table-scroll">
+                <table id="tbl">
+                    <thead id="thead"></thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="10">데이터를 불러오는 중…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 발주서 선택 슬라이드 -->
+    <div class="side-back" id="sideBack" onclick="closeOrderPanel()"></div>
+    <div class="side-panel" id="sidePanel">
+        <div class="side-head">
+            <span>출고준비 · 발주서 선택 <span class="sub" id="sideCount"></span></span>
+            <button class="x" onclick="closeOrderPanel()">✕</button>
+        </div>
+        <div class="side-tools">
+            <label><input type="checkbox" id="selectAllOrders" checked onchange="toggleAllOrders(this)"> 전체선택</label>
+            <span class="sub" id="selInfo" style="font-size:12px;color:#94a3b8;"></span>
+        </div>
+        <div class="side-list" id="sideList"></div>
+        <div class="side-foot">
+            <button class="btn" onclick="closeOrderPanel()">취소</button>
+            <button class="btn primary" onclick="runPrepare()">출고준비 실행</button>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+
+        let allItems=[], shipments=[], orders=[];
+        let shippingRows=[], stockRows=[], prepared=false, activeTab='shipping';
+        let selectedOrders=new Set();
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
+
+        async function loadData(){
+            try{
+                const [shipRes,ordRes]=await Promise.all([fetch('/api/inbound/shipments'), fetch('/api/orders')]);
+                shipments=await shipRes.json();
+                orders=await ordRes.json();
+                selectedOrders=new Set(orders.map(o=>o.발주번호)); // 전체선택 기본
+                populateYear();
+                await loadArranged();
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="10">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+            }
+        }
+
+        // ── 연/월/출고코드 드롭박스 ──
+        function shipDate(s){ return new Date(s.createdAt); }
+        function populateYear(){
+            const years=[...new Set(shipments.map(s=>shipDate(s).getFullYear()))].sort((a,b)=>b-a);
+            document.getElementById('yearSel').innerHTML='<option value="">연도</option>'+years.map(y=>`<option value="${y}">${y}년</option>`).join('');
+            document.getElementById('monthSel').innerHTML='<option value="">월</option>';
+            document.getElementById('codeSel').innerHTML='<option value="">출고코드 선택</option>';
+        }
+        function onYearChange(){
+            const y=document.getElementById('yearSel').value;
+            const months=y?[...new Set(shipments.filter(s=>String(shipDate(s).getFullYear())===y).map(s=>shipDate(s).getMonth()+1))].sort((a,b)=>a-b):[];
+            document.getElementById('monthSel').innerHTML='<option value="">월</option>'+months.map(m=>`<option value="${m}">${m}월</option>`).join('');
+            document.getElementById('codeSel').innerHTML='<option value="">출고코드 선택</option>';
+            loadArranged();
+        }
+        function onMonthChange(){
+            const y=document.getElementById('yearSel').value,m=document.getElementById('monthSel').value;
+            const list=(y&&m)?shipments.filter(s=>{const d=shipDate(s);return String(d.getFullYear())===y&&String(d.getMonth()+1)===m;}):[];
+            document.getElementById('codeSel').innerHTML='<option value="">출고코드 선택</option>'+list.map(s=>`<option value="${esc(s.shipmentCode)}">${esc(s.shipmentCode)} (${s.itemCount})</option>`).join('');
+            loadArranged();
+        }
+        function onCodeChange(){ loadArranged(); }
+        function selectedCode(){ return document.getElementById('codeSel').value; }
+
+        // 저장된 출고배정 로드 (출고리스트=저장분, 남은상품=아이템수량-배정합계)
+        let arrangeReq=0;
+        async function loadArranged(){
+            const code=selectedCode();
+            const my=++arrangeReq;
+            // 출고코드를 선택하지 않으면 아무것도 표시하지 않음
+            if(!code){ shippingRows=[]; stockRows=[]; prepared=false; render(); return; }
+            try{
+                const res=await fetch('/api/inbound/arranged'+(code?('?shipmentCode='+encodeURIComponent(code)):''));
+                const data=await res.json();
+                if(my!==arrangeReq) return; // 더 최신 요청이 있으면 무시 (레이스 방지)
+                if(!res.ok) throw new Error(data.error||'조회 실패');
+                shippingRows=data.shipping||[];
+                stockRows=data.stock||[];
+                prepared=shippingRows.length>0;
+                render();
+            }catch(e){ if(my===arrangeReq) toast('조회 실패: '+e.message); }
+        }
+
+        function switchTab(t){
+            activeTab=t;
+            document.getElementById('tab-shipping').classList.toggle('active',t==='shipping');
+            document.getElementById('tab-stock').classList.toggle('active',t==='stock');
+            render();
+        }
+
+        function render(){
+            document.getElementById('cnt-shipping').textContent=shippingRows.length;
+            document.getElementById('cnt-stock').textContent=stockRows.length;
+            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+            const rowsAll=activeTab==='shipping'?shippingRows:stockRows;
+            const rows=terms.length===0?rowsAll:rowsAll.filter(r=>{
+                const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.발주번호].map(v=>String(v||'').toLowerCase());
+                return terms.some(t=>hay.some(h=>h.includes(t)));
+            });
+            const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
+            thead.innerHTML=`<tr><th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>출고번호</th><th>센터</th><th class="ctr">출고개수</th><th>출고예정일</th></tr>`;
+            if(rows.length===0){
+                let msg;
+                if(!selectedCode()) msg='연도 · 월 · 출고코드를 선택하세요.';
+                else if(activeTab==='shipping') msg=prepared?'출고 배정된 항목이 없습니다.':'‘출고준비’ 버튼으로 발주서를 선택해 정리하세요.';
+                else msg='남은상품이 없습니다.';
+                tb.innerHTML=`<tr class="state-row"><td colspan="10">${msg}</td></tr>`;
+            }else{
+                tb.innerHTML=rows.map(r=>`<tr>
+                    <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
+                    <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
+                    <td class="ord">${dashCell(r.출고번호)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td>
+                </tr>`).join('');
+            }
+            document.getElementById('rowCount').textContent=rows.length;
+        }
+
+        // ── 발주서 선택 슬라이드 (rocket 전체보기 스타일 + 체크박스) ──
+        function uniqueOrders(){
+            const m=new Map();
+            for(const o of orders){
+                if(!m.has(o.발주번호)) m.set(o.발주번호,{발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,count:(o.상품정보||[]).length});
+            }
+            return [...m.values()];
+        }
+        function renderOrderPanel(){
+            const uniq=uniqueOrders();
+            document.getElementById('sideCount').textContent=`${uniq.length}건`;
+            const byDate=new Map();
+            for(const o of uniq){ const d=o.입고예정일||'(미정)'; if(!byDate.has(d))byDate.set(d,[]); byDate.get(d).push(o); }
+            let html='';
+            for(const [date,list] of byDate){
+                const dateAllSel=list.length>0&&list.every(o=>selectedOrders.has(o.발주번호));
+                html+=`<div class="side-date ${dateAllSel?'sel':''}" onclick="toggleDate('${esc(date)}')">${esc(date)}</div>`;
+                const byCenter=new Map();
+                for(const o of list){ const c=o.물류센터||'(미정)'; if(!byCenter.has(c))byCenter.set(c,[]); byCenter.get(c).push(o); }
+                for(const [,corders] of byCenter){
+                    html+=`<div class="side-orders">`;
+                    html+=corders.map(o=>{
+                        const sel=selectedOrders.has(o.발주번호);
+                        return `<div class="side-order ${sel?'sel':''}" onclick="toggleOrder('${esc(o.발주번호)}')">
+                            <input type="checkbox" ${sel?'checked':''} onclick="event.stopPropagation();toggleOrder('${esc(o.발주번호)}')">
+                            <div class="so-body"><div class="so-no">${esc(o.발주번호)} <span class="so-cnt">(${o.count})</span></div>
+                            <div class="so-center">${esc(o.물류센터)}</div></div></div>`;
+                    }).join('');
+                    html+=`</div>`;
+                }
+            }
+            document.getElementById('sideList').innerHTML=html;
+            updateSelInfo();
+        }
+        function updateSelInfo(){
+            document.getElementById('selInfo').textContent=`${selectedOrders.size}개 선택`;
+            document.getElementById('selectAllOrders').checked=selectedOrders.size===uniqueOrders().length && uniqueOrders().length>0;
+        }
+        function toggleOrder(no){
+            if(selectedOrders.has(no)) selectedOrders.delete(no); else selectedOrders.add(no);
+            renderOrderPanel();
+        }
+        function ordersOfDate(date){
+            return uniqueOrders().filter(o=>(o.입고예정일||'(미정)')===date).map(o=>o.발주번호);
+        }
+        function toggleDate(date){
+            const nos=ordersOfDate(date);
+            const allSel=nos.length>0&&nos.every(n=>selectedOrders.has(n));
+            if(allSel) nos.forEach(n=>selectedOrders.delete(n));
+            else nos.forEach(n=>selectedOrders.add(n));
+            renderOrderPanel();
+        }
+        function toggleAllOrders(el){
+            if(el.checked) selectedOrders=new Set(uniqueOrders().map(o=>o.발주번호));
+            else selectedOrders=new Set();
+            renderOrderPanel();
+        }
+        function openOrderPanel(){
+            renderOrderPanel();
+            document.getElementById('sideBack').classList.add('show');
+            document.getElementById('sidePanel').classList.add('show');
+        }
+        function closeOrderPanel(){
+            document.getElementById('sideBack').classList.remove('show');
+            document.getElementById('sidePanel').classList.remove('show');
+        }
+
+        // ── 출고준비 실행 (선택 발주서 기준 할당) ──
+        async function runPrepare(){
+            if(selectedOrders.size===0){toast('발주서를 하나 이상 선택하세요.');return;}
+            closeOrderPanel();
+            toast('출고준비 계산 중…');
+            try{
+                const res=await fetch('/api/inbound/prepare',{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({shipmentCode:selectedCode()||undefined, orderNumbers:[...selectedOrders]})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'출고준비 실패');
+                shippingRows=data.shipping||[];
+                stockRows=data.stock||[];
+                prepared=true;
+                activeTab='shipping';
+                switchTab('shipping');
+                toast(`출고준비 완료 (출고 ${shippingRows.length} · 재고 ${stockRows.length})`);
+            }catch(e){toast('출고준비 실패: '+e.message);}
+        }
+
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
+
+        loadData();
+    </script>
+</body>
+</html>

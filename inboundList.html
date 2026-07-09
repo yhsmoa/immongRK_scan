@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>입고리스트</title>
+    <style>
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --primary:#4f46e5; --primary-dark:#4338ca; --blue:#2563eb; --hover:#f8fafc;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 18px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:12px;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
+        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
+        .subtitle b{color:var(--primary);font-weight:600;}
+        .actions{display:flex;align-items:center;gap:8px;}
+        .btn{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
+        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
+        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
+        .search input::placeholder{color:var(--muted);}
+        .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
+
+        /* 입고리스트 선택 드롭박스 (연/월/출고코드) */
+        .selector{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+        .selector select{height:34px;padding:0 10px;border:1px solid #e2e8f0;border-radius:9px;background:#fff;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        .selector select:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .selector .sel-code{min-width:180px;}
+
+        .table-scroll{overflow:auto;max-height:calc(100vh - 260px);}
+        table{width:100%;border-collapse:collapse;min-width:1000px;table-layout:fixed;}
+        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
+        thead th.ctr{text-align:center;}
+        tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
+        tbody tr:hover td{background:var(--hover);}
+        td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        td.pname{white-space:normal;color:#334155;}
+        td.code{font-weight:600;color:#1e293b;}
+        td.note[contenteditable="true"]{cursor:text;}
+        td.note[contenteditable="true"]:focus{outline:2px solid var(--primary);outline-offset:-2px;background:#fff;white-space:normal;}
+        .dash{color:#cbd5e1;}
+        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
+        .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
+        .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .table-scroll::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
+
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+        .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10000;}
+        .modal-back.show{display:flex;}
+        .modal{background:#fff;border-radius:14px;padding:22px 22px 18px;width:380px;max-width:92vw;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .modal h3{margin:0 0 6px;font-size:16px;color:var(--ink);}
+        .modal p{margin:0 0 14px;font-size:13px;color:var(--muted);}
+        .modal input{width:100%;height:42px;padding:0 12px;border:1px solid #e2e8f0;border-radius:9px;font-size:14px;outline:none;margin-bottom:16px;}
+        .modal input:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .modal-btns{display:flex;justify-content:flex-end;gap:8px;}
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">입고리스트</h1>
+                    <span class="subtitle">전체 <b id="rowCount">0</b>건</span>
+                </div>
+                <div class="actions">
+                    <button class="btn primary" onclick="document.getElementById('fileInput').click()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M5 12l7-7 7 7"/></svg>
+                        Excel 업로드
+                    </button>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="onFilePicked(this)">
+                </div>
+            </div>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="출고코드 · 박스명 · 중국번호 · 상품명 · 바코드 검색 후 Enter (콤마로 여러 개)" onkeydown="if(event.key==='Enter')applySearch()">
+            </div>
+
+            <div class="selector">
+                <select id="yearSel" onchange="onYearChange()"></select>
+                <select id="monthSel" onchange="onMonthChange()"></select>
+                <select id="codeSel" class="sel-code" onchange="onCodeChange()"></select>
+            </div>
+
+            <div class="table-scroll">
+                <table>
+                    <colgroup>
+                        <col style="width:120px"><col style="width:120px"><col style="width:120px"><col><col style="width:80px"><col style="width:150px"><col style="width:200px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>비고</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="7">데이터를 불러오는 중…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+    <div class="modal-back" id="codeModal">
+        <div class="modal">
+            <h3>출고코드 입력</h3>
+            <p>이 엑셀 원본을 저장할 출고코드를 입력하세요. (같은 출고코드는 덮어쓰기)</p>
+            <input id="codeInput" type="text" placeholder="출고코드">
+            <div class="modal-btns">
+                <button class="btn" onclick="closeCodeModal()">취소</button>
+                <button class="btn primary" onclick="confirmUpload()">업로드</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+
+        let allRows=[], viewRows=[], shipments=[];
+        let pendingFile=null;
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
+
+        async function loadData(){
+            try{
+                const [shipRes, listRes]=await Promise.all([fetch('/api/inbound/shipments'), fetch('/api/inbound/list')]);
+                if(!shipRes.ok||!listRes.ok) throw new Error('HTTP');
+                shipments=await shipRes.json();
+                const items=await listRes.json();
+                allRows=items.map(it=>({
+                    id:it.id, 출고코드:it.shipmentCode, 박스명:it.boxName, 중국번호:it.orderNumber,
+                    상품명:it.productName, 수량:it.quantity, 바코드:it.barcode, 비고:it.note
+                }));
+                populateYear();
+                applySearch();
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="7">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+            }
+        }
+
+        // ── 연/월/출고코드 드롭박스 (created_at 기준) ──
+        function shipDate(s){ return new Date(s.createdAt); }
+        function populateYear(){
+            const years=[...new Set(shipments.map(s=>shipDate(s).getFullYear()))].sort((a,b)=>b-a);
+            document.getElementById('yearSel').innerHTML='<option value="">연도</option>'+years.map(y=>`<option value="${y}">${y}년</option>`).join('');
+            document.getElementById('monthSel').innerHTML='<option value="">월</option>';
+            document.getElementById('codeSel').innerHTML='<option value="">전체 출고코드</option>';
+        }
+        function onYearChange(){
+            const y=document.getElementById('yearSel').value;
+            const months=y ? [...new Set(shipments.filter(s=>String(shipDate(s).getFullYear())===y).map(s=>shipDate(s).getMonth()+1))].sort((a,b)=>a-b) : [];
+            document.getElementById('monthSel').innerHTML='<option value="">월</option>'+months.map(m=>`<option value="${m}">${m}월</option>`).join('');
+            document.getElementById('codeSel').innerHTML='<option value="">전체 출고코드</option>';
+            applySearch();
+        }
+        function onMonthChange(){
+            const y=document.getElementById('yearSel').value, m=document.getElementById('monthSel').value;
+            const list=(y&&m) ? shipments.filter(s=>{const d=shipDate(s);return String(d.getFullYear())===y&&String(d.getMonth()+1)===m;}) : [];
+            document.getElementById('codeSel').innerHTML='<option value="">전체 출고코드</option>'+list.map(s=>`<option value="${esc(s.shipmentCode)}">${esc(s.shipmentCode)} (${s.itemCount})</option>`).join('');
+            applySearch();
+        }
+        function onCodeChange(){ applySearch(); }
+        function selectedCode(){ return document.getElementById('codeSel').value; }
+
+        function render(){
+            const tb=document.getElementById('tbody');
+            if(viewRows.length===0){
+                tb.innerHTML=`<tr class="state-row"><td colspan="7">표시할 입고리스트가 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
+            }else{
+                tb.innerHTML=viewRows.map(r=>`<tr data-id="${r.id}">
+                    <td class="code">${esc(r.출고코드)}</td>
+                    <td>${esc(r.박스명)}</td>
+                    <td>${esc(r.중국번호)}</td>
+                    <td class="pname">${esc(r.상품명)}</td>
+                    <td class="ctr">${dashCell(r.수량)}</td>
+                    <td>${esc(r.바코드)}</td>
+                    <td class="note" contenteditable="true" data-orig="${esc(r.비고||'')}" onblur="saveNote(this,${r.id})">${esc(r.비고||'')}</td>
+                </tr>`).join('');
+            }
+            document.getElementById('rowCount').textContent=viewRows.length;
+        }
+
+        function applySearch(){
+            const code=selectedCode();
+            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+            viewRows=allRows.filter(r=>{
+                if(code && r.출고코드!==code) return false;
+                if(terms.length===0) return true;
+                const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.비고].map(v=>String(v||'').toLowerCase());
+                return terms.some(t=>hay.some(h=>h.includes(t)));
+            });
+            render();
+        }
+
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);}
+
+        // ── 업로드 (출고코드 입력 → 업로드) ──
+        function onFilePicked(input){
+            const f=input.files[0];
+            if(!f)return;
+            pendingFile=f;
+            input.value='';
+            document.getElementById('codeInput').value='';
+            document.getElementById('codeModal').classList.add('show');
+            setTimeout(()=>document.getElementById('codeInput').focus(),50);
+        }
+        function closeCodeModal(){document.getElementById('codeModal').classList.remove('show');pendingFile=null;}
+        async function confirmUpload(){
+            const code=document.getElementById('codeInput').value.trim();
+            if(!code){toast('출고코드를 입력하세요.');return;}
+            if(!pendingFile){closeCodeModal();return;}
+            const fd=new FormData();fd.append('file',pendingFile);fd.append('shipmentCode',code);
+            document.getElementById('codeModal').classList.remove('show');
+            toast('업로드 중…');
+            try{
+                const res=await fetch('/api/inbound/upload',{method:'POST',body:fd});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'업로드 실패');
+                toast(data.message||'업로드 완료');
+                await loadData();
+            }catch(e){toast('업로드 실패: '+e.message);}
+            pendingFile=null;
+        }
+        document.getElementById('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmUpload();if(e.key==='Escape')closeCodeModal();});
+
+        // ── 비고 저장 (blur 시) ──
+        async function saveNote(cell,id){
+            const note=cell.textContent.trim();
+            if(note===(cell.dataset.orig||''))return;
+            try{
+                const res=await fetch('/api/inbound/update-note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,note})});
+                if(!res.ok)throw new Error('저장 실패');
+                cell.dataset.orig=note;
+                const row=allRows.find(r=>r.id===id); if(row)row.비고=note;
+                toast('비고 저장됨');
+            }catch(e){
+                cell.textContent=cell.dataset.orig||'';
+                toast('비고 저장 실패: '+e.message);
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

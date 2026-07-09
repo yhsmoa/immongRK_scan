@@ -93,7 +93,15 @@
             <a href="/scan" class="menu-item" id="menu-scan">바코드 스캔</a>
             <a href="/shipment" class="menu-item" id="menu-shipment">쉽먼트</a>
             <a href="/importChina" class="menu-item" id="menu-importChina">중국입고</a>
-            <a href="/inventory" class="menu-item" id="menu-inventory">재고관리</a>
+            <div class="menu-item">
+                <a href="/inboundList" class="menu-link" style="color: inherit; text-decoration: none;">CN입고</a>
+                <div class="dropdown-menu">
+                    <a href="/inboundList" class="dropdown-item">입고리스트</a>
+                    <a href="/inboundArrange" class="dropdown-item">입고정리</a>
+                </div>
+            </div>
+            <a href="/inventory" class="menu-item" id="menu-inventory">상품관리</a>
+            <a href="/stock" class="menu-item" id="menu-stock">재고관리</a>
             <a href="/warehouse" class="menu-item" id="menu-warehouse">쿠팡 물류센터</a>
             <a href="/salesdata" class="menu-item" id="menu-salesdata">판매데이터</a>
             <a href="/shortage" class="menu-item" id="menu-shortage">상품부족</a>
@@ -111,6 +119,7 @@
                 '/shipment': 'menu-shipment',
                 '/importChina': 'menu-importChina',
                 '/inventory': 'menu-inventory',
+                '/stock': 'menu-stock',
                 '/warehouse': 'menu-warehouse',
                 '/salesdata': 'menu-salesdata',
                 '/shortage': 'menu-shortage'
