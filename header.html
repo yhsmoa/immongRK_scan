@@ -51,6 +51,15 @@
             margin-top: 4px;
             overflow: hidden;
         }
+        /* 부모 메뉴와 하위메뉴 사이 빈 공간을 투명하게 이어주는 hover 브릿지 (드롭다운이 사라지지 않도록) */
+        .dropdown-menu::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: -8px;
+            height: 8px;
+        }
         .dropdown-item {
             color: #555;
             padding: 10px 16px;
@@ -77,13 +86,6 @@
                 <div class="dropdown-menu">
                     <a href="/newOrder" class="dropdown-item">신규 발주서</a>
                     <a href="/rocket" class="dropdown-item">전체 발주서</a>
-                </div>
-            </div>
-            <div class="menu-item">
-                <a href="/rocket-v2" class="menu-link" style="color: inherit; text-decoration: none;">발주서 V2</a>
-                <div class="dropdown-menu">
-                    <a href="/newOrder-v2" class="dropdown-item">신규 발주서 V2</a>
-                    <a href="/rocket-v2" class="dropdown-item">전체 발주서 V2</a>
                 </div>
             </div>
             <a href="/scan" class="menu-item" id="menu-scan">바코드 스캔</a>

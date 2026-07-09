@@ -81,18 +81,6 @@ app.get('/header', (req, res) => {
     res.sendFile(path.join(__dirname, 'header.html'));
 });
 
-// ==================== 발주서 V2 (Supabase) ====================
-// 전체 발주서 V2 페이지
-app.get('/rocket-v2', (req, res) => {
-    res.sendFile(path.join(__dirname, 'rocket-v2.html'));
-});
-// 신규 발주서 V2 페이지
-app.get('/newOrder-v2', (req, res) => {
-    res.sendFile(path.join(__dirname, 'newOrder-v2.html'));
-});
-// V2 조회 API (/api/v2/*) — Supabase 전용, 기존 API 무영향
-app.use(require('./routes/v2'));
-
 // ==================== 전면 전환: Supabase 라우터 (기존 Mongo 라우트보다 먼저 매칭) ====================
 // 문제 발생 시 아래 한 줄만 주석 처리하면 즉시 기존 MongoDB 로직으로 롤백됨.
 app.use(require('./routes/rkOrders')(io));
