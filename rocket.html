@@ -36,40 +36,52 @@
         .pagination button.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
         .pagination button:disabled{opacity:.4;cursor:default;}
         .pagination .ellipsis{padding:0 4px;color:#94a3b8;}
-        /* 발주번호가 바뀌는 첫 행에 굵은 상단 보더 */
-        tbody tr.group-start td{border-top:2px solid #b9c2cf;}
+        /* 발주번호 그룹 구분선: 그룹의 마지막 행 하단에 1px 검정 (border-collapse에서 위쪽 셀 우선이라 확실히 검정으로 보임) */
+        tbody tr.group-end td{border-bottom:1px solid #111827;}
         /* 오른쪽 슬라이드 패널 (전체보기) */
         .side-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10001;}
         .side-back.show{opacity:1;pointer-events:auto;}
-        .side-panel{position:fixed;top:0;right:0;height:100vh;width:360px;max-width:90vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10002;display:flex;flex-direction:column;}
+        .side-panel{position:fixed;top:0;right:0;height:100vh;width:540px;max-width:92vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10002;display:flex;flex-direction:column;}
         .side-panel.show{transform:translateX(0);}
         .side-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;font-size:15px;font-weight:600;color:#0f172a;}
         .side-head .sub{font-size:12px;font-weight:500;color:#94a3b8;margin-left:8px;}
         .side-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
-        .side-list{overflow-y:auto;padding:8px;flex:1;}
-        .side-item{padding:9px 12px;border-radius:8px;cursor:pointer;display:flex;flex-direction:column;gap:2px;border:1px solid transparent;}
-        .side-item:hover{background:#f8fafc;}
-        .side-item.sel{background:#eef2ff;border-color:#c7d2fe;}
-        .side-item b{font-size:13px;color:#1e293b;}
-        .side-item span{font-size:11.5px;color:#94a3b8;}
+        .side-list{overflow-y:auto;padding:4px 4px 16px;flex:1;}
+        .side-date{display:inline-block;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:6px;margin:14px 6px 9px;cursor:pointer;user-select:none;}
+        .side-date:hover{background:#1d4ed8;}
+        .side-date.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
+        .side-orders{display:flex;flex-wrap:wrap;gap:8px;padding:0 8px 8px;}
+        .side-order{padding:8px 12px;border:1px solid #e5e9f0;border-radius:8px;cursor:pointer;}
+        .side-order:hover{background:#f8fafc;}
+        .side-order.sel{background:#eef2ff;border-color:#c7d2fe;}
+        .so-no{font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;}
+        .so-cnt{color:#94a3b8;font-weight:500;font-size:12px;}
+        .so-center{font-size:12px;color:#1e293b;margin-top:2px;}
         .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
         .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
         .search input::placeholder{color:var(--muted);}
         .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
         .table-scroll{overflow:auto;max-height:calc(100vh - 250px);}
-        table{width:100%;border-collapse:collapse;min-width:1200px;}
-        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 12px;border:1px solid #dfe3ea;white-space:nowrap;}
-        thead th.num{text-align:right;}
-        tbody td{padding:8px 12px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;white-space:nowrap;vertical-align:middle;}
+        table{width:100%;border-collapse:collapse;min-width:1270px;table-layout:fixed;}
+        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 8px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
+        thead th.num,thead th.ctr{text-align:center;}
+        tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
         tbody tr:hover td{background:var(--hover);}
-        td.num{text-align:right;font-variant-numeric:tabular-nums;}
+        td.num,td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        th.num,td.num,th.ctr,td.ctr{padding-left:4px;padding-right:4px;}
+        .c-created{font-size:10px;}
+        td.c-created,th.c-created{text-align:center;padding-left:2px;padding-right:2px;}
         td.order-no{font-weight:600;color:#1e293b;}
         td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;}
         .scan-zero{color:#cbd5e1;}
-        .scan-pos{color:#1e293b;font-weight:700;}
+        .scan-pos{color:#1e293b;}
+        /* 스캔 열 배지: 확정==스캔 초록(연하게), 스캔>0 & 확정>스캔 주황 */
+        .scan-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;font-size:12px;font-weight:500;line-height:1;}
+        .scan-green{background:#dcfce7;color:#16a34a;}
+        .scan-orange{background:#ffedd5;color:#ea580c;}
         .dash{color:#cbd5e1;}
         .loc-disc{color:#e11d48;font-weight:600;}
-        th.chk,td.chk{width:42px;text-align:center;padding-right:0;}
+        th.chk,td.chk{width:42px;text-align:center;padding-left:0;padding-right:0;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
         .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
@@ -131,14 +143,17 @@
 
             <div class="table-scroll">
                 <table>
+                    <colgroup>
+                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:76px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:50px"><col style="width:84px"><col style="width:99px">
+                    </colgroup>
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
-                            <th>발주번호</th><th>물류센터</th><th>입고예정일</th><th>상품번호</th><th>상품바코드</th><th>상품명</th>
-                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th>입고1</th><th>입고2</th><th>위치</th>
+                            <th>발주번호</th><th>물류센터</th><th>입고예정일</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고1</th><th class="ctr">입고2</th><th>위치</th><th class="c-created">created_at</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="13">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="15">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
@@ -175,6 +190,13 @@
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         const locCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':(String(v).trim()==='단종'?'<span class="loc-disc">단종</span>':esc(v));
+        function fmtCreatedAt(ts){
+            if(!ts) return '-';
+            const d=new Date(ts); if(isNaN(d.getTime())) return '-';
+            const k=new Date(d.getTime()+9*3600*1000); // KST
+            const p=n=>String(n).padStart(2,'0');
+            return `${p(k.getUTCFullYear()%100)}-${p(k.getUTCMonth()+1)}-${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}:${p(k.getUTCSeconds())}`;
+        }
 
         async function loadData(){
             try{
@@ -187,12 +209,12 @@
                         allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
                             상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
                             발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:p.스캔수량,
-                            입고1:p.입고1,입고2:p.입고2,위치:p.위치});
+                            입고1:p.입고1,입고2:p.입고2,위치:p.위치,created_at:o.created_at});
                     }
                 }
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="13">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="15">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -203,19 +225,24 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(pageRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="13">표시할 발주 상품이 없습니다.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="15">표시할 발주 상품이 없습니다.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map((r,li)=>{
                     const i=start+li;
                     const scanN=Number(r.스캔수량)||0;
-                    const gs=(i>0&&viewRows[i-1]&&viewRows[i-1].발주번호!==r.발주번호)?'group-start':'';
-                    return `<tr data-i="${i}" class="${gs}">
+                    const conf=Number(r.확정수량)||0;
+                    const scanHtml = (conf===scanN) ? `<span class="scan-badge scan-green">${scanN}</span>`
+                        : (scanN>0 && conf>scanN) ? `<span class="scan-badge scan-orange">${scanN}</span>`
+                        : `<span class="${scanN>0?'scan-pos':'scan-zero'}">${scanN}</span>`;
+                    const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
+                    return `<tr data-i="${i}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
                         <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td><td>${esc(r.입고예정일)}</td>
-                        <td>${esc(r.상품번호)}</td><td>${esc(r.상품바코드)}</td><td class="pname">${esc(r.상품명)}</td>
+                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${esc(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
-                        <td class="num ${scanN>0?'scan-pos':'scan-zero'}">${scanN}</td>
-                        <td>${dashCell(r.입고1)}</td><td>${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td>
+                        <td class="num">${scanHtml}</td>
+                        <td class="ctr">${dashCell(r.재고)}</td>
+                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }
@@ -302,11 +329,36 @@
             const orders=uniqueOrders();
             const terms=currentSearchTerms();
             document.getElementById('sideCount').textContent=`${orders.length}건`;
-            document.getElementById('sideList').innerHTML=orders.map(o=>{
-                const sel=terms.includes(o.발주번호)?'sel':'';
-                return `<div class="side-item ${sel}" onclick="toggleOrderInSearch('${esc(o.발주번호)}')">
-                    <b>${esc(o.발주번호)}</b><span>${esc(o.물류센터)} · ${esc(o.입고예정일)} · ${o.count}건</span></div>`;
-            }).join('');
+            // 입고예정일(날짜)별 그룹 → 날짜 헤더 아래 발주서를 가로로 나열
+            const byDate=new Map();
+            for(const o of orders){
+                const d=o.입고예정일||'(미정)';
+                if(!byDate.has(d)) byDate.set(d,[]);
+                byDate.get(d).push(o);
+            }
+            let html='';
+            for(const [date,list] of byDate){
+                const dateSel=list.length>0&&list.every(o=>terms.includes(o.발주번호))?'sel':'';
+                html+=`<div class="side-date ${dateSel}" onclick="toggleDateInSearch('${esc(date)}')">${esc(date)}</div>`;
+                // 같은 날짜 안에서 지역(물류센터)별로 줄바꿈 (각 지역 = 별도 flex 행)
+                const byCenter=new Map();
+                for(const o of list){
+                    const c=o.물류센터||'(미정)';
+                    if(!byCenter.has(c)) byCenter.set(c,[]);
+                    byCenter.get(c).push(o);
+                }
+                for(const [,corders] of byCenter){
+                    html+=`<div class="side-orders">`;
+                    html+=corders.map(o=>{
+                        const sel=terms.includes(o.발주번호)?'sel':'';
+                        return `<div class="side-order ${sel}" onclick="toggleOrderInSearch('${esc(o.발주번호)}')">
+                            <div class="so-no">${esc(o.발주번호)} <span class="so-cnt">(${o.count})</span></div>
+                            <div class="so-center">${esc(o.물류센터)}</div></div>`;
+                    }).join('');
+                    html+=`</div>`;
+                }
+            }
+            document.getElementById('sideList').innerHTML=html;
         }
         function openOrderPanel(){
             renderOrderPanel();
@@ -324,6 +376,17 @@
             if(idx===-1) terms.push(no); else terms.splice(idx,1);
             inp.value=terms.join(', ');
             applySearch(); // renderOrderPanel() 은 applySearch 내부에서 호출됨(패널 열려있을 때)
+        }
+        // 날짜 클릭 → 해당 날짜의 모든 발주번호 토글 (전부 선택돼있으면 해제, 아니면 전부 추가)
+        function toggleDateInSearch(date){
+            const nos=uniqueOrders().filter(o=>(o.입고예정일||'(미정)')===date).map(o=>o.발주번호);
+            const inp=document.getElementById('searchInput');
+            let terms=inp.value.split(',').map(t=>t.trim()).filter(Boolean);
+            const allSel=nos.length>0&&nos.every(n=>terms.includes(n));
+            if(allSel) terms=terms.filter(t=>!nos.includes(t));
+            else for(const n of nos) if(!terms.includes(n)) terms.push(n);
+            inp.value=terms.join(', ');
+            applySearch();
         }
 
         let toastTimer;
