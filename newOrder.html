@@ -5,856 +5,513 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>신규 발주서 등록</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --line-soft:#f1f5f9; --primary:#4f46e5; --primary-dark:#4338ca;
+            --blue:#2563eb; --hover:#f8fafc;
         }
-        .container {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            text-align: center;
-            color: #333;
-            margin-bottom: 30px;
-        }
-        .content {
-            margin-top: 20px;
-        }
-        .upload-area {
-            border: 2px dashed #ccc;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 20px;
-            background-color: #f9f9f9;
-            border-radius: 5px;
-        }
-        .upload-btn {
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-bottom: 10px;
-        }
-        .upload-btn:hover {
-            background-color: #45a049;
-        }
-        .table-header {
-            display: flex;
-            justify-content: flex-end;
-            margin-bottom: 20px;
-            gap: 10px;
-        }
-        .table-header button {
-            padding: 8px 16px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .table-header button:hover {
-            background-color: #45a049;
-        }
-        .delete-btn {
-            background-color: #ff6b6b !important;
-        }
-        .delete-btn:hover {
-            background-color: #ff5252 !important;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-        .order-checkbox {
-            width: 20px;
-            height: 20px;
-        }
-        .order-details {
-            display: none;
-        }
-        .order-details.show {
-            display: table-row;
-        }
-        .details-table {
-            width: 100%;
-            margin-top: 10px;
-        }
-        .details-table th {
-            background-color: #e6e6e6;
-        }
-        .order-link {
-            color: #2196F3;
-            text-decoration: none;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .order-link:hover {
-            text-decoration: underline;
-        }
-        /* Remove any hover-related CSS if it exists */
-        .order-checkbox:hover + .order-details,
-        tr:hover .order-details {
-            display: none;
-        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 10px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:12px;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
+        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
+        .subtitle b{color:var(--primary);font-weight:600;}
+        .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .btn{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
+        .btn:active{background:#f1f5f9;}
+        .btn.danger:hover{color:#dc2626;border-color:#fecaca;background:#fef2f2;}
+        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
+        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+        .sep{width:1px;height:22px;background:#e2e8f0;margin:0 2px;}
+
+        /* 업로드 영역 */
+        .upload-area{border:2px dashed #d7dee8;border-radius:12px;padding:22px 20px;text-align:center;margin-bottom:16px;background:#fafbfc;color:var(--muted);transition:border-color .15s,background .15s;cursor:pointer;}
+        .upload-area:hover{border-color:#c7d2fe;background:#f8faff;}
+        .upload-area.drag{border-color:var(--primary);background:#eef2ff;}
+        .upload-area .up-icon{width:30px;height:30px;color:var(--primary);margin-bottom:5px;}
+        .upload-area .up-main{font-size:14px;font-weight:600;color:var(--ink-soft);}
+        .upload-area .up-sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
+
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .tabletop{display:flex;align-items:center;justify-content:flex-start;margin-bottom:8px;}
+        .page-size select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        .pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:16px 0 8px;flex-wrap:wrap;}
+        .pagination button{min-width:34px;height:34px;padding:0 10px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;font-size:13px;cursor:pointer;}
+        .pagination button:hover:not(:disabled):not(.active){background:#f8fafc;}
+        .pagination button.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .pagination button:disabled{opacity:.4;cursor:default;}
+        .pagination .ellipsis{padding:0 4px;color:#94a3b8;}
+        /* 발주번호 그룹 구분선 */
+        tbody tr.group-end td{border-bottom:1px solid #111827;}
+        /* 오른쪽 슬라이드 패널 (전체보기) */
+        .side-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10001;}
+        .side-back.show{opacity:1;pointer-events:auto;}
+        .side-panel{position:fixed;top:0;right:0;height:100vh;width:540px;max-width:92vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10002;display:flex;flex-direction:column;}
+        .side-panel.show{transform:translateX(0);}
+        .side-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;font-size:15px;font-weight:600;color:#0f172a;}
+        .side-head .sub{font-size:12px;font-weight:500;color:#94a3b8;margin-left:8px;}
+        .side-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .side-list{overflow-y:auto;padding:4px 4px 16px;flex:1;}
+        .side-date{display:inline-block;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:6px;margin:14px 6px 9px;cursor:pointer;user-select:none;}
+        .side-date:hover{background:#1d4ed8;}
+        .side-date.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
+        .side-orders{display:flex;flex-wrap:wrap;gap:8px;padding:0 8px 8px;}
+        .side-order{padding:8px 12px;border:1px solid #e5e9f0;border-radius:8px;cursor:pointer;}
+        .side-order:hover{background:#f8fafc;}
+        .side-order.sel{background:#eef2ff;border-color:#c7d2fe;}
+        .so-no{font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;}
+        .so-cnt{color:#94a3b8;font-weight:500;font-size:12px;}
+        .so-center{font-size:12px;color:#1e293b;margin-top:2px;}
+        .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
+        .search input::placeholder{color:var(--muted);}
+        .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
+        .table-scroll{overflow:auto;max-height:calc(100vh - 300px);}
+        table{width:100%;border-collapse:collapse;min-width:1270px;table-layout:fixed;}
+        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 8px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
+        thead th.num,thead th.ctr{text-align:center;}
+        tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
+        tbody tr:hover td{background:var(--hover);}
+        td.num,td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        th.num,td.num,th.ctr,td.ctr{padding-left:4px;padding-right:4px;}
+        .c-created{font-size:10px;}
+        td.c-created,th.c-created{text-align:center;padding-left:2px;padding-right:2px;}
+        td.order-no{font-weight:600;color:#1e293b;}
+        td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;}
+        .scan-zero{color:#cbd5e1;}
+        .scan-pos{color:#1e293b;}
+        .scan-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;font-size:12px;font-weight:500;line-height:1;}
+        .scan-green{background:#dcfce7;color:#16a34a;}
+        .scan-orange{background:#ffedd5;color:#ea580c;}
+        .dash{color:#cbd5e1;}
+        .loc-disc{color:#e11d48;font-weight:600;}
+        th.chk,td.chk{width:42px;text-align:center;padding-left:0;padding-right:0;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
+        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
+        .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
+        .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .table-scroll::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+        .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10000;}
+        .modal-back.show{display:flex;}
+        .modal{background:#fff;border-radius:14px;padding:22px 22px 18px;width:380px;max-width:92vw;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .modal h3{margin:0 0 6px;font-size:16px;color:var(--ink);}
+        .modal p{margin:0 0 14px;font-size:13px;color:var(--muted);}
+        .modal input{width:100%;height:42px;padding:0 12px;border:1px solid #e2e8f0;border-radius:9px;font-size:14px;outline:none;margin-bottom:16px;}
+        .modal input:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .modal-btns{display:flex;justify-content:flex-end;gap:8px;}
     </style>
 </head>
 <body>
     <div id="header-container"></div>
-    <div class="container">
-        <h1>신규 발주서 등록</h1>
-        <div class="content">
-            <div class="upload-area" id="uploadArea">
-                <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
-                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">Excel 파일 업로드</button>
-                <p>또는 파일을 여기에 끌어다 놓으세요</p>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">신규 발주서 등록</h1>
+                    <span class="subtitle">전체 <b id="rowCount">0</b>행 · <span id="selCount">0</span>개 선택</span>
+                </div>
+                <div class="actions">
+                    <button class="btn" onclick="openOrderPanel()">전체보기</button>
+                    <button class="btn" onclick="loadLocations()">위치 불러오기</button>
+                    <button class="btn" onclick="exportSelectedOrders()">엑셀저장</button>
+                    <button class="btn" onclick="printRows()">인쇄</button>
+                    <button class="btn danger" onclick="deleteRows()">삭제</button>
+                    <span class="sep"></span>
+                    <button class="btn primary" onclick="registerOrders()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
+                        발주서 등록
+                    </button>
+                </div>
             </div>
-            <div class="table-header">
-                <button class="register-btn" onclick="registerOrders()">발주서 등록</button>
-                <button class="export-btn" onclick="exportSelectedOrders()">발주서 엑셀저장</button>
-                <button class="load-location-btn" onclick="loadLocations()">위치 불러오기</button>
-                <button class="print-btn" onclick="printSelectedOrders()">인쇄</button>
-                <button class="delete-btn" onclick="deleteSelectedOrders()">삭제</button>
+
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <input type="file" id="fileInput" accept=".xlsx" style="display:none">
+                <svg class="up-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                <div class="up-main">Excel 파일 업로드</div>
+                <div class="up-sub">클릭하거나 파일을 여기에 끌어다 놓으세요 (.xlsx)</div>
             </div>
-            <table id="orderTable">
-                <thead>
-                    <tr>
-                        <th style="width: 40px;">
-                            <input type="checkbox" class="order-checkbox" id="selectAll" onclick="toggleSelectAll(this)">
-                        </th>
-                        <th>발주번호</th>
-                        <th>물류센터</th>
-                        <th>품목개수</th>
-                        <th>발주수량</th>
-                        <th>확정수량</th>
-                        <th>스캔수량</th>
-                        <th>입고예정일</th>
-                    </tr>
-                </thead>
-                <tbody id="orderBody"></tbody>
-            </table>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="발주번호 · 물류센터 · 상품명 · 상품바코드 · 위치 검색 후 Enter" onkeydown="if(event.key==='Enter')applySearch()">
+            </div>
+
+            <div class="tabletop">
+                <div class="page-size">
+                    <select id="pageSize" onchange="changePageSize()">
+                        <option value="100" selected>100개씩</option>
+                        <option value="200">200개씩</option>
+                        <option value="500">500개씩</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="table-scroll">
+                <table>
+                    <colgroup>
+                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:76px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:50px"><col style="width:84px"><col style="width:99px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
+                            <th>발주번호</th><th>물류센터</th><th>입고예정일</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고1</th><th class="ctr">입고2</th><th>위치</th><th class="c-created">created_at</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="15">데이터를 불러오는 중…</td></tr></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination"></div>
         </div>
     </div>
 
-    <!-- Add a new password confirmation modal for deleting orders -->
-    <div id="deleteModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 1000;">
-        <div class="modal-content" style="max-width: 500px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee;">
-                <h2 style="margin: 0; font-size: 22px; color: #333;">발주서 삭제 확인</h2>
-                <div>
-                    <button class="modal-btn cancel-btn" style="padding: 10px 15px; border-radius: 4px; background-color: #f44336; color: white; border: none; cursor: pointer;" onclick="closeDeleteModal()">취소</button>
-                    <button class="modal-btn delete-btn" style="margin-left: 10px; padding: 10px 15px; border-radius: 4px; background-color: #ff6b6b; color: white; border: none; cursor: pointer;" onclick="confirmDelete()">삭제</button>
-                </div>
-            </div>
-            <div style="padding: 0 10px;">
-                <div style="margin-bottom: 20px; background-color: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee;">
-                    <label for="deletePassword" style="font-weight: bold; display: block; margin-bottom: 8px;">비밀번호를 입력해주세요:</label>
-                    <input type="password" id="deletePassword" style="padding: 10px; width: 100%; border: 1px solid #ddd; border-radius: 4px; font-size: 16px; box-sizing: border-box;" placeholder="삭제 비밀번호">
-                </div>
-                <div style="margin-top: 20px;">
-                    <h3 style="margin-top: 0; font-size: 18px; color: #555; padding-bottom: 10px; border-bottom: 1px solid #eee;">삭제할 발주서 목록</h3>
-                    <div id="deleteOrderList" style="max-height: 200px; overflow-y: auto; margin-top: 10px;"></div>
-                </div>
+    <div class="side-back" id="sideBack" onclick="closeOrderPanel()"></div>
+    <div class="side-panel" id="sidePanel">
+        <div class="side-head">
+            <span>신규 발주서 전체 <span class="sub" id="sideCount"></span></span>
+            <button onclick="closeOrderPanel()">✕</button>
+        </div>
+        <div class="side-list" id="sideList"></div>
+    </div>
+
+    <div id="toast"></div>
+    <div class="modal-back" id="modalBack">
+        <div class="modal">
+            <h3 id="mTitle"></h3>
+            <p id="mDesc"></p>
+            <input id="mInput" type="text">
+            <div class="modal-btns">
+                <button class="btn" onclick="modalResolve(null)">취소</button>
+                <button class="btn primary" onclick="modalConfirm()">확인</button>
             </div>
         </div>
     </div>
 
     <script>
-        // 헤더 로드
-        fetch('/header')
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById('header-container').innerHTML = html;
-            });
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
 
-        // 파일 업로드 처리
-        let uploadedOrders = [];
-        
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            if (e.target.files.length > 0) {
-                directFileUpload(e.target.files[0]);
-            }
-        });
-
-        // 드래그 앤 드롭 처리
-        const uploadArea = document.getElementById('uploadArea');
-        uploadArea.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            this.style.borderColor = '#4CAF50';
-        });
-
-        uploadArea.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            this.style.borderColor = '#ccc';
-        });
-
-        uploadArea.addEventListener('drop', function(e) {
-            e.preventDefault();
-            this.style.borderColor = '#ccc';
-            if (e.dataTransfer.files.length > 0) {
-                directFileUpload(e.dataTransfer.files[0]);
-            }
-        });
-
-        async function directFileUpload(file) {
-            if (!file.name.endsWith('.xlsx')) {
-                alert('Excel 파일만 업로드 가능합니다.');
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                const response = await fetch('/api/neworder/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error('파일 업로드 실패');
-                }
-
-                const data = await response.json();
-                alert(data.message);
-                
-                // Clear the file input
-                document.getElementById('fileInput').value = '';
-                
-                // Reload the orders to display the newly added ones
-                loadNewOrders();
-            } catch (error) {
-                alert(error.message);
-            }
+        let allRows=[], viewRows=[];
+        let pageSize=100, currentPage=1;
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
+        const locCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':(String(v).trim()==='단종'?'<span class="loc-disc">단종</span>':esc(v));
+        function fmtCreatedAt(ts){
+            if(!ts) return '-';
+            const d=new Date(ts); if(isNaN(d.getTime())) return '-';
+            const k=new Date(d.getTime()+9*3600*1000); // KST
+            const p=n=>String(n).padStart(2,'0');
+            return `${p(k.getUTCFullYear()%100)}-${p(k.getUTCMonth()+1)}-${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}:${p(k.getUTCSeconds())}`;
         }
 
-        // 발주서 등록
-        async function registerOrders() {
-            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
-            if (selectedCheckboxes.length === 0) {
-                alert('등록할 발주서를 선택해주세요.');
-                return;
-            }
-            
-            const selectedOrders = Array.from(selectedCheckboxes).map(cb => 
-                cb.getAttribute('data-order-number')
-            );
-            
-            if (!confirm(`선택한 ${selectedOrders.length}개의 발주서를 기존 발주서 목록에 등록하시겠습니까?`)) {
-                return;
-            }
-            
-            try {
-                const response = await fetch('/api/neworders/register', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ orderNumbers: selectedOrders })
-                });
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.message || '발주서 등록에 실패했습니다.');
-                }
-                
-                const result = await response.json();
-                
-                alert(result.message);
-                
-                // 등록 성공 후 목록 새로고침
-                if (result.registered > 0) {
-                    loadNewOrders();
-                }
-            } catch (error) {
-                alert(error.message);
-            }
-        }
-
-        // 발주서 목록 표시
-        function displayOrders(orders) {
-            const tbody = document.getElementById('orderBody');
-            tbody.innerHTML = '';
-
-            orders.forEach(order => {
-                // 메인 행 추가
-                const mainRow = document.createElement('tr');
-                mainRow.innerHTML = `
-                    <td>
-                        <input type="checkbox" class="order-checkbox" data-order-number="${order.발주번호}">
-                    </td>
-                    <td><a href="#" class="order-link" data-order-number="${order.발주번호}">${order.발주번호}</a></td>
-                    <td>${order.물류센터}</td>
-                    <td>${order.상품수}</td>
-                    <td>${order.발주수량}</td>
-                    <td>${order.확정수량}</td>
-                    <td>${order.스캔수량}</td>
-                    <td>${order.입고예정일}</td>
-                `;
-                tbody.appendChild(mainRow);
-
-                // 상세 정보 행 추가
-                const detailsRow = document.createElement('tr');
-                detailsRow.id = `details-${order.발주번호}`;
-                detailsRow.className = 'order-details';
-                detailsRow.innerHTML = `
-                    <td colspan="8">
-                        <table class="details-table">
-                            <thead>
-                                <tr>
-                                    <th>상품번호</th>
-                                    <th>상품바코드</th>
-                                    <th>상품이름</th>
-                                    <th>발주수량</th>
-                                    <th>확정수량</th>
-                                    <th>스캔수량</th>
-                                    <th>입고1</th>
-                                    <th>입고2</th>
-                                    <th>위치</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${order.상품정보.map(product => `
-                                    <tr>
-                                        <td>${product.상품번호}</td>
-                                        <td>${product.상품바코드}</td>
-                                        <td>${product.상품이름}</td>
-                                        <td>${product.발주수량}</td>
-                                        <td>${product.확정수량}</td>
-                                        <td>${product.스캔수량}</td>
-                                        <td>${product.입고1 || '-'}</td>
-                                        <td>${product.입고2 || '-'}</td>
-                                        <td>${product.위치 || '-'}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </td>
-                `;
-                tbody.appendChild(detailsRow);
-
-                // 체크박스 클릭 이벤트 추가
-                const checkbox = mainRow.querySelector('.order-checkbox');
-                checkbox.addEventListener('change', function() {
-                    const detailsRow = document.getElementById(`details-${this.getAttribute('data-order-number')}`);
-                    if (this.checked) {
-                        detailsRow.classList.add('show');
-                    } else {
-                        detailsRow.classList.remove('show');
-                    }
-                });
-                
-                // 발주번호 클릭 이벤트 추가
-                const orderLink = mainRow.querySelector('.order-link');
-                orderLink.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const orderNumber = this.getAttribute('data-order-number');
-                    const detailsRow = document.getElementById(`details-${orderNumber}`);
-                    
-                    // 토글 기능 (보이면 숨기고, 숨겨져 있으면 보이게)
-                    if (detailsRow.classList.contains('show')) {
-                        detailsRow.classList.remove('show');
-                    } else {
-                        detailsRow.classList.add('show');
-                    }
-                });
-            });
-        }
-
-        // 전체 선택/해제
-        function toggleSelectAll(checkbox) {
-            const checkboxes = document.querySelectorAll('.order-checkbox:not(#selectAll)');
-            checkboxes.forEach(cb => {
-                cb.checked = checkbox.checked;
-                const detailsRow = document.getElementById(`details-${cb.getAttribute('data-order-number')}`);
-                if (detailsRow) {
-                    if (checkbox.checked) {
-                        detailsRow.classList.add('show');
-                    } else {
-                        detailsRow.classList.remove('show');
+        async function loadData(){
+            try{
+                const res=await fetch('/api/neworders'); // 신규발주서 (dedup 없이 원본)
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                const orders=await res.json();
+                allRows=[];
+                for(const o of orders){
+                    for(const p of (o.상품정보||[])){
+                        if(p.박스정보) continue; // 박스행 제외
+                        allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
+                            상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
+                            발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:p.스캔수량,
+                            입고1:p.입고1,입고2:p.입고2,위치:p.위치,created_at:o.created_at});
                     }
                 }
-            });
-        }
-
-        // 위치 정보 불러오기
-        async function loadLocations() {
-            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
-            if (selectedCheckboxes.length === 0) {
-                alert('위치를 불러올 발주서를 선택해주세요.');
-                return;
-            }
-
-            try {
-                // 선택된 발주서의 상세 정보 표시 확인
-                const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
-                
-                // 선택된 각 발주서에 대해 상세 정보 행을 표시
-                selectedOrderNumbers.forEach(orderNumber => {
-                    const detailsRow = document.getElementById(`details-${orderNumber}`);
-                    if (!detailsRow.classList.contains('show')) {
-                        detailsRow.classList.add('show');
-                    }
-                });
-
-                // 모든 상품 바코드와 해당 위치 셀 수집
-                const barcodeCells = new Map(); // 바코드와 해당 셀들을 매핑
-                const updateData = []; // 한번에 업데이트할 데이터 배열
-
-                selectedOrderNumbers.forEach(orderNumber => {
-                    const detailsTable = document.querySelector(`#details-${orderNumber} table tbody`);
-                    if (detailsTable) {
-                        const rows = detailsTable.querySelectorAll('tr');
-                        rows.forEach(row => {
-                            const barcodeCell = row.querySelector('td:nth-child(2)');
-                            const locationCell = row.querySelector('td:nth-child(9)');
-                            
-                            if (barcodeCell && locationCell) {
-                                const barcode = barcodeCell.textContent.trim();
-                                if (barcode) {
-                                    if (!barcodeCells.has(barcode)) {
-                                        barcodeCells.set(barcode, []);
-                                    }
-                                    barcodeCells.get(barcode).push({
-                                        orderNumber: orderNumber,
-                                        cell: locationCell
-                                    });
-                                }
-                            }
-                        });
-                    }
-                });
-
-                // 바코드가 없으면 종료
-                if (barcodeCells.size === 0) {
-                    alert('불러올 상품 바코드가 없습니다.');
-                    return;
-                }
-
-                // 위치 정보 요청
-                const response = await fetch('/api/inventory/locations', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ barcodes: Array.from(barcodeCells.keys()) })
-                });
-
-                if (!response.ok) {
-                    throw new Error('위치 정보를 불러오는데 실패했습니다.');
-                }
-
-                const locations = await response.json();
-                
-                // 위치 정보가 있는 상품만 필터링
-                const locationsWithData = locations.filter(item => item.location && item.location !== '-');
-                
-                // 일괄 업데이트를 위한 데이터 준비
-                locationsWithData.forEach(item => {
-                    const cells = barcodeCells.get(item.barcode);
-                    if (cells) {
-                        cells.forEach(cellInfo => {
-                            updateData.push({
-                                orderNumber: cellInfo.orderNumber,
-                                barcode: item.barcode,
-                                location: item.location
-                            });
-                            
-                            // UI를 먼저 업데이트 (바로 보이게)
-                            cellInfo.cell.textContent = item.location;
-                        });
-                    }
-                });
-
-                if (updateData.length === 0) {
-                    alert('업데이트할 위치 정보가 없습니다.');
-                    return;
-                }
-
-                // 서버에 한번에 위치 정보 저장 (배치 업데이트)
-                const batchUpdateResponse = await fetch('/api/neworders/batch-update-location', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ updates: updateData })
-                }).catch(error => {
-                    // 배치 API가 없는 경우 기존 방식대로 개별 업데이트
-                    return { ok: false };
-                });
-
-                // 배치 API가 있으면 배치로 처리, 없으면 하나씩 처리
-                if (batchUpdateResponse && batchUpdateResponse.ok) {
-                    const result = await batchUpdateResponse.json();
-                    alert(`위치정보 업데이트 완료`);
-                } else {
-                    // 배치 API가 없는 경우 하나씩 업데이트
-                    let updateCount = 0;
-                    const totalUpdates = updateData.length;
-                    
-                    for (const item of updateData) {
-                        try {
-                            const saveResponse = await fetch('/api/neworders/update-location', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(item)
-                            });
-
-                            if (saveResponse.ok) {
-                                updateCount++;
-                            }
-                        } catch (error) {
-                            // 오류 무시하고 계속 진행
-                        }
-                    }
-                    
-                    alert(`위치정보 업데이트 완료`);
-                }
-
-            } catch (error) {
-                console.error('Error:', error);
-                alert('위치 정보를 불러오는데 실패했습니다: ' + error.message);
+                applySearch();
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="15">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
-        // 발주서 삭제
-        async function deleteSelectedOrders() {
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
-                .map(checkbox => checkbox.getAttribute('data-order-number'));
-
-            if (selectedOrders.length === 0) {
-                alert('삭제할 발주서를 선택해주세요.');
-                return;
+        function render(){
+            const tb=document.getElementById('tbody');
+            const totalPages=Math.max(1,Math.ceil(viewRows.length/pageSize));
+            if(currentPage>totalPages)currentPage=totalPages;
+            const start=(currentPage-1)*pageSize;
+            const pageRows=viewRows.slice(start,start+pageSize);
+            if(pageRows.length===0){
+                tb.innerHTML=`<tr class="state-row"><td colspan="15">표시할 발주 상품이 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
+            }else{
+                tb.innerHTML=pageRows.map((r,li)=>{
+                    const i=start+li;
+                    const scanN=Number(r.스캔수량)||0;
+                    const conf=Number(r.확정수량)||0;
+                    const scanHtml = (conf===scanN) ? `<span class="scan-badge scan-green">${scanN}</span>`
+                        : (scanN>0 && conf>scanN) ? `<span class="scan-badge scan-orange">${scanN}</span>`
+                        : `<span class="${scanN>0?'scan-pos':'scan-zero'}">${scanN}</span>`;
+                    const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
+                    return `<tr data-i="${i}" class="${ge}">
+                        <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
+                        <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td><td>${esc(r.입고예정일)}</td>
+                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${esc(r.상품명)}</td>
+                        <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
+                        <td class="num">${scanHtml}</td>
+                        <td class="ctr">${dashCell(r.재고)}</td>
+                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                    </tr>`;
+                }).join('');
             }
-
-            // 삭제할 발주서 목록 표시
-            const deleteOrderList = document.getElementById('deleteOrderList');
-            deleteOrderList.innerHTML = '';
-            
-            for (let i = 0; i < selectedOrders.length; i++) {
-                const order = uploadedOrders.find(o => o.발주번호 === selectedOrders[i]);
-                const item = document.createElement('div');
-                item.style.padding = '5px';
-                item.style.borderBottom = '1px solid #eee';
-                item.textContent = `${selectedOrders[i]} - ${order ? order.물류센터 : ''}`;
-                deleteOrderList.appendChild(item);
-            }
-            
-            // 패스워드 초기화
-            document.getElementById('deletePassword').value = '';
-            
-            // 모달 표시
-            document.getElementById('deleteModal').style.display = 'block';
-        }
-        
-        // 삭제 모달 닫기
-        function closeDeleteModal() {
-            document.getElementById('deleteModal').style.display = 'none';
-        }
-        
-        // 삭제 확인 처리
-        async function confirmDelete() {
-            const password = document.getElementById('deletePassword').value;
-            
-            // 패스워드 검증 추가
-            if (!password) {
-                alert('패스워드를 입력해주세요.');
-                return;
-            }
-            
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
-                .map(checkbox => checkbox.getAttribute('data-order-number'));
-
-            try {
-                const response = await fetch('/api/neworders/delete', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ orderNumbers: selectedOrders, password })
-                });
-
-                if (!response.ok) {
-                    const data = await response.json();
-                    throw new Error(data.error || '발주서 삭제에 실패했습니다.');
-                }
-
-                closeDeleteModal();
-                alert('선택한 발주서가 삭제되었습니다.');
-                loadNewOrders();
-            } catch (error) {
-                alert(error.message);
-            }
+            document.getElementById('rowCount').textContent=viewRows.length;
+            document.getElementById('checkAll').checked=false;
+            renderPagination(totalPages);
+            updateSel();
         }
 
-        // 모달 외부 클릭 시 닫기
-        window.addEventListener('click', (event) => {
-            const deleteModal = document.getElementById('deleteModal');
-            if (event.target === deleteModal) {
-                closeDeleteModal();
+        function renderPagination(totalPages){
+            const el=document.getElementById('pagination');
+            if(viewRows.length===0){el.innerHTML='';return;}
+            let html=`<button ${currentPage===1?'disabled':''} onclick="gotoPage(${currentPage-1})">이전</button>`;
+            for(const p of pageWindow(currentPage,totalPages)){
+                html+= p==='...' ? `<span class="ellipsis">…</span>` : `<button class="${p===currentPage?'active':''}" onclick="gotoPage(${p})">${p}</button>`;
             }
-        });
-
-        // 발주서 저장
-        async function exportSelectedOrders() {
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
-                .map(checkbox => checkbox.getAttribute('data-order-number'));
-
-            if (selectedOrders.length === 0) {
-                alert('저장할 발주서를 선택해주세요.');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/neworders/export', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ orderNumbers: selectedOrders })
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    
-                    let filename;
-                    if (selectedOrders.length === 1) {
-                        filename = `신규발주리스트 (${selectedOrders[0]}).xlsx`;
-                    } else {
-                        filename = `신규발주리스트 (${selectedOrders[0]} 외 ${selectedOrders.length - 1}건).xlsx`;
-                    }
-                    
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                } else {
-                    throw new Error('발주서 저장에 실패했습니다.');
-                }
-            } catch (error) {
-                alert(error.message);
-            }
+            html+=`<button ${currentPage===totalPages?'disabled':''} onclick="gotoPage(${currentPage+1})">다음</button>`;
+            el.innerHTML=html;
+        }
+        function pageWindow(cur,total){
+            const out=[];
+            if(total<=7){for(let i=1;i<=total;i++)out.push(i);return out;}
+            out.push(1);
+            if(cur>3)out.push('...');
+            for(let i=Math.max(2,cur-1);i<=Math.min(total-1,cur+1);i++)out.push(i);
+            if(cur<total-2)out.push('...');
+            out.push(total);
+            return out;
+        }
+        function gotoPage(p){
+            const total=Math.max(1,Math.ceil(viewRows.length/pageSize));
+            if(p<1||p>total)return;
+            currentPage=p;render();
+            const ts=document.querySelector('.table-scroll'); if(ts)ts.scrollTop=0;
+        }
+        function changePageSize(){
+            pageSize=Number(document.getElementById('pageSize').value)||100;
+            currentPage=1;render();
         }
 
-        // 인쇄 기능
-        function printSelectedOrders() {
-            const selectedCheckboxes = document.querySelectorAll('.order-checkbox:checked:not(#selectAll)');
-            if (selectedCheckboxes.length === 0) {
-                alert('인쇄할 발주서를 선택해주세요.');
-                return;
-            }
-
-            // 선택된 발주서의 상세 정보 가져오기
-            const selectedOrderNumbers = Array.from(selectedCheckboxes).map(cb => cb.getAttribute('data-order-number'));
-            
-            console.log('선택된 발주서 번호:', selectedOrderNumbers);
-            console.log('uploadedOrders 상태:', uploadedOrders);
-            
-            // 새 창 열기 (인쇄용)
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                alert('팝업이 차단되었습니다. 팝업 차단을 해제하고 다시 시도해주세요.');
-                return;
-            }
-            
-            printWindow.document.write(`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset="UTF-8">
-                    <title>발주서 인쇄</title>
-                    <style>
-                        body {
-                            font-family: Arial, sans-serif;
-                            margin: 0;
-                            padding: 20px;
-                        }
-                        table {
-                            width: 100%;
-                            border-collapse: collapse;
-                            margin-bottom: 20px;
-                        }
-                        th, td {
-                            border: 1px solid #ddd;
-                            padding: 8px;
-                            text-align: left;
-                            font-size: 12px;
-                        }
-                        th {
-                            background-color: #f2f2f2;
-                            font-weight: bold;
-                        }
-                        tr:nth-child(even) {
-                            background-color: #f9f9f9;
-                        }
-                        h2 {
-                            color: #333;
-                            margin-top: 30px;
-                            margin-bottom: 10px;
-                        }
-                        /* 가로 인쇄 설정 */
-                        @page {
-                            size: A4 landscape;
-                            margin: 1cm;
-                        }
-                        @media print {
-                            table { page-break-inside: auto; }
-                            tr { page-break-inside: avoid; page-break-after: auto; }
-                            thead { display: table-header-group; }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <h2>발주서 인쇄</h2>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>발주번호</th>
-                                <th>물류센터</th>
-                                <th>상품번호</th>
-                                <th>상품바코드</th>
-                                <th>상품명</th>
-                                <th>발주수량</th>
-                                <th>확정수량</th>
-                                <th>위치</th>
-                                <th>입고예정일</th>
-                            </tr>
-                        </thead>
-                        <tbody id="printBody">
-                        </tbody>
-                    </table>
-                </body>
-                </html>
-            `);
-            
-            // 데이터 수집
-            let allProducts = [];
-            
-            // 각 발주서의 상품 정보 수집
-            selectedOrderNumbers.forEach(orderNumber => {
-                const order = uploadedOrders.find(o => o.발주번호 === orderNumber);
-                if (order) {
-                    console.log(`발주서 ${orderNumber} 데이터:`, order); // 개별 발주서 데이터 확인
-                    order.상품정보.forEach(product => {
-                        allProducts.push({
-                            발주번호: order.발주번호,
-                            물류센터: order.물류센터,
-                            상품번호: product.상품번호,
-                            상품바코드: product.상품바코드,
-                            상품명: product.상품이름,
-                            발주수량: product.발주수량,
-                            확정수량: product.확정수량 || '',
-                            위치: product.위치 || '-',
-                            입고예정일: order.입고예정일
-                        });
-                    });
-                } else {
-                    console.warn(`발주서 ${orderNumber}를 찾을 수 없습니다.`);
-                }
-            });
-            
-            console.log('인쇄용 상품 데이터:', allProducts.length); // 처리된 데이터 확인
-            
-            // 정렬 순서: 입고예정일 > 물류센터 > 발주번호 > 위치
-            allProducts.sort((a, b) => {
-                // 입고예정일 비교
-                if (a.입고예정일 !== b.입고예정일) {
-                    return a.입고예정일.localeCompare(b.입고예정일);
-                }
-                // 물류센터 비교
-                if (a.물류센터 !== b.물류센터) {
-                    return a.물류센터.localeCompare(b.물류센터);
-                }
-                // 발주번호 비교
-                if (a.발주번호 !== b.발주번호) {
-                    return a.발주번호.localeCompare(b.발주번호);
-                }
-                // 위치 비교
-                return (a.위치 || '-').localeCompare(b.위치 || '-');
-            });
-            
-            // 테이블에 데이터 채우기
-            const tbody = printWindow.document.getElementById('printBody');
-            
-            if (allProducts.length === 0) {
-                const noDataRow = printWindow.document.createElement('tr');
-                noDataRow.innerHTML = '<td colspan="9" style="text-align: center;">발주서 데이터를 불러올 수 없습니다. 발주서를 선택한 후 다시 시도해주세요.</td>';
-                tbody.appendChild(noDataRow);
-            } else {
-                allProducts.forEach(product => {
-                    const row = printWindow.document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${product.발주번호}</td>
-                        <td>${product.물류센터}</td>
-                        <td>${product.상품번호}</td>
-                        <td>${product.상품바코드}</td>
-                        <td>${product.상품명}</td>
-                        <td>${product.발주수량}</td>
-                        <td>${product.확정수량}</td>
-                        <td>${product.위치}</td>
-                        <td>${product.입고예정일}</td>
-                    `;
-                    tbody.appendChild(row);
+        function applySearch(){
+            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+            if(terms.length===0){ viewRows=allRows.slice(); }
+            else{
+                viewRows=allRows.filter(r=>{
+                    const hay=[r.발주번호,r.물류센터,r.상품명,r.상품바코드,r.위치].map(v=>String(v||'').toLowerCase());
+                    return terms.some(t=>hay.some(h=>h.includes(t)));
                 });
             }
-            
-            // 인쇄 준비가 되면 인쇄 대화상자 표시
-            printWindow.document.close();
-            printWindow.onload = function() {
-                printWindow.focus();
-                printWindow.print();
-            };
+            currentPage=1;
+            if(document.getElementById('sidePanel').classList.contains('show')) renderOrderPanel();
+            render();
         }
 
-        // Load new orders on page load
-        async function loadNewOrders() {
-            try {
-                const response = await fetch('/api/neworders');
-                if (!response.ok) {
-                    throw new Error('신규 발주서 조회에 실패했습니다.');
-                }
-                
-                const orders = await response.json();
-                console.log('로드된 발주서 데이터:', orders); // 데이터 로드 확인용 로그
-                uploadedOrders = orders; // 전역 변수에 할당하여 다른 함수에서 사용할 수 있도록 함
-                displayOrders(orders);
-            } catch (error) {
-                console.error('Error:', error);
+        function toggleAll(el){document.querySelectorAll('.rowchk').forEach(c=>c.checked=el.checked);updateSel();}
+        function updateSel(){
+            const checks=[...document.querySelectorAll('.rowchk')];
+            const n=checks.filter(c=>c.checked).length;
+            document.getElementById('selCount').textContent=n;
+            const all=document.getElementById('checkAll');
+            all.checked=checks.length>0&&n===checks.length;all.indeterminate=n>0&&n<checks.length;
+        }
+        function selectedRows(){
+            const out=[];
+            document.querySelectorAll('#tbody tr').forEach(tr=>{const c=tr.querySelector('.rowchk');if(c&&c.checked)out.push(viewRows[Number(tr.dataset.i)]);});
+            return out;
+        }
+        function selectedOrderNumbers(){return [...new Set(selectedRows().map(r=>r.발주번호))];}
+
+        // ── 전체보기 슬라이드 패널 ──
+        function uniqueOrders(){
+            const m=new Map();
+            for(const r of allRows){
+                if(!m.has(r.발주번호)) m.set(r.발주번호,{발주번호:r.발주번호,물류센터:r.물류센터,입고예정일:r.입고예정일,count:0});
+                m.get(r.발주번호).count++;
             }
+            return [...m.values()];
+        }
+        function currentSearchTerms(){
+            return document.getElementById('searchInput').value.split(',').map(t=>t.trim()).filter(Boolean);
+        }
+        function renderOrderPanel(){
+            const orders=uniqueOrders();
+            const terms=currentSearchTerms();
+            document.getElementById('sideCount').textContent=`${orders.length}건`;
+            const byDate=new Map();
+            for(const o of orders){
+                const d=o.입고예정일||'(미정)';
+                if(!byDate.has(d)) byDate.set(d,[]);
+                byDate.get(d).push(o);
+            }
+            let html='';
+            for(const [date,list] of byDate){
+                const dateSel=list.length>0&&list.every(o=>terms.includes(o.발주번호))?'sel':'';
+                html+=`<div class="side-date ${dateSel}" onclick="toggleDateInSearch('${esc(date)}')">${esc(date)}</div>`;
+                const byCenter=new Map();
+                for(const o of list){
+                    const c=o.물류센터||'(미정)';
+                    if(!byCenter.has(c)) byCenter.set(c,[]);
+                    byCenter.get(c).push(o);
+                }
+                for(const [,corders] of byCenter){
+                    html+=`<div class="side-orders">`;
+                    html+=corders.map(o=>{
+                        const sel=terms.includes(o.발주번호)?'sel':'';
+                        return `<div class="side-order ${sel}" onclick="toggleOrderInSearch('${esc(o.발주번호)}')">
+                            <div class="so-no">${esc(o.발주번호)} <span class="so-cnt">(${o.count})</span></div>
+                            <div class="so-center">${esc(o.물류센터)}</div></div>`;
+                    }).join('');
+                    html+=`</div>`;
+                }
+            }
+            document.getElementById('sideList').innerHTML=html;
+        }
+        function openOrderPanel(){
+            renderOrderPanel();
+            document.getElementById('sideBack').classList.add('show');
+            document.getElementById('sidePanel').classList.add('show');
+        }
+        function closeOrderPanel(){
+            document.getElementById('sideBack').classList.remove('show');
+            document.getElementById('sidePanel').classList.remove('show');
+        }
+        function toggleOrderInSearch(no){
+            const inp=document.getElementById('searchInput');
+            const terms=inp.value.split(',').map(t=>t.trim()).filter(Boolean);
+            const idx=terms.indexOf(no);
+            if(idx===-1) terms.push(no); else terms.splice(idx,1);
+            inp.value=terms.join(', ');
+            applySearch();
+        }
+        function toggleDateInSearch(date){
+            const nos=uniqueOrders().filter(o=>(o.입고예정일||'(미정)')===date).map(o=>o.발주번호);
+            const inp=document.getElementById('searchInput');
+            let terms=inp.value.split(',').map(t=>t.trim()).filter(Boolean);
+            const allSel=nos.length>0&&nos.every(n=>terms.includes(n));
+            if(allSel) terms=terms.filter(t=>!nos.includes(t));
+            else for(const n of nos) if(!terms.includes(n)) terms.push(n);
+            inp.value=terms.join(', ');
+            applySearch();
         }
 
-        // Load orders when the page loads
-        document.addEventListener('DOMContentLoaded', function() {
-            loadNewOrders();
-        });
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2800);}
+
+        let _modalResolve=null;
+        function openModal({title,desc,value='',password=false}){
+            document.getElementById('mTitle').textContent=title;
+            document.getElementById('mDesc').textContent=desc||'';
+            const inp=document.getElementById('mInput');inp.type=password?'password':'text';inp.value=value;
+            document.getElementById('modalBack').classList.add('show');
+            setTimeout(()=>inp.focus(),50);
+            return new Promise(res=>{_modalResolve=res;});
+        }
+        function modalResolve(v){document.getElementById('modalBack').classList.remove('show');if(_modalResolve){_modalResolve(v);_modalResolve=null;}}
+        function modalConfirm(){modalResolve(document.getElementById('mInput').value);}
+        document.getElementById('mInput').addEventListener('keydown',e=>{if(e.key==='Enter')modalConfirm();if(e.key==='Escape')modalResolve(null);});
+
+        // ── 업로드 (드래그 앤 드롭 + 클릭) ──
+        document.getElementById('fileInput').addEventListener('change',function(){ if(this.files[0]) uploadExcel(this.files[0]); this.value=''; });
+        const uploadArea=document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover',e=>{e.preventDefault();uploadArea.classList.add('drag');});
+        uploadArea.addEventListener('dragleave',e=>{e.preventDefault();uploadArea.classList.remove('drag');});
+        uploadArea.addEventListener('drop',e=>{e.preventDefault();uploadArea.classList.remove('drag');if(e.dataTransfer.files[0])uploadExcel(e.dataTransfer.files[0]);});
+        async function uploadExcel(file){
+            if(!file.name.endsWith('.xlsx')){toast('Excel(.xlsx) 파일만 업로드 가능합니다.');return;}
+            const fd=new FormData();fd.append('file',file);
+            toast('업로드 중…');
+            try{
+                const res=await fetch('/api/neworder/upload',{method:'POST',body:fd});
+                const data=await res.json();
+                toast(data.message||'업로드 완료');
+                await loadData();
+            }catch(e){toast('업로드 실패: '+e.message);}
+        }
+
+        // ── 발주서 등록 (신규 → 전체) ──
+        async function registerOrders(){
+            const orderNumbers=selectedOrderNumbers();
+            if(!orderNumbers.length){toast('등록할 발주서를 선택해주세요.');return;}
+            if(!confirm(`선택한 ${orderNumbers.length}개의 발주서를 기존 발주서 목록에 등록하시겠습니까?`))return;
+            try{
+                const res=await fetch('/api/neworders/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.message||'발주서 등록에 실패했습니다.');
+                toast(data.message);
+                if(data.registered>0) await loadData();
+            }catch(e){toast(e.message);}
+        }
+
+        // ── 엑셀저장 ──
+        async function exportSelectedOrders(){
+            const orderNumbers=selectedOrderNumbers();
+            if(!orderNumbers.length){toast('저장할 발주서를 선택해주세요.');return;}
+            try{
+                const res=await fetch('/api/neworders/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                if(!res.ok)throw new Error('HTTP '+res.status);
+                const blob=await res.blob();
+                const cd=res.headers.get('Content-Disposition')||'';
+                const m=cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
+                const fname=m?decodeURIComponent(m[1]):'신규발주리스트.xlsx';
+                const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();URL.revokeObjectURL(a.href);
+                toast(`엑셀 저장 완료 (${orderNumbers.length}건)`);
+            }catch(e){toast('저장 실패: '+e.message);}
+        }
+
+        // ── 삭제(비밀번호) ──
+        async function deleteRows(){
+            const orderNumbers=selectedOrderNumbers();
+            if(!orderNumbers.length){toast('삭제할 발주서를 선택해주세요.');return;}
+            const password=await openModal({title:'발주서 삭제',desc:`${orderNumbers.length}건 삭제. 비밀번호를 입력하세요.`,password:true});
+            if(password===null)return;
+            try{
+                const res=await fetch('/api/neworders/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers,password})});
+                const data=await res.json();
+                if(!res.ok){toast(data.error||'삭제 실패');return;}
+                toast(data.message||'삭제되었습니다.');
+                await loadData();
+            }catch(e){toast('삭제 실패: '+e.message);}
+        }
+
+        // ── 위치 불러오기 ──
+        async function loadLocations(){
+            const rows=selectedRows().length?selectedRows():viewRows;
+            const barcodes=[...new Set(rows.map(r=>r.상품바코드).filter(Boolean))];
+            if(!barcodes.length){toast('대상이 없습니다.');return;}
+            toast('위치 조회 중…');
+            try{
+                const res=await fetch('/api/inventory/locations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcodes})});
+                const locs=await res.json();
+                const map=new Map(locs.map(l=>[l.barcode,l.location]));
+                const updates=[];
+                for(const r of rows){
+                    const loc=map.get(r.상품바코드);
+                    if(loc&&loc!=='-'&&loc!==r.위치){ updates.push({orderNumber:r.발주번호,barcode:r.상품바코드,location:loc}); r.위치=loc; }
+                }
+                if(updates.length){
+                    await fetch('/api/neworders/batch-update-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates})});
+                }
+                render();
+                toast(`위치 ${updates.length}건 업데이트`);
+            }catch(e){toast('위치 불러오기 실패: '+e.message);}
+        }
+
+        // ── 인쇄 ──
+        function printRows(){
+            const rows=selectedRows().length?selectedRows():viewRows;
+            if(!rows.length){toast('인쇄할 행이 없습니다.');return;}
+            const head=['발주번호','물류센터','입고예정일','상품번호','상품바코드','상품명','발주수량','확정수량','스캔수량','입고1','입고2','위치'];
+            const body=rows.map(r=>`<tr>${[r.발주번호,r.물류센터,r.입고예정일,r.상품번호,r.상품바코드,r.상품명,r.발주수량,r.확정수량,r.스캔수량,r.입고1,r.입고2,r.위치].map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('');
+            const w=window.open('','_blank');
+            w.document.write(`<html><head><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}</style></head><body><h2>신규 발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.close();
+        }
+
+        loadData();
     </script>
 </body>
-</html> 
+</html>

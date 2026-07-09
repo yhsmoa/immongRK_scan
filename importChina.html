@@ -5,374 +5,107 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>쿠팡 로켓 중국입고</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-            font-size: 10pt;
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --primary:#4f46e5; --primary-dark:#4338ca; --blue:#2563eb; --hover:#f8fafc;
         }
-        .container {
-            max-width: 1600px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .content {
-            background-color: #fff;
-            padding: 15px 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .upload-area {
-            border: 2px dashed #ddd;
-            border-radius: 5px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-bottom: 20px;
-        }
-        .upload-area.dragover {
-            background-color: #f8f9fa;
-            border-color: #4CAF50;
-        }
-        .upload-area p {
-            margin: 15px 0 0;
-            color: #666;
-        }
-        .upload-btn {
-            padding: 10px 20px;
-            background-color: #FF69B4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.2s;
-        }
-        .upload-btn:hover {
-            background-color: #FF1493;
-        }
-        .table-container {
-            margin-top: 0;
-            overflow-x: auto;
-            max-height: 80vh;
-            overflow-y: auto;
-        }
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 0;
-        }
-        .table th, .table td {
-            padding: 6px 8px;
-            text-align: center;
-            font-size: 10pt;
-            white-space: nowrap;
-        }
-        .table th {
-            color: #555;
-            font-weight: 600;
-            font-size: 9pt;
-            letter-spacing: 0.3px;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            border-bottom: 2px solid #333;
-            background-color: #f0f1f3;
-        }
-        .table td {
-            border-bottom: 1px solid #eee;
-            color: #333;
-        }
-        .table tbody tr:hover {
-            background-color: #f5f7fa;
-        }
-        .group-header, .subgroup-header, .item-row, .collapsed, .toggle-icon {
-            display: none;
-        }
-        .button-container {
-            margin-top: 20px;
-            text-align: right;
-        }
-        .action-btn {
-            padding: 8px 16px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.2s;
-        }
-        .action-btn:hover {
-            background-color: #45a049;
-        }
-        .container h1 {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .container h1 .flag {
-            font-size: 1.2em;
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-        }
-        .modal-content {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: #fff;
-            padding: 20px;
-            width: 400px;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #ddd;
-        }
-        .modal-header h2 {
-            margin: 0;
-            font-size: 20px;
-        }
-        .close {
-            font-size: 24px;
-            cursor: pointer;
-            color: #666;
-        }
-        .close:hover {
-            color: #000;
-        }
-        .modal-body {
-            margin-bottom: 20px;
-            text-align: center;
-        }
-        .modal-body input {
-            width: 100%;
-            padding: 8px;
-            margin-top: 5px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-        }
-        .modal-footer {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .modal-btn {
-            padding: 8px 16px;
-            margin-left: 10px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .modal-btn.confirm {
-            background-color: #FF69B4;
-            color: white;
-        }
-        .modal-btn.cancel {
-            background-color: #ddd;
-            color: #333;
-        }
-        .table th:nth-child(2),
-        .table td:nth-child(2) {
-            display: none;
-        }
-        .button-group {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            gap: 10px;
-        }
-        
-        .left-buttons {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .right-buttons {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .action-button {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-        
-        .action-button:hover {
-            opacity: 0.9;
-        }
-        
-        .organize-button {
-            background-color: #4CAF50;
-            color: white;
-        }
-        
-        .order-organize-button {
-            background-color: #4CAF50;
-            color: white;
-        }
-        
-        .import1-button {
-            background-color: #4CAF50;
-            color: white;
-        }
-        
-        .import2-button {
-            background-color: #4CAF50;
-            color: white;
-        }
-        
-        .pdf-button {
-            background-color: #2196F3;
-            color: white;
-        }
-        
-        .delete-button {
-            background-color: #f44336;
-            color: white;
-        }
-        
-        .shipment-code-button {
-            display: block;
-            width: 100%;
-            padding: 10px;
-            margin: 5px 0;
-            background-color: #f8f9fa;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            cursor: pointer;
-            text-align: center;
-            transition: all 0.3s ease;
-        }
-        
-        .shipment-code-button:hover {
-            background-color: #e9ecef;
-        }
-        
-        .shipment-code-button.selected {
-            background-color: #4CAF50;
-            color: white;
-            border-color: #4CAF50;
-        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 18px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:10px;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;display:flex;align-items:center;gap:8px;}
+        .title .flag{font-size:1.1em;}
+        .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .sep{width:1px;height:22px;background:#e2e8f0;margin:0 2px;}
 
-        .modal-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-            gap: 10px;
-            padding: 10px;
-            max-height: 300px;
-            overflow-y: auto;
-            margin: 0 auto;
-            width: 90%;
-        }
+        /* 버튼 (발주서 스타일) */
+        .action-button{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .action-button:hover{background:var(--hover);border-color:#cbd5e1;}
+        .action-button:active{background:#f1f5f9;}
+        .delete-button:hover{color:#dc2626;border-color:#fecaca;background:#fef2f2;}
+
+        /* 업로드 영역 */
+        .upload-area{border:2px dashed #d7dee8;border-radius:12px;padding:26px 20px;text-align:center;background:#fafbfc;transition:border-color .15s,background .15s;margin-bottom:16px;}
+        .upload-area.dragover{border-color:var(--primary);background:#eef2ff;}
+        .upload-area .up-icon{width:30px;height:30px;color:var(--primary);margin-bottom:8px;}
+        .upload-area p{margin:10px 0 0;color:var(--muted);font-size:12.5px;}
+        .upload-btn{height:38px;padding:0 18px;background:var(--primary);color:#fff;border:1px solid var(--primary);border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);transition:background .12s;}
+        .upload-btn:hover{background:var(--primary-dark);}
+
+        /* 툴바 (필터/정렬) */
+        .toolbar{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin-bottom:10px;flex-wrap:wrap;}
+        .tb-field{display:flex;align-items:center;gap:8px;}
+        .tb-field label{font-weight:600;color:var(--ink-soft);font-size:12.5px;}
+        .tb-field select{height:34px;padding:0 10px;border:1px solid #e2e8f0;border-radius:9px;background:#fff;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        .tb-field select:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+
+        /* 테이블 */
+        .table-container{overflow:auto;max-height:calc(100vh - 320px);}
+        .table{width:100%;border-collapse:collapse;margin:0;}
+        .table thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:center;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 8px;border:1px solid #dfe3ea;white-space:nowrap;}
+        .table tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;text-align:center;white-space:nowrap;vertical-align:middle;}
+        .table tbody tr:hover td{background:var(--hover);}
+        .table td[contenteditable="true"]{cursor:text;}
+        .table td[contenteditable="true"]:focus{outline:2px solid var(--primary);outline-offset:-2px;background:#fff;}
+        .table th:nth-child(2), .table td:nth-child(2){display:none;} /* 팔렛 숨김 */
+        .group-header, .subgroup-header, .item-row, .collapsed, .toggle-icon{display:none;}
+        .table-container::-webkit-scrollbar{width:10px;height:10px;}
+        .table-container::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .table-container::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
+
+        /* 모달 */
+        .modal{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:1000;}
+        .modal-content{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:22px;width:420px;max-width:92vw;border-radius:14px;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #eef2f7;}
+        .modal-header h2{margin:0;font-size:16px;color:var(--ink);}
+        .close{font-size:22px;cursor:pointer;color:var(--muted);line-height:1;}
+        .close:hover{color:var(--ink);}
+        .modal-body{margin-bottom:16px;}
+        .modal-body p{color:var(--muted);font-size:13px;margin:0 0 12px;text-align:center;}
+        .modal-body label{font-size:12.5px;font-weight:600;color:var(--ink-soft);display:block;margin-bottom:6px;}
+        .modal-body input{width:100%;height:42px;padding:0 12px;margin-top:0;border:1px solid #e2e8f0;border-radius:9px;font-size:14px;outline:none;}
+        .modal-body input:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
+        .modal-btn{height:38px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:500;}
+        .modal-btn.confirm{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .modal-btn.confirm:hover{background:var(--primary-dark);}
+        .modal-btn.cancel:hover{background:var(--hover);border-color:#cbd5e1;}
+        .modal h2{font-size:16px;color:var(--ink);margin:0 0 14px;}
+
+        .button-container{margin-top:16px;text-align:right;}
+        .shipment-code-button{display:block;width:100%;padding:9px 12px;margin:6px 0;background:#fff;border:1px solid #e2e8f0;border-radius:9px;cursor:pointer;text-align:center;font-size:13px;color:#334155;transition:background .12s,border-color .12s;}
+        .shipment-code-button:hover{background:var(--hover);border-color:#cbd5e1;}
+        .shipment-code-button.selected{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;padding:6px;max-height:300px;overflow-y:auto;margin:0 auto;width:100%;}
+
         @media print {
-            body * {
-                visibility: hidden;
-            }
-            .content, .content * {
-                visibility: visible;
-            }
-            .content {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-                padding: 0;
-                margin: 0;
-            }
-            .table {
-                width: 100%;
-                border-collapse: collapse;
-                page-break-inside: auto;
-                font-size: 9px !important;
-            }
-            .table tr {
-                page-break-inside: avoid;
-                page-break-after: auto;
-            }
-            .table th, .table td {
-                border: 1px solid #000;
-                padding: 4px;
-                font-size: 9px !important;
-                line-height: 1.2;
-                white-space: nowrap;
-            }
-            .table th {
-                background-color: #f2f2f2 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-                font-weight: bold;
-            }
-            .table td:nth-child(5), /* 상품명 */
-            .table td:nth-child(8) { /* 출고예정 */
-                white-space: normal;
-                max-width: 200px;
-                word-break: break-word;
-            }
-            .table-container {
-                max-height: none !important;
-                overflow: visible !important;
-            }
-            .table th {
-                position: static;
-            }
-            .button-group, .upload-container {
-                display: none;
-            }
-            @page {
-                size: A4 landscape;
-                margin: 0.5cm;
-            }
-        }
-        .table td:nth-child(8) { /* 출고예정 열 */
-            white-space: pre-line;
-            max-width: 300px;
-            cursor: pointer;
-        }
-        .editable-cell {
-            background-color: #fff;
-            border: 1px solid #ddd;
-            padding: 8px;
-            min-height: 100px;
-            width: 100%;
-            box-sizing: border-box;
-            font-family: inherit;
-            font-size: inherit;
-            line-height: 1.5;
+            body * { visibility: hidden; }
+            .card, .card * { visibility: visible; }
+            .card { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; border: none; box-shadow: none; }
+            .table { width: 100%; border-collapse: collapse; page-break-inside: auto; font-size: 9px !important; }
+            .table tr { page-break-inside: avoid; page-break-after: auto; }
+            .table th, .table td { border: 1px solid #000; padding: 4px; font-size: 9px !important; line-height: 1.2; white-space: nowrap; }
+            .table th { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; position: static; }
+            .table td:nth-child(5) { white-space: normal; max-width: 200px; word-break: break-word; }
+            .table-container { max-height: none !important; overflow: visible !important; }
+            .head, .actions, .upload-area, .toolbar { display: none !important; }
+            @page { size: A4 landscape; margin: 0.5cm; }
         }
     </style>
 </head>
 <body>
     <div id="header-container"></div>
-    <div class="container">
-        <h1>중국입고 관리 <span class="flag">🐉</span></h1>
-        <div class="content">
-            <div class="button-group">
-                <div class="left-buttons">
-                    <button class="action-button delete-button" id="deleteButton">삭제</button>
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">중국입고 관리 <span class="flag">🐉</span></h1>
                 </div>
-                <div class="right-buttons">
+                <div class="actions">
+                    <button class="action-button delete-button" id="deleteButton">삭제</button>
+                    <span class="sep"></span>
                     <button class="action-button organize-button" id="organizeButton">CN 입고 정리</button>
                     <button class="action-button import1-button" id="import1Button">입고1</button>
                     <button class="action-button import2-button" id="import2Button">입고2</button>
@@ -380,27 +113,25 @@
                     <button class="action-button pdf-button" id="printButton">인쇄</button>
                 </div>
             </div>
-            
-            <div class="upload-container">
-                <div class="upload-area" id="uploadArea">
-                    <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
-                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">Excel 파일 업로드 🐲</button>
-                    <p>또는 파일을 여기에 끌어다 놓으세요</p>
-                </div>
+
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
+                <svg class="up-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                <div><button class="upload-btn" onclick="document.getElementById('fileInput').click()">Excel 파일 업로드 🐲</button></div>
+                <p>또는 파일을 여기에 끌어다 놓으세요</p>
             </div>
 
-            <!-- 정렬 드롭박스 추가 -->
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
-                <div style="display: flex; align-items: center; margin-right: 20px;">
-                    <label for="filterDropdown" style="margin-right: 10px; font-weight: bold;">필터:</label>
-                    <select id="filterDropdown" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; cursor: pointer; background-color: #f9f9f9;">
+            <div class="toolbar">
+                <div class="tb-field">
+                    <label for="filterDropdown">필터</label>
+                    <select id="filterDropdown">
                         <option value="all">전체 표시</option>
                         <option value="shipping">출고만 표시</option>
                     </select>
                 </div>
-                <div style="display: flex; align-items: center;">
-                    <label for="sortDropdown" style="margin-right: 10px; font-weight: bold;">정렬 기준:</label>
-                    <select id="sortDropdown" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; cursor: pointer; background-color: #f9f9f9;">
+                <div class="tb-field">
+                    <label for="sortDropdown">정렬 기준</label>
+                    <select id="sortDropdown">
                         <option value="none">- 선택 -</option>
                         <option value="logisticsCenter">물류센터</option>
                         <option value="boxName">박스번호</option>
@@ -411,7 +142,7 @@
                     </select>
                 </div>
             </div>
-            
+
             <div class="table-container">
                 <table class="table">
                     <thead>

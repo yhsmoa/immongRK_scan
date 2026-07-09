@@ -421,7 +421,11 @@
 
         // ── 저장(발주리스트 엑셀) ──
         async function saveOrders(){
-            const orderNumbers=selectedOrderNumbers();
+            // 체크된 게 있으면 그 발주서, 없으면 현재 검색/필터된 결과의 발주서를 저장
+            let orderNumbers=selectedOrderNumbers();
+            const fromSelection=orderNumbers.length>0;
+            if(!fromSelection) orderNumbers=[...new Set(viewRows.map(r=>r.발주번호))];
+            if(!orderNumbers.length){toast('저장할 발주서가 없습니다.');return;}
             try{
                 const res=await fetch('/api/orders/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
                 if(!res.ok)throw new Error('HTTP '+res.status);
@@ -430,7 +434,7 @@
                 const m=cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
                 const fname=m?decodeURIComponent(m[1]):'발주리스트.xlsx';
                 const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();URL.revokeObjectURL(a.href);
-                toast('엑셀 저장 완료'+(orderNumbers.length?` (${orderNumbers.length}건)`:' (전체)'));
+                toast(`엑셀 저장 완료 (${orderNumbers.length}건${fromSelection?'':' · 검색결과'})`);
             }catch(e){toast('저장 실패: '+e.message);}
         }
 

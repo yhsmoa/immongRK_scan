@@ -51,13 +51,15 @@
             margin-top: 4px;
             overflow: hidden;
         }
-        /* 부모 메뉴와 하위메뉴 사이 빈 공간을 투명하게 이어주는 hover 브릿지 (드롭다운이 사라지지 않도록) */
-        .dropdown-menu::before {
+        /* 부모 메뉴와 하위메뉴 사이 간격을 투명하게 메우는 hover 브릿지.
+           .dropdown-menu 는 overflow:hidden 이라 거기에 ::before 를 두면 잘려서 동작 안 함 →
+           잘리지 않는 부모(드롭다운을 가진 div.menu-item)에 ::after 로 둔다. */
+        div.menu-item::after {
             content: "";
             position: absolute;
+            top: 100%;
             left: 0;
             right: 0;
-            top: -8px;
             height: 8px;
         }
         .dropdown-item {
