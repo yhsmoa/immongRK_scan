@@ -1,135 +1,61 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>헤더</title>
-    <style>
-        .top-menu {
-            background-color: #fff;
-            padding: 12px 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            margin-bottom: 16px;
-        }
-        .menu-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: center;
-            gap: 4px;
-            font-size: 10pt;
-        }
-        .menu-item {
-            color: #555;
-            text-decoration: none;
-            padding: 7px 14px;
-            border-radius: 6px;
-            position: relative;
-            display: inline-block;
-            transition: all 0.15s ease;
-        }
-        .menu-item:hover {
-            background-color: #f0f1f3;
-            color: #333;
-        }
-        .menu-item.active {
-            background-color: #ecedf0;
-            color: #333;
-            font-weight: 600;
-        }
-        .dropdown-menu {
-            display: none;
-            position: absolute;
-            background-color: #fff;
-            min-width: 260px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            border-radius: 8px;
-            z-index: 10;
-            top: 100%;
-            left: 0;
-            flex-direction: row;
-            margin-top: 4px;
-            overflow: hidden;
-        }
-        /* 부모 메뉴와 하위메뉴 사이 간격을 투명하게 메우는 hover 브릿지.
-           .dropdown-menu 는 overflow:hidden 이라 거기에 ::before 를 두면 잘려서 동작 안 함 →
-           잘리지 않는 부모(드롭다운을 가진 div.menu-item)에 ::after 로 둔다. */
-        div.menu-item::after {
-            content: "";
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            height: 8px;
-        }
-        .dropdown-item {
-            color: #555;
-            padding: 10px 16px;
-            text-decoration: none;
-            display: block;
-            flex: 1;
-            text-align: center;
-            transition: background-color 0.15s ease;
-        }
-        .dropdown-item:hover {
-            background-color: #f5f5f5;
-        }
-        .menu-item:hover .dropdown-menu {
-            display: flex;
-        }
-    </style>
-</head>
-<body>
-    <div class="top-menu">
-        <div class="menu-container">
-            <a href="/" class="menu-item" id="menu-home">홈</a>
-            <div class="menu-item">
-                <a href="/rocket" class="menu-link" style="color: inherit; text-decoration: none;">발주서</a>
-                <div class="dropdown-menu">
-                    <a href="/newOrder" class="dropdown-item">신규 발주서</a>
-                    <a href="/rocket" class="dropdown-item">전체 발주서</a>
+<style>
+    /* 전 페이지 배경색 통일 */
+    body{background:#FBFAF9 !important;}
+    .site-topbar{height:2px;background:linear-gradient(90deg,#F0492F,#FF7A5C);}
+    .site-header{position:sticky;top:0;z-index:100;background:rgba(251,250,249,.82);
+        -webkit-backdrop-filter:saturate(180%) blur(14px);backdrop-filter:saturate(180%) blur(14px);
+        border-bottom:1px solid #EEECE9;
+        font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;}
+    .site-nav{max-width:1200px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;justify-content:space-between;gap:14px;}
+    .site-brand{display:flex;align-items:center;gap:9px;flex-shrink:0;text-decoration:none;color:#1C1B1A;}
+    .site-brand .dot{width:9px;height:9px;border-radius:3px;background:#F0492F;}
+    .site-brand span{font-weight:800;font-size:15px;letter-spacing:-.02em;white-space:nowrap;}
+    .site-menu{display:flex;gap:2px;align-items:center;flex-wrap:nowrap;}
+    .site-menu a.m-link{font-size:13px;font-weight:600;padding:7px 9px;border-radius:9px;white-space:nowrap;
+        text-decoration:none;color:#78736F;transition:background .15s,color .15s;display:inline-block;}
+    .site-menu a.m-link:hover{background:#F3F1EE;color:#1C1B1A;}
+    .site-menu a.m-link.active{color:#F0492F;background:#FDEBE6;}
+    .m-item{position:relative;}
+    .m-item::after{content:"";position:absolute;top:100%;left:0;right:0;height:8px;} /* hover 브릿지 */
+    .m-dropdown{display:none;position:absolute;top:100%;left:0;margin-top:6px;min-width:150px;background:#fff;
+        border:1px solid #EEECE9;border-radius:10px;box-shadow:0 8px 24px rgba(28,27,26,.10);padding:6px;z-index:110;}
+    .m-item:hover .m-dropdown{display:block;}
+    .m-dropdown a{display:block;padding:8px 12px;border-radius:7px;font-size:13px;color:#4A4643;text-decoration:none;white-space:nowrap;}
+    .m-dropdown a:hover{background:#F5F3F1;}
+    @media (max-width:900px){ .site-nav{padding:0 20px;} }
+</style>
+
+<div class="site-topbar"></div>
+<header class="site-header">
+    <nav class="site-nav">
+        <a href="/" class="site-brand"><span class="dot"></span><span>아이엠몽 로켓</span></a>
+        <div class="site-menu">
+            <a href="/" class="m-link" data-path="/">홈</a>
+            <div class="m-item" data-path="/rocket,/newOrder">
+                <a href="/rocket" class="m-link">발주서</a>
+                <div class="m-dropdown">
+                    <a href="/newOrder">신규 발주서</a>
+                    <a href="/rocket">전체 발주서</a>
                 </div>
             </div>
-            <a href="/scan" class="menu-item" id="menu-scan">바코드 스캔</a>
-            <a href="/shipment" class="menu-item" id="menu-shipment">쉽먼트</a>
-            <a href="/importChina" class="menu-item" id="menu-importChina">중국입고</a>
-            <div class="menu-item">
-                <a href="/inboundList" class="menu-link" style="color: inherit; text-decoration: none;">CN입고</a>
-                <div class="dropdown-menu">
-                    <a href="/inboundList" class="dropdown-item">입고리스트</a>
-                    <a href="/inboundArrange" class="dropdown-item">입고정리</a>
+            <a href="/scan" class="m-link" data-path="/scan">바코드 스캔</a>
+            <a href="/shipment" class="m-link" data-path="/shipment">쉽먼트</a>
+            <a href="/importChina" class="m-link" data-path="/importChina">중국입고</a>
+            <div class="m-item" data-path="/inboundList,/inboundArrange">
+                <a href="/inboundList" class="m-link">CN입고</a>
+                <div class="m-dropdown">
+                    <a href="/inboundList">입고리스트</a>
+                    <a href="/inboundArrange">입고정리</a>
                 </div>
             </div>
-            <a href="/inventory" class="menu-item" id="menu-inventory">상품관리</a>
-            <a href="/stock" class="menu-item" id="menu-stock">재고관리</a>
-            <a href="/warehouse" class="menu-item" id="menu-warehouse">쿠팡 물류센터</a>
-            <a href="/salesdata" class="menu-item" id="menu-salesdata">판매데이터</a>
-            <a href="/shortage" class="menu-item" id="menu-shortage">상품부족</a>
+            <a href="/inventory" class="m-link" data-path="/inventory">상품관리</a>
+            <a href="/stock" class="m-link" data-path="/stock">재고관리</a>
+            <a href="/warehouse" class="m-link" data-path="/warehouse">쿠팡 물류센터</a>
+            <a href="/salesdata" class="m-link" data-path="/salesdata">판매데이터</a>
+            <a href="/shortage" class="m-link" data-path="/shortage">상품부족</a>
         </div>
-    </div>
-
-    <script>
-        // 현재 페이지 URL에 따라 active 클래스 추가
-        document.addEventListener('DOMContentLoaded', () => {
-            const path = window.location.pathname;
-            const menuItems = {
-                '/': 'menu-home',
-                '/rocket': 'menu-rocket',
-                '/scan': 'menu-scan',
-                '/shipment': 'menu-shipment',
-                '/importChina': 'menu-importChina',
-                '/inventory': 'menu-inventory',
-                '/stock': 'menu-stock',
-                '/warehouse': 'menu-warehouse',
-                '/salesdata': 'menu-salesdata',
-                '/shortage': 'menu-shortage'
-            };
-
-            const activeMenuId = menuItems[path];
-            if (activeMenuId) {
-                document.getElementById(activeMenuId).classList.add('active');
-            }
-        });
-    </script>
-</body>
-</html> 
+    </nav>
+</header>
+<!-- 현재 경로 active 표시: innerHTML 로 주입돼도 실행되도록 img onload 사용 -->
+<img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+    onload="(function(){var p=location.pathname;document.querySelectorAll('.site-menu [data-path]').forEach(function(el){var ps=el.getAttribute('data-path').split(',');if(ps.indexOf(p)>-1){var l=el.matches('a')?el:el.querySelector('a.m-link');if(l)l.classList.add('active');}});})()">
