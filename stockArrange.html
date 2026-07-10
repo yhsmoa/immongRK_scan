@@ -23,6 +23,9 @@
         .btn:hover{background:var(--hover);border-color:#cbd5e1;}
         .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+        .btn.danger:hover{color:#dc2626;border-color:#fecaca;background:#fef2f2;}
+        td.qty-edit{cursor:text;}
+        td.qty-edit:focus{outline:none;background:#fff;}
 
         .search{position:relative;margin:0 auto 16px;width:66.67%;}
         .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
@@ -58,18 +61,21 @@
         .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
         .table-scroll::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
 
-        /* 인쇄 (importChina 방식) */
+        /* 인쇄: 이 페이지 전용 — 고정폭 colgroup 해제 후 페이지 너비에 맞춰 자동 배분 */
         @media print {
             body * { visibility: hidden; }
             .card, .card * { visibility: visible; }
             .card { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; border: none; box-shadow: none; }
             .head, .search { display: none !important; }
             .table-scroll { max-height: none !important; overflow: visible !important; }
-            table { font-size: 9px !important; min-width: 0 !important; }
-            thead th, tbody td { border: 1px solid #000 !important; padding: 4px !important; font-size: 9px !important; }
-            thead th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; position: static !important; }
+            /* 고정 레이아웃/최소폭/열너비 해제 → 내용 기준 자동 배분으로 A4 가로에 맞춤 */
+            table { table-layout: auto !important; width: 100% !important; min-width: 0 !important; font-size: 9px !important; }
+            col { width: auto !important; }
+            thead th, tbody td { border: 1px solid #000 !important; padding: 3px 4px !important; font-size: 9px !important;
+                white-space: normal !important; word-break: break-word; overflow: visible !important; text-overflow: clip !important; }
+            thead th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; position: static !important; text-align: center; }
             th.chk, td.chk { display: none !important; }
-            td.pname { white-space: normal !important; }
+            .loc-wrap { display: block !important; }
             .loc-add { display: none !important; }
             .loc-btn:not(.sel) { display: none !important; }
             .loc-btn.sel { background: #fff !important; color: #000 !important; border: none !important; font-weight: 400 !important; padding: 0 !important; }
@@ -92,6 +98,7 @@
                 </div>
                 <div class="actions">
                     <button class="btn" onclick="window.print()">인쇄</button>
+                    <button class="btn danger" onclick="doDelete()">삭제</button>
                     <button class="btn primary" onclick="doComplete()">처리완료</button>
                 </div>
             </div>
@@ -180,7 +187,9 @@
                 tb.innerHTML=viewRows.map(r=>`<tr>
                     <td class="chk"><input type="checkbox" class="rowchk" ${r.checked?'checked':''} onchange="toggleRow(${r.id},this.checked)"></td>
                     <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
-                    <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
+                    <td class="pname">${esc(r.상품명)}</td>
+                    <td class="ctr qty-edit" contenteditable="true" data-orig="${esc(r.수량)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onblur="saveQty(${r.id},this)">${esc(r.수량)}</td>
+                    <td>${esc(r.바코드)}</td>
                     <td class="loc-cell">${locCell(r)}</td>
                 </tr>`).join('');
             }
@@ -207,6 +216,39 @@
             const all=document.getElementById('selectAll');
             all.checked=viewRows.length>0&&n===viewRows.length;
             all.indeterminate=n>0&&n<viewRows.length;
+        }
+
+        async function doDelete(){
+            const checked=viewRows.filter(r=>r.checked);
+            if(!checked.length){toast('삭제할 항목을 체크해주세요.');return;}
+            if(!confirm(`${checked.length}건을 삭제하시겠습니까?`))return;
+            const ids=checked.map(r=>r.id);
+            try{
+                const res=await fetch('/api/inbound/stock-arrange-delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'삭제 실패');
+                toast(data.message||'삭제되었습니다.');
+                await loadData();
+            }catch(e){toast('삭제 실패: '+e.message);}
+        }
+
+        // 수량 인라인 편집 (구글시트식: 클릭 → 커서 → 숫자 수정)
+        async function saveQty(id, cell){
+            const r=rowById(id); if(!r) return;
+            const n=parseInt(String(cell.textContent).replace(/[^0-9]/g,''));
+            const orig=parseInt(cell.dataset.orig);
+            if(!Number.isFinite(n)||n<0){ cell.textContent=cell.dataset.orig; return; }
+            if(n===orig){ cell.textContent=String(n); return; }
+            // 낙관적 반영
+            r.수량=n; cell.dataset.orig=String(n); cell.textContent=String(n);
+            try{
+                const res=await fetch('/api/inbound/stock-arrange-qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,qty:n})});
+                if(!res.ok)throw new Error();
+                toast('수량 저장됨');
+            }catch(e){
+                r.수량=orig; cell.dataset.orig=String(orig); cell.textContent=String(orig);
+                toast('수량 저장 실패');
+            }
         }
 
         async function doComplete(){

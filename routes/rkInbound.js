@@ -419,6 +419,36 @@ router.post('/api/inbound/stock-complete', async (req, res) => {
   }
 });
 
+// 재고정리 행 삭제 (체크된 항목)
+router.post('/api/inbound/stock-arrange-delete', async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+    if (!ids.length) return res.status(400).json({ error: '삭제할 항목이 없습니다.' });
+    const { error } = await sb.from('rk_cn_stock_arranges').delete().in('id', ids);
+    if (error) throw error;
+    res.json({ message: `${ids.length}건 삭제되었습니다.`, deleted: ids.length });
+  } catch (e) {
+    console.error('[rk] inbound/stock-arrange-delete:', e);
+    res.status(500).json({ error: '삭제 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// 재고정리 수량 인라인 수정
+router.post('/api/inbound/stock-arrange-qty', async (req, res) => {
+  try {
+    const { id } = req.body;
+    const n = parseInt(req.body.qty);
+    if (!id) return res.status(400).json({ error: 'id가 필요합니다.' });
+    if (!Number.isFinite(n) || n < 0) return res.status(400).json({ error: '수량이 올바르지 않습니다.' });
+    const { error } = await sb.from('rk_cn_stock_arranges').update({ qty: n }).eq('id', id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error('[rk] inbound/stock-arrange-qty:', e);
+    res.status(500).json({ error: '수량 저장 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
 // 출고코드 단위 삭제 (헤더 삭제 → 아이템 cascade)
 router.delete('/api/inbound/delete/:shipmentCode', async (req, res) => {
   try {
