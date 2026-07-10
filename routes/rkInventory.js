@@ -51,7 +51,8 @@ router.get('/api/inventory/list', async (req, res) => {
   }
 });
 
-// 엑셀 업로드 (skuId 중복 제외 삽입, quantity/location='-')
+// 엑셀 업로드 (SKU ID 기준 upsert: 있으면 상품명/바코드/상태 갱신, 없으면 삽입)
+// 기존 행의 수량/위치는 보존 (엑셀업로드2/위치저장으로 관리)
 router.post('/api/inventory/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -60,27 +61,51 @@ router.post('/api/inventory/upload', upload.single('file'), async (req, res) => 
     const data = xlsx.utils.sheet_to_json(worksheet, { header: 'A' });
     const dataRows = data.slice(1);
 
-    const existing = await fetchAll(() => sb.from('rk_inventories').select('sku_id'));
-    const existingSku = new Set(existing.map((x) => x.sku_id));
+    // 기존 SKU → id 매핑
+    const existing = await fetchAll(() => sb.from('rk_inventories').select('id, sku_id'));
+    const existingMap = new Map();
+    for (const x of existing) if (x.sku_id != null && x.sku_id !== '') existingMap.set(String(x.sku_id), x.id);
 
+    const now = new Date().toISOString();
+    const seen = new Set(); // 같은 파일 내 중복 SKU 방지 (첫 행 우선)
     const toInsert = [];
+    const toUpdate = [];
     for (const row of dataRows) {
-      const skuId = row['A'] || '';
-      if (skuId && !existingSku.has(skuId)) {
+      const skuId = row['A'] != null ? String(row['A']).trim() : '';
+      if (!skuId || seen.has(skuId)) continue;
+      seen.add(skuId);
+      const fields = { name: row['C'] || '', barcode: row['D'] || '', order_status: row['E'] || '' };
+      if (existingMap.has(skuId)) {
+        toUpdate.push({ id: existingMap.get(skuId), fields });
+      } else {
         toInsert.push({
           mongo_id: `inv_${skuId}_${Date.now()}_${toInsert.length}`,
-          sku_id: skuId, name: row['C'] || '', barcode: row['D'] || '', order_status: row['E'] || '',
-          quantity: '-', location: '-', last_update: new Date().toISOString(),
+          sku_id: skuId, ...fields, quantity: '-', location: '-', last_update: now,
         });
-        existingSku.add(skuId);
       }
     }
+
+    // 신규 삽입 (배치)
     const BATCH = 1000;
     for (let i = 0; i < toInsert.length; i += BATCH) {
       const { error } = await sb.from('rk_inventories').insert(toInsert.slice(i, i + BATCH));
       if (error) throw error;
     }
-    res.json({ success: true, message: '재고 데이터가 성공적으로 업로드되었습니다.', added: toInsert.length });
+
+    // 기존 갱신 (수량/위치는 건드리지 않음)
+    let updated = 0;
+    for (const u of toUpdate) {
+      const { error } = await sb.from('rk_inventories')
+        .update({ ...u.fields, last_update: now }).eq('id', u.id);
+      if (error) throw error;
+      updated++;
+    }
+
+    res.json({
+      success: true,
+      message: `재고 데이터 업로드 완료 (신규 ${toInsert.length}건, 갱신 ${updated}건)`,
+      added: toInsert.length, updated,
+    });
   } catch (e) {
     console.error('[rk] inventory/upload:', e);
     res.status(500).json({ error: '재고 데이터 업로드 중 오류가 발생했습니다.' });

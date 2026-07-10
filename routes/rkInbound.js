@@ -160,7 +160,7 @@ function buildArranged(items, allocs) {
     const list = byItem.get(it.id) || [];
     let allocated = 0;
     for (const a of list) {
-      shipping.push({ ...base, 수량: total, 출고번호: a.order_number, 센터: a.center, 출고개수: a.ship_qty, 출고예정일: a.shipping_date || '' });
+      shipping.push({ ...base, 수량: total, 출고번호: a.order_number, 센터: a.center, 출고개수: a.ship_qty, 출고예정일: a.shipping_date || '', 회차: a.batch_no || 1, preparedAt: a.prepared_at });
       allocated += a.ship_qty || 0;
     }
     const leftover = total - allocated;
@@ -185,8 +185,8 @@ router.get('/api/inbound/arranged', async (req, res) => {
   }
 });
 
-// 출고준비: 선택 발주서 기준으로 아이템을 배정 → rk_cn_shipping 에 저장 후 { shipping, stock } 반환
-// importChina organize 논리 이식: (확정-스캔-입고1-입고2 - 기존배정) 필요분에 입고예정일 FIFO 배분.
+// 출고준비: 선택 발주서 기준으로 "남은 수량만" 증분 배정 → 새 회차(batch)로 rk_cn_shipping 저장
+// 기존 배정은 보존(잠금). 회차는 출고코드별 max+1. 남은상품 = 아이템수량 - 배정합계(전 회차).
 router.post('/api/inbound/prepare', async (req, res) => {
   try {
     const shipmentCode = (req.body.shipmentCode || '').trim();
@@ -195,22 +195,27 @@ router.post('/api/inbound/prepare', async (req, res) => {
     // 대상 아이템
     let items = await fetchAllItems();
     if (shipmentCode) items = items.filter(i => i.rk_cn_shipments && i.rk_cn_shipments.shipment_code === shipmentCode);
-    const targetShipmentIds = [...new Set(items.map(i => i.shipment_id))];
+    const targetItemIds = new Set(items.map(i => i.id));
 
-    // 대상 출고코드의 기존 배정 삭제 (재계산)
-    if (targetShipmentIds.length) {
-      const { error } = await sb.from('rk_cn_shipping').delete().in('shipment_id', targetShipmentIds);
-      if (error) throw error;
+    // 전체 배정 로드
+    const { data: allAllocs, error: eAll } = await sb.from('rk_cn_shipping').select('*');
+    if (eAll) throw eAll;
+
+    // 발주 가용량 계산용: 바코드→(발주→이미 배정된 합계)  (전 출고코드/전 회차 통합)
+    const consumedMap = new Map();
+    for (const a of (allAllocs || [])) {
+      if (!consumedMap.has(a.barcode)) consumedMap.set(a.barcode, new Map());
+      const m = consumedMap.get(a.barcode);
+      m.set(a.order_number, (m.get(a.order_number) || 0) + (a.ship_qty || 0));
     }
 
-    // 남은(다른 출고코드) 배정을 발주별 소진량으로 반영
-    const { data: existing, error: eEx } = await sb.from('rk_cn_shipping').select('*');
-    if (eEx) throw eEx;
-    const existingMap = new Map(); // barcode -> Map(order -> qty)
-    for (const e of (existing || [])) {
-      if (!existingMap.has(e.barcode)) existingMap.set(e.barcode, new Map());
-      const m = existingMap.get(e.barcode);
-      m.set(e.order_number, (m.get(e.order_number) || 0) + (e.ship_qty || 0));
+    // 대상 아이템의 기존 배정 → 아이템별 배정합계(남은수량 계산) + 출고코드별 최대 회차
+    const existingForTarget = (allAllocs || []).filter(a => targetItemIds.has(a.shipment_item_id));
+    const allocatedByItem = new Map();
+    const maxBatchByShipment = new Map();
+    for (const a of existingForTarget) {
+      allocatedByItem.set(a.shipment_item_id, (allocatedByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
+      maxBatchByShipment.set(a.shipment_id, Math.max(maxBatchByShipment.get(a.shipment_id) || 0, a.batch_no || 0));
     }
 
     // 발주서 (선택된 것만)
@@ -224,10 +229,10 @@ router.post('/api/inbound/prepare', async (req, res) => {
         if (!p.상품바코드 || p.박스정보) continue;
         if (!barcodesInItems.has(p.상품바코드)) continue;
         const 스캔 = parseInt(p.스캔수량) || 0;
-        const already = existingMap.has(p.상품바코드) && existingMap.get(p.상품바코드).has(order.발주번호)
-          ? existingMap.get(p.상품바코드).get(order.발주번호) : 0;
-        // 가용 = 확정 - 스캔 - (다른 출고코드 기존배정). 입고1/입고2 는 차감하지 않음.
-        const avail = (parseInt(p.확정수량) || 0) - 스캔 - already;
+        const consumed = consumedMap.has(p.상품바코드) && consumedMap.get(p.상품바코드).has(order.발주번호)
+          ? consumedMap.get(p.상품바코드).get(order.발주번호) : 0;
+        // 가용 = 확정 - 스캔 - (이미 배정된 전량). 입고1/입고2 미차감.
+        const avail = (parseInt(p.확정수량) || 0) - 스캔 - consumed;
         if (avail > 0) {
           if (!orderProductMap.has(p.상품바코드)) orderProductMap.set(p.상품바코드, []);
           orderProductMap.get(p.상품바코드).push({
@@ -238,19 +243,25 @@ router.post('/api/inbound/prepare', async (req, res) => {
       }
     }
 
-    // 배정
+    // 증분 배정 (아이템의 남은 수량만, 새 회차 부여)
+    const runAt = new Date().toISOString();
+    const nextBatch = new Map(); // shipment_id -> 이번 run의 회차
     const allocRows = [];
     for (const it of items) {
-      let remaining = parseInt(it.quantity) || 0;
+      const total = parseInt(it.quantity) || 0;
+      let remaining = total - (allocatedByItem.get(it.id) || 0);
+      if (remaining <= 0) continue;
       const entries = (orderProductMap.get(it.barcode) || []).slice()
         .sort((a, b) => String(a.order.입고예정일 || '').localeCompare(String(b.order.입고예정일 || '')));
       for (const entry of entries) {
         if (remaining <= 0) break;
         const assign = Math.min(remaining, entry.availableQuantity);
         if (assign > 0) {
+          if (!nextBatch.has(it.shipment_id)) nextBatch.set(it.shipment_id, (maxBatchByShipment.get(it.shipment_id) || 0) + 1);
           allocRows.push({
             shipment_item_id: it.id, shipment_id: it.shipment_id, barcode: it.barcode,
-            order_number: entry.order.발주번호, center: entry.order.물류센터, ship_qty: assign, shipping_date: entry.order.입고예정일 || '',
+            order_number: entry.order.발주번호, center: entry.order.물류센터, ship_qty: assign,
+            shipping_date: entry.order.입고예정일 || '', batch_no: nextBatch.get(it.shipment_id), prepared_at: runAt,
           });
           entry.availableQuantity -= assign;
           remaining -= assign;
@@ -258,7 +269,7 @@ router.post('/api/inbound/prepare', async (req, res) => {
       }
     }
 
-    // 저장
+    // 저장 (기존 유지 + 신규 추가)
     if (allocRows.length) {
       const BATCH = 1000;
       for (let i = 0; i < allocRows.length; i += BATCH) {
@@ -267,11 +278,144 @@ router.post('/api/inbound/prepare', async (req, res) => {
       }
     }
 
-    const result = buildArranged(items, allocRows);
-    res.json({ ...result, saved: allocRows.length });
+    const newBatch = allocRows.length ? Math.max(...allocRows.map(r => r.batch_no)) : null;
+    const result = buildArranged(items, existingForTarget.concat(allocRows));
+    res.json({ ...result, saved: allocRows.length, batch: newBatch });
   } catch (e) {
     console.error('[rk] inbound/prepare:', e);
     res.status(500).json({ error: '출고준비 처리 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// 바코드 → 위치 후보 목록: rk_stocks(기존 재고 위치) ∪ rk_inventories(상품관리 위치)
+async function locationCandidatesByBarcode(barcodes) {
+  const map = new Map(); // barcode -> Set(location)
+  if (!barcodes.length) return map;
+  const add = (bc, loc) => {
+    if (!bc || loc == null) return;
+    const l = String(loc).trim();
+    if (!l || l === '-') return;
+    if (!map.has(bc)) map.set(bc, new Set());
+    map.get(bc).add(l);
+  };
+  const BATCH = 200;
+  for (let i = 0; i < barcodes.length; i += BATCH) {
+    const chunk = barcodes.slice(i, i + BATCH);
+    const { data: st, error: e1 } = await sb.from('rk_stocks').select('barcode, location').in('barcode', chunk);
+    if (e1) throw e1;
+    for (const x of (st || [])) add(x.barcode, x.location);
+    const { data: iv, error: e2 } = await sb.from('rk_inventories').select('barcode, location').in('barcode', chunk);
+    if (e2) throw e2;
+    for (const x of (iv || [])) add(x.barcode, x.location);
+  }
+  const out = new Map();
+  for (const [bc, set] of map) out.set(bc, [...set]);
+  return out;
+}
+
+// 재고정리 저장 (입고정리의 '남은상품'을 확정 → rk_cn_stock_arranges, 재실행 시 갱신)
+router.post('/api/inbound/stock-arrange', async (req, res) => {
+  try {
+    const shipmentCode = (req.body.shipmentCode || '').trim();
+    if (!shipmentCode) return res.status(400).json({ error: '출고코드가 필요합니다.' });
+    let items = await fetchAllItems();
+    items = items.filter(i => i.rk_cn_shipments && i.rk_cn_shipments.shipment_code === shipmentCode);
+    if (!items.length) return res.json({ message: '대상 아이템이 없습니다.', saved: 0 });
+
+    const targetShipmentIds = [...new Set(items.map(i => i.shipment_id))];
+    const targetItemIds = new Set(items.map(i => i.id));
+
+    const { data: allocs, error: eA } = await sb.from('rk_cn_shipping').select('shipment_item_id, ship_qty');
+    if (eA) throw eA;
+    const allocByItem = new Map();
+    for (const a of (allocs || [])) if (targetItemIds.has(a.shipment_item_id)) allocByItem.set(a.shipment_item_id, (allocByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
+
+    // 재실행 = 해당 출고코드 기존 재고정리 삭제 후 현재 남은상품으로 재삽입
+    const { error: eD } = await sb.from('rk_cn_stock_arranges').delete().in('shipment_id', targetShipmentIds);
+    if (eD) throw eD;
+
+    const rows = [];
+    for (const it of items) {
+      const leftover = (parseInt(it.quantity) || 0) - (allocByItem.get(it.id) || 0);
+      if (leftover > 0) rows.push({ shipment_id: it.shipment_id, shipment_item_id: it.id, barcode: it.barcode, qty: leftover });
+    }
+    if (rows.length) {
+      const B = 1000;
+      for (let i = 0; i < rows.length; i += B) {
+        const { error } = await sb.from('rk_cn_stock_arranges').insert(rows.slice(i, i + B));
+        if (error) throw error;
+      }
+    }
+    res.json({ message: `재고정리 완료 (${rows.length}건)`, saved: rows.length });
+  } catch (e) {
+    console.error('[rk] inbound/stock-arrange:', e);
+    res.status(500).json({ error: '재고정리 처리 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// 재고정리 조회 (전체 노출) — 아이템/헤더 join + 바코드→위치후보 목록
+router.get('/api/inbound/stock-arranges', async (req, res) => {
+  try {
+    const { data, error } = await sb.from('rk_cn_stock_arranges')
+      .select('*, rk_cn_shipments(shipment_code), rk_cn_shipment_items(box_name, order_number, product_name)')
+      .order('id', { ascending: true });
+    if (error) throw error;
+    const rows = data || [];
+    const candMap = await locationCandidatesByBarcode([...new Set(rows.map(r => r.barcode).filter(Boolean))]);
+    res.json(rows.map(r => ({
+      id: r.id,
+      출고코드: r.rk_cn_shipments ? r.rk_cn_shipments.shipment_code : null,
+      박스명: r.rk_cn_shipment_items ? r.rk_cn_shipment_items.box_name : null,
+      중국번호: r.rk_cn_shipment_items ? r.rk_cn_shipment_items.order_number : null,
+      상품명: r.rk_cn_shipment_items ? r.rk_cn_shipment_items.product_name : null,
+      수량: r.qty,
+      바코드: r.barcode,
+      위치후보: candMap.get(r.barcode) || [],
+    })));
+  } catch (e) {
+    console.error('[rk] inbound/stock-arranges:', e);
+    res.status(500).json({ error: '재고정리 조회 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// 처리완료: 체크된 항목을 선택 위치로 rk_stocks 에 반영(합산) 후 재고정리 행 삭제
+router.post('/api/inbound/stock-complete', async (req, res) => {
+  try {
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length) return res.status(400).json({ error: '처리할 항목이 없습니다.' });
+    for (const it of items) {
+      if (!it.location || !String(it.location).trim()) return res.status(400).json({ error: '위치가 선택되지 않은 항목이 있습니다.' });
+    }
+    for (const it of items) {
+      const barcode = String(it.barcode || '').trim();
+      const location = String(it.location).trim();
+      const qty = parseInt(it.qty) || 0;
+      if (!barcode || qty <= 0) continue;
+      // 같은 바코드+위치 있으면 합산, 없으면 신규
+      const { data: ex, error: eF } = await sb.from('rk_stocks').select('id, qty').eq('barcode', barcode).eq('location', location).limit(1);
+      if (eF) throw eF;
+      if (ex && ex.length) {
+        const { error } = await sb.from('rk_stocks').update({ qty: (parseInt(ex[0].qty) || 0) + qty }).eq('id', ex[0].id);
+        if (error) throw error;
+      } else {
+        const { data: inv } = await sb.from('rk_inventories').select('sku_id, name').eq('barcode', barcode).limit(1);
+        const { error } = await sb.from('rk_stocks').insert({
+          barcode, location, qty,
+          sku_id: inv && inv.length ? inv[0].sku_id : null,
+          item_name: inv && inv.length ? inv[0].name : null,
+        });
+        if (error) throw error;
+      }
+    }
+    const ids = items.map(it => it.id).filter(Boolean);
+    if (ids.length) {
+      const { error } = await sb.from('rk_cn_stock_arranges').delete().in('id', ids);
+      if (error) throw error;
+    }
+    res.json({ message: `처리완료 (${items.length}건)`, done: items.length });
+  } catch (e) {
+    console.error('[rk] inbound/stock-complete:', e);
+    res.status(500).json({ error: '처리완료 중 오류가 발생했습니다: ' + e.message });
   }
 });
 

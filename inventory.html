@@ -858,7 +858,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        alert('파일이 성공적으로 업로드되었습니다.');
+                        alert(data.message || '파일이 성공적으로 업로드되었습니다.');
                         // 테이블 새로고침
                         loadInventoryData();
                     } else {

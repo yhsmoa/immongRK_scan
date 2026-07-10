@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>재고정리</title>
+    <style>
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --primary:#4f46e5; --primary-dark:#4338ca; --blue:#2563eb; --hover:#f8fafc;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 18px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:12px;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
+        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
+        .subtitle b{color:var(--primary);font-weight:600;}
+        .actions{display:flex;align-items:center;gap:8px;}
+        .btn{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
+        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
+        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
+        .search input::placeholder{color:var(--muted);}
+        .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
+
+        .table-scroll{overflow:auto;max-height:calc(100vh - 260px);}
+        table{width:100%;border-collapse:collapse;min-width:1000px;table-layout:fixed;}
+        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
+        thead th.ctr{text-align:center;}
+        tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
+        tbody tr:hover td{background:var(--hover);}
+        td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        td.pname{white-space:normal;color:#334155;}
+        td.code{font-weight:600;color:#1e293b;}
+        th.chk,td.chk{text-align:center;padding-left:0;padding-right:0;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
+        .dash{color:#cbd5e1;}
+        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
+
+        /* 위치 선택 버튼 */
+        td.loc-cell{white-space:normal;vertical-align:middle;}
+        .loc-wrap{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+        .loc-btn{padding:3px 9px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;color:#475569;font-size:12px;cursor:pointer;white-space:nowrap;}
+        .loc-btn:hover{background:#f1f5f9;}
+        .loc-btn.sel{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .loc-add{padding:3px 9px;border:1px dashed #cbd5e1;border-radius:7px;background:#fff;color:#94a3b8;font-size:12px;cursor:pointer;font-weight:700;}
+        .loc-add:hover{border-color:var(--primary);color:var(--primary);}
+        .loc-input{width:96px;padding:3px 7px;border:1px solid #c7d2fe;border-radius:7px;font-size:12px;outline:none;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+
+        .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
+        .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .table-scroll::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
+
+        /* 인쇄 (importChina 방식) */
+        @media print {
+            body * { visibility: hidden; }
+            .card, .card * { visibility: visible; }
+            .card { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; border: none; box-shadow: none; }
+            .head, .search { display: none !important; }
+            .table-scroll { max-height: none !important; overflow: visible !important; }
+            table { font-size: 9px !important; min-width: 0 !important; }
+            thead th, tbody td { border: 1px solid #000 !important; padding: 4px !important; font-size: 9px !important; }
+            thead th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; position: static !important; }
+            th.chk, td.chk { display: none !important; }
+            td.pname { white-space: normal !important; }
+            .loc-add { display: none !important; }
+            .loc-btn:not(.sel) { display: none !important; }
+            .loc-btn.sel { background: #fff !important; color: #000 !important; border: none !important; font-weight: 400 !important; padding: 0 !important; }
+            @page { size: A4 landscape; margin: 0.5cm; }
+        }
+
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">재고정리</h1>
+                    <span class="subtitle">전체 <b id="rowCount">0</b>건 · <span id="selCount">0</span>개 선택</span>
+                </div>
+                <div class="actions">
+                    <button class="btn" onclick="window.print()">인쇄</button>
+                    <button class="btn primary" onclick="doComplete()">처리완료</button>
+                </div>
+            </div>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="출고코드 · 박스명 · 중국번호 · 상품명 · 바코드 · 위치 검색 후 Enter" onkeydown="if(event.key==='Enter')applySearch()">
+            </div>
+
+            <div class="table-scroll">
+                <table>
+                    <colgroup>
+                        <col style="width:40px"><col style="width:110px"><col style="width:100px"><col style="width:110px"><col><col style="width:70px"><col style="width:150px"><col style="width:280px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="chk"><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
+                            <th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>위치</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="8">데이터를 불러오는 중…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+
+        let allRows=[], viewRows=[];
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
+        const rowById=id=>allRows.find(r=>r.id===id);
+
+        async function loadData(){
+            try{
+                const res=await fetch('/api/inbound/stock-arranges');
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                const data=await res.json();
+                allRows=data.map(r=>({
+                    id:r.id, 출고코드:r.출고코드, 박스명:r.박스명, 중국번호:r.중국번호, 상품명:r.상품명,
+                    수량:r.수량, 바코드:r.바코드, 위치후보:Array.isArray(r.위치후보)?r.위치후보.slice():[],
+                    selectedLoc:(Array.isArray(r.위치후보)&&r.위치후보.length)?r.위치후보[0]:null,
+                    adding:false, checked:false
+                }));
+                applySearch();
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+            }
+        }
+
+        function applySearch(){
+            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+            viewRows=allRows.filter(r=>{
+                if(terms.length===0) return true;
+                const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,...(r.위치후보||[])].map(v=>String(v||'').toLowerCase());
+                return terms.some(t=>hay.some(h=>h.includes(t)));
+            });
+            render();
+        }
+
+        function locCell(r){
+            let html='<div class="loc-wrap">';
+            for(const loc of r.위치후보){
+                const sel=loc===r.selectedLoc?'sel':'';
+                html+=`<button class="loc-btn ${sel}" onclick="selectLoc(${r.id},'${esc(loc)}')">${esc(loc)}</button>`;
+            }
+            if(r.adding){
+                html+=`<input class="loc-input" type="text" autofocus placeholder="위치 입력"
+                    onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){this.value='';this.blur();}"
+                    onblur="finishAdd(${r.id}, this.value)">`;
+            }else{
+                html+=`<button class="loc-add" onclick="startAdd(${r.id})">+</button>`;
+            }
+            html+='</div>';
+            return html;
+        }
+
+        function render(){
+            const tb=document.getElementById('tbody');
+            if(viewRows.length===0){
+                tb.innerHTML=`<tr class="state-row"><td colspan="8">재고정리할 데이터가 없습니다. (입고정리 › 재고정리 실행)</td></tr>`;
+            }else{
+                tb.innerHTML=viewRows.map(r=>`<tr>
+                    <td class="chk"><input type="checkbox" class="rowchk" ${r.checked?'checked':''} onchange="toggleRow(${r.id},this.checked)"></td>
+                    <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
+                    <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
+                    <td class="loc-cell">${locCell(r)}</td>
+                </tr>`).join('');
+            }
+            document.getElementById('rowCount').textContent=viewRows.length;
+            updateSel();
+            const addingRow=viewRows.find(r=>r.adding);
+            if(addingRow){ const inp=document.querySelector('.loc-input'); if(inp)inp.focus(); }
+        }
+
+        function selectLoc(id,loc){ const r=rowById(id); if(r){ r.selectedLoc=loc; render(); } }
+        function startAdd(id){ const r=rowById(id); if(r){ viewRows.forEach(x=>x.adding=false); r.adding=true; render(); } }
+        function finishAdd(id,val){
+            const r=rowById(id); if(!r) return;
+            const v=String(val||'').trim();
+            if(v){ if(!r.위치후보.includes(v)) r.위치후보.push(v); r.selectedLoc=v; }
+            r.adding=false; render();
+        }
+
+        function toggleRow(id,ch){ const r=rowById(id); if(r){ r.checked=ch; } updateSel(); }
+        function toggleAll(el){ viewRows.forEach(r=>r.checked=el.checked); render(); }
+        function updateSel(){
+            const n=viewRows.filter(r=>r.checked).length;
+            document.getElementById('selCount').textContent=n;
+            const all=document.getElementById('selectAll');
+            all.checked=viewRows.length>0&&n===viewRows.length;
+            all.indeterminate=n>0&&n<viewRows.length;
+        }
+
+        async function doComplete(){
+            const checked=viewRows.filter(r=>r.checked);
+            if(!checked.length){toast('처리할 항목을 체크해주세요.');return;}
+            const missing=checked.filter(r=>!r.selectedLoc);
+            if(missing.length){toast(`위치를 선택해주세요. (${missing.length}건 위치 미선택)`);return;}
+            const payload=checked.map(r=>({id:r.id, barcode:r.바코드, location:r.selectedLoc, qty:r.수량}));
+            toast('처리 중…');
+            try{
+                const res=await fetch('/api/inbound/stock-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:payload})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'처리완료 실패');
+                toast(data.message||'처리완료');
+                await loadData();
+            }catch(e){toast('처리완료 실패: '+e.message);}
+        }
+
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
+
+        loadData();
+    </script>
+</body>
+</html>

@@ -23,6 +23,7 @@
         .btn:hover{background:var(--hover);border-color:#cbd5e1;}
         .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+        .btn:disabled{opacity:.45;cursor:not-allowed;}
 
         .search{position:relative;margin:0 auto 16px;width:66.67%;}
         .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
@@ -34,7 +35,16 @@
         .actions select:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
         .actions .sel-code{min-width:160px;}
 
-        .tabbar{display:flex;justify-content:flex-start;gap:6px;margin-bottom:8px;}
+        .tabbar{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:8px;}
+        .tabs{display:flex;gap:6px;}
+        .tabbar-right{display:flex;align-items:center;gap:8px;}
+        .tabbar-right .btn{height:34px;padding:0 14px;}
+        #batchFilter{height:34px;padding:0 10px;border:1px solid #e2e8f0;border-radius:9px;background:#fff;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        .batch{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:700;background:#eef2ff;color:#4f46e5;white-space:nowrap;}
+        .batch.latest{background:#fef3c7;color:#b45309;}
+        .newtag{margin-left:5px;font-size:9px;font-weight:800;color:#fff;background:#f59e0b;border-radius:4px;padding:1px 4px;letter-spacing:.03em;vertical-align:middle;}
+        tbody tr.latest td{background:#fffbeb;}
+        tbody tr.latest:hover td{background:#fef3c7;}
         .tab{height:34px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
         .tab:hover{background:var(--hover);}
         .tab.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
@@ -81,6 +91,22 @@
         .side-foot{padding:12px 18px;border-top:1px solid #eef2f7;display:flex;justify-content:flex-end;gap:8px;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
 
+        /* 인쇄 (importChina 방식: 화면 테이블만 A4 가로로) */
+        @media print {
+            body * { visibility: hidden; }
+            .card, .card * { visibility: visible; }
+            .card { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; border: none; box-shadow: none; }
+            .head, .search, .selector, .tabbar { display: none !important; }
+            .table-scroll { max-height: none !important; overflow: visible !important; }
+            table { font-size: 9px !important; min-width: 0 !important; }
+            thead th, tbody td { border: 1px solid #000 !important; padding: 4px !important; font-size: 9px !important; }
+            thead th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; position: static !important; }
+            td.pname { white-space: normal !important; }
+            tbody tr.latest td { background: #fff !important; }
+            .batch, .newtag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: A4 landscape; margin: 0.5cm; }
+        }
+
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
     </style>
@@ -99,7 +125,8 @@
                     <select id="yearSel" onchange="onYearChange()"></select>
                     <select id="monthSel" onchange="onMonthChange()"></select>
                     <select id="codeSel" class="sel-code" onchange="onCodeChange()"></select>
-                    <button class="btn primary" onclick="openOrderPanel()">출고준비</button>
+                    <button class="btn primary" id="prepareBtn" onclick="openOrderPanel()">출고준비</button>
+                    <button class="btn" id="stockArrangeBtn" onclick="doStockArrange()">재고정리</button>
                 </div>
             </div>
 
@@ -109,8 +136,14 @@
             </div>
 
             <div class="tabbar">
-                <button class="tab active" id="tab-shipping" onclick="switchTab('shipping')">출고리스트 <span class="cnt" id="cnt-shipping">0</span></button>
-                <button class="tab" id="tab-stock" onclick="switchTab('stock')">남은상품 <span class="cnt" id="cnt-stock">0</span></button>
+                <div class="tabs">
+                    <button class="tab active" id="tab-shipping" onclick="switchTab('shipping')">출고리스트 <span class="cnt" id="cnt-shipping">0</span></button>
+                    <button class="tab" id="tab-stock" onclick="switchTab('stock')">남은상품 <span class="cnt" id="cnt-stock">0</span></button>
+                </div>
+                <div class="tabbar-right">
+                    <select id="batchFilter" onchange="onBatchFilter()"><option value="all">전체 회차</option></select>
+                    <button class="btn" onclick="window.print()">인쇄</button>
+                </div>
             </div>
 
             <div class="table-scroll">
@@ -214,31 +247,83 @@
             render();
         }
 
+        // 출고준비/재고정리 버튼: 남은상품 탭 + 출고코드 선택 시에만 활성화
+        function updateActionButtons(){
+            const on = activeTab==='stock' && !!selectedCode();
+            document.getElementById('prepareBtn').disabled = !on;
+            document.getElementById('stockArrangeBtn').disabled = !on;
+        }
+
+        // 재고정리: 현재 출고코드의 남은상품을 재고정리 페이지로 저장
+        async function doStockArrange(){
+            const code=selectedCode();
+            if(!code){toast('출고코드를 선택하세요.');return;}
+            toast('재고정리 저장 중…');
+            try{
+                const res=await fetch('/api/inbound/stock-arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shipmentCode:code})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'재고정리 실패');
+                toast((data.message||'재고정리 완료')+' · CN입고 › 재고정리에서 확인하세요');
+            }catch(e){toast('재고정리 실패: '+e.message);}
+        }
+
+        function maxBatch(){ return shippingRows.reduce((m,r)=>Math.max(m,r.회차||0),0); }
+
         function render(){
             document.getElementById('cnt-shipping').textContent=shippingRows.length;
             document.getElementById('cnt-stock').textContent=stockRows.length;
+            updateBatchOptions();
             const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
-            const rowsAll=activeTab==='shipping'?shippingRows:stockRows;
+            let rowsAll=activeTab==='shipping'?shippingRows:stockRows;
+            // 회차 필터 (출고리스트에만 적용)
+            if(activeTab==='shipping' && batchFilter!=='all'){
+                rowsAll=rowsAll.filter(r=>String(r.회차)===String(batchFilter));
+            }
             const rows=terms.length===0?rowsAll:rowsAll.filter(r=>{
-                const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.발주번호].map(v=>String(v||'').toLowerCase());
+                const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.출고번호].map(v=>String(v||'').toLowerCase());
                 return terms.some(t=>hay.some(h=>h.includes(t)));
             });
+            const mb=maxBatch();
+            const nBatches=new Set(shippingRows.map(r=>r.회차).filter(v=>v!=null)).size;
             const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
-            thead.innerHTML=`<tr><th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>출고번호</th><th>센터</th><th class="ctr">출고개수</th><th>출고예정일</th></tr>`;
+            thead.innerHTML=`<tr><th style="width:88px">회차</th><th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>출고번호</th><th>센터</th><th class="ctr">출고개수</th><th>출고예정일</th></tr>`;
             if(rows.length===0){
                 let msg;
                 if(!selectedCode()) msg='연도 · 월 · 출고코드를 선택하세요.';
                 else if(activeTab==='shipping') msg=prepared?'출고 배정된 항목이 없습니다.':'‘출고준비’ 버튼으로 발주서를 선택해 정리하세요.';
                 else msg='남은상품이 없습니다.';
-                tb.innerHTML=`<tr class="state-row"><td colspan="10">${msg}</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="11">${msg}</td></tr>`;
             }else{
-                tb.innerHTML=rows.map(r=>`<tr>
-                    <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
-                    <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
-                    <td class="ord">${dashCell(r.출고번호)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td>
-                </tr>`).join('');
+                tb.innerHTML=rows.map(r=>{
+                    const isShip=r.회차!=null;
+                    const latest=isShip && r.회차===mb && nBatches>1; // 회차 2개 이상일 때만 최신 강조
+                    const batchCell=isShip
+                        ? `<span class="batch ${latest?'latest':''}">${r.회차}회차</span>${latest?'<span class="newtag">NEW</span>':''}`
+                        : '<span class="dash">-</span>';
+                    return `<tr class="${latest?'latest':''}">
+                        <td class="ctr">${batchCell}</td>
+                        <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
+                        <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
+                        <td class="ord">${dashCell(r.출고번호)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td>
+                    </tr>`;
+                }).join('');
             }
             document.getElementById('rowCount').textContent=rows.length;
+            updateActionButtons();
+        }
+
+        let batchFilter='all';
+        function onBatchFilter(){ batchFilter=document.getElementById('batchFilter').value; render(); }
+        function updateBatchOptions(){
+            const sel=document.getElementById('batchFilter');
+            const batches=[...new Set(shippingRows.map(r=>r.회차).filter(v=>v!=null))].sort((a,b)=>a-b);
+            const want=['all',...batches.map(String)];
+            const cur=[...sel.options].map(o=>o.value);
+            if(JSON.stringify(want)!==JSON.stringify(cur)){
+                const keep=want.includes(batchFilter)?batchFilter:'all';
+                sel.innerHTML='<option value="all">전체 회차</option>'+batches.map(b=>`<option value="${b}">${b}회차</option>`).join('');
+                sel.value=keep; batchFilter=keep;
+            }
         }
 
         // ── 발주서 선택 슬라이드 (rocket 전체보기 스타일 + 체크박스) ──
@@ -321,9 +406,12 @@
                 shippingRows=data.shipping||[];
                 stockRows=data.stock||[];
                 prepared=true;
+                batchFilter='all'; // 새 회차가 항상 보이도록 필터 초기화
                 activeTab='shipping';
                 switchTab('shipping');
-                toast(`출고준비 완료 (출고 ${shippingRows.length} · 재고 ${stockRows.length})`);
+                const msg = data.saved>0 ? `출고준비 완료 · ${data.batch}회차 신규 ${data.saved}건 (출고 ${shippingRows.length} · 남은상품 ${stockRows.length})`
+                    : `추가 배정할 항목이 없습니다 (출고 ${shippingRows.length} · 남은상품 ${stockRows.length})`;
+                toast(msg);
             }catch(e){toast('출고준비 실패: '+e.message);}
         }
 

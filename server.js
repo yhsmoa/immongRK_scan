@@ -1458,6 +1458,11 @@ app.get('/inboundArrange', (req, res) => {
     res.sendFile(path.join(__dirname, 'inboundArrange.html'));
 });
 
+// CN입고 > 재고정리
+app.get('/stockArrange', (req, res) => {
+    res.sendFile(path.join(__dirname, 'stockArrange.html'));
+});
+
 // 쿠팡 물류센터 페이지 라우트
 app.get('/warehouse', (req, res) => {
     res.sendFile(path.join(__dirname, 'warehouse.html'));
