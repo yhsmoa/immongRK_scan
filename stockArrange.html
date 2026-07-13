@@ -24,8 +24,6 @@
         .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
         .btn.danger:hover{color:#dc2626;border-color:#fecaca;background:#fef2f2;}
-        td.qty-edit{cursor:text;}
-        td.qty-edit:focus{outline:none;background:#fff;}
 
         .search{position:relative;margin:0 auto 16px;width:66.67%;}
         .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
@@ -34,53 +32,66 @@
         .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
 
         .table-scroll{overflow:auto;max-height:calc(100vh - 260px);}
-        table{width:100%;border-collapse:collapse;min-width:1000px;table-layout:fixed;}
+        table{width:100%;border-collapse:collapse;min-width:1050px;table-layout:fixed;}
         thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
         thead th.ctr{text-align:center;}
         tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
         tbody tr:hover td{background:var(--hover);}
+        tbody tr.done td{background:#f6fdf9;}
+        tbody tr.done:hover td{background:#eefaf2;}
         td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
         td.pname{white-space:normal;color:#334155;}
         td.code{font-weight:600;color:#1e293b;}
+        td.loc-text{font-weight:600;color:#1e293b;}
         th.chk,td.chk{text-align:center;padding-left:0;padding-right:0;}
+        th.done-col,td.done-col{text-align:center;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
+        td.qty-edit{cursor:text;}
+        td.qty-edit:focus{outline:none;background:#fff;}
         .dash{color:#cbd5e1;}
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
 
-        /* 위치 선택 버튼 */
         td.loc-cell{white-space:normal;vertical-align:middle;}
         .loc-wrap{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
         .loc-btn{padding:3px 9px;border:1px solid #e2e8f0;border-radius:7px;background:#fff;color:#475569;font-size:12px;cursor:pointer;white-space:nowrap;}
         .loc-btn:hover{background:#f1f5f9;}
         .loc-btn.sel{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
-        .loc-add{padding:3px 9px;border:1px dashed #cbd5e1;border-radius:7px;background:#fff;color:#94a3b8;font-size:12px;cursor:pointer;font-weight:700;}
-        .loc-add:hover{border-color:var(--primary);color:var(--primary);}
+        .loc-mini{padding:3px 8px;border:1px dashed #cbd5e1;border-radius:7px;background:#fff;color:#94a3b8;font-size:12px;cursor:pointer;font-weight:700;}
+        .loc-mini:hover{border-color:var(--primary);color:var(--primary);}
         .loc-input{width:96px;padding:3px 7px;border:1px solid #c7d2fe;border-radius:7px;font-size:12px;outline:none;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
 
         .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
         .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
         .table-scroll::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
 
-        /* 인쇄: 이 페이지 전용 — 고정폭 colgroup 해제 후 페이지 너비에 맞춰 자동 배분 */
+        /* 인쇄 */
         @media print {
             body * { visibility: hidden; }
             .card, .card * { visibility: visible; }
             .card { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; border: none; box-shadow: none; }
             .head, .search { display: none !important; }
             .table-scroll { max-height: none !important; overflow: visible !important; }
-            /* 고정 레이아웃/최소폭/열너비 해제 → 내용 기준 자동 배분으로 A4 가로에 맞춤 */
             table { table-layout: auto !important; width: 100% !important; min-width: 0 !important; font-size: 9px !important; }
             col { width: auto !important; }
-            thead th, tbody td { border: 1px solid #000 !important; padding: 3px 4px !important; font-size: 9px !important;
-                white-space: normal !important; word-break: break-word; overflow: visible !important; text-overflow: clip !important; }
+            thead th, tbody td { border: 1px solid #000 !important; padding: 3px 4px !important; font-size: 9px !important; white-space: normal !important; word-break: break-word; overflow: visible !important; }
             thead th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; position: static !important; text-align: center; }
             th.chk, td.chk { display: none !important; }
-            .loc-wrap { display: block !important; }
-            .loc-add { display: none !important; }
+            .loc-mini { display: none !important; }
             .loc-btn:not(.sel) { display: none !important; }
             .loc-btn.sel { background: #fff !important; color: #000 !important; border: none !important; font-weight: 400 !important; padding: 0 !important; }
             @page { size: A4 landscape; margin: 0.5cm; }
         }
+
+        /* 분할 모달 */
+        .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10000;}
+        .modal-back.show{display:flex;}
+        .modal{background:#fff;border-radius:14px;padding:22px;width:360px;max-width:92vw;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .modal h3{margin:0 0 6px;font-size:16px;color:var(--ink);}
+        .modal p{margin:0 0 14px;font-size:13px;color:var(--muted);}
+        .modal label{font-size:12.5px;font-weight:600;color:var(--ink-soft);display:block;margin:0 0 6px;}
+        .modal input{width:100%;height:42px;padding:0 12px;border:1px solid #e2e8f0;border-radius:9px;font-size:14px;outline:none;margin-bottom:14px;}
+        .modal input:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .modal-btns{display:flex;justify-content:flex-end;gap:8px;}
 
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -94,7 +105,7 @@
             <div class="head">
                 <div class="title-wrap">
                     <h1 class="title">재고정리</h1>
-                    <span class="subtitle">전체 <b id="rowCount">0</b>건 · <span id="selCount">0</span>개 선택</span>
+                    <span class="subtitle">남은 <b id="pendCount">0</b> · 완료 <b id="doneCount">0</b> · <span id="selCount">0</span>개 선택</span>
                 </div>
                 <div class="actions">
                     <button class="btn" onclick="window.print()">인쇄</button>
@@ -105,22 +116,38 @@
 
             <div class="search">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                <input id="searchInput" type="text" placeholder="출고코드 · 박스명 · 중국번호 · 상품명 · 바코드 · 위치 검색 후 Enter" onkeydown="if(event.key==='Enter')applySearch()">
+                <input id="searchInput" type="text" placeholder="출고코드 · 박스명 · 중국번호 · 상품명 · 바코드 · 위치 검색 후 Enter" onkeydown="if(event.key==='Enter')render()">
             </div>
 
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:40px"><col style="width:110px"><col style="width:100px"><col style="width:110px"><col><col style="width:70px"><col style="width:150px"><col style="width:280px">
+                        <col style="width:40px"><col style="width:100px"><col style="width:90px"><col style="width:100px"><col><col style="width:66px"><col style="width:140px"><col style="width:300px"><col style="width:56px">
                     </colgroup>
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="selectAll" onclick="toggleAll(this)"></th>
-                            <th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>위치</th>
+                            <th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>위치</th><th class="ctr done-col">처리</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="8">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="9">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 위치 분할 모달 -->
+    <div class="modal-back" id="splitModal">
+        <div class="modal">
+            <h3>위치 분할</h3>
+            <p>이 상품의 일부 수량을 다른 위치로 나눕니다.</p>
+            <label>위치</label>
+            <input id="splitLoc" type="text" placeholder="예: 105B53">
+            <label>수량 (남은 <b id="splitMax">0</b> 이하)</label>
+            <input id="splitQty" type="number" min="1" placeholder="수량">
+            <div class="modal-btns">
+                <button class="btn" onclick="closeSplit()">취소</button>
+                <button class="btn primary" onclick="confirmSplit()">추가</button>
             </div>
         </div>
     </div>
@@ -130,141 +157,180 @@
     <script>
         fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
 
-        let allRows=[], viewRows=[];
+        let rows=[];       // display rows (done + pending)
+        let keySeq=0;
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
-        const rowById=id=>allRows.find(r=>r.id===id);
+        const rowByKey=k=>rows.find(r=>r.key===k);
 
         async function loadData(){
             try{
                 const res=await fetch('/api/inbound/stock-arranges');
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const data=await res.json();
-                allRows=data.map(r=>({
-                    id:r.id, 출고코드:r.출고코드, 박스명:r.박스명, 중국번호:r.중국번호, 상품명:r.상품명,
-                    수량:r.수량, 바코드:r.바코드, 위치후보:Array.isArray(r.위치후보)?r.위치후보.slice():[],
-                    selectedLoc:(Array.isArray(r.위치후보)&&r.위치후보.length)?r.위치후보[0]:null,
-                    adding:false, checked:false
+                rows=[];
+                (data.done||[]).forEach(d=>rows.push({
+                    kind:'done', key:'d'+d.id, id:d.id, 출고코드:d.출고코드, 박스명:d.박스명, 중국번호:d.중국번호,
+                    상품명:d.상품명, 바코드:d.바코드, qty:d.수량, 위치:d.위치, checked:false
                 }));
-                applySearch();
+                (data.pending||[]).forEach(p=>rows.push({
+                    kind:'pending', key:'p'+p.itemId, itemId:p.itemId, 출고코드:p.출고코드, 박스명:p.박스명, 중국번호:p.중국번호,
+                    상품명:p.상품명, 바코드:p.바코드, qty:p.남은, 위치후보:(p.위치후보||[]).slice(),
+                    selectedLoc:(p.위치후보&&p.위치후보.length)?p.위치후보[0]:null, adding:false, checked:false
+                }));
+                render();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="9">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
-        function applySearch(){
+        function filtered(){
             const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
-            viewRows=allRows.filter(r=>{
-                if(terms.length===0) return true;
-                const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,...(r.위치후보||[])].map(v=>String(v||'').toLowerCase());
+            if(!terms.length) return rows;
+            return rows.filter(r=>{
+                const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.위치,...(r.위치후보||[])].map(v=>String(v||'').toLowerCase());
                 return terms.some(t=>hay.some(h=>h.includes(t)));
             });
-            render();
         }
 
         function locCell(r){
             let html='<div class="loc-wrap">';
             for(const loc of r.위치후보){
-                const sel=loc===r.selectedLoc?'sel':'';
-                html+=`<button class="loc-btn ${sel}" onclick="selectLoc(${r.id},'${esc(loc)}')">${esc(loc)}</button>`;
+                html+=`<button class="loc-btn ${loc===r.selectedLoc?'sel':''}" onclick="selectLoc('${r.key}','${esc(loc)}')">${esc(loc)}</button>`;
             }
             if(r.adding){
-                html+=`<input class="loc-input" type="text" autofocus placeholder="위치 입력"
+                html+=`<input class="loc-input" type="text" placeholder="위치 입력"
                     onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){this.value='';this.blur();}"
-                    onblur="finishAdd(${r.id}, this.value)">`;
+                    onblur="finishAdd('${r.key}', this.value)">`;
             }else{
-                html+=`<button class="loc-add" onclick="startAdd(${r.id})">+</button>`;
+                html+=`<button class="loc-mini" title="위치 추가" onclick="startAdd('${r.key}')">+</button>`;
+                html+=`<button class="loc-mini" title="다른 위치로 분할" onclick="openSplit('${r.key}')">↓</button>`;
             }
             html+='</div>';
             return html;
         }
 
         function render(){
+            const list=filtered();
             const tb=document.getElementById('tbody');
-            if(viewRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="8">재고정리할 데이터가 없습니다. (입고정리 › 재고정리 실행)</td></tr>`;
+            if(list.length===0){
+                tb.innerHTML=`<tr class="state-row"><td colspan="9">재고정리할 데이터가 없습니다.</td></tr>`;
             }else{
-                tb.innerHTML=viewRows.map(r=>`<tr>
-                    <td class="chk"><input type="checkbox" class="rowchk" ${r.checked?'checked':''} onchange="toggleRow(${r.id},this.checked)"></td>
-                    <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
-                    <td class="pname">${esc(r.상품명)}</td>
-                    <td class="ctr qty-edit" contenteditable="true" data-orig="${esc(r.수량)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onblur="saveQty(${r.id},this)">${esc(r.수량)}</td>
-                    <td>${esc(r.바코드)}</td>
-                    <td class="loc-cell">${locCell(r)}</td>
-                </tr>`).join('');
+                tb.innerHTML=list.map(r=>{
+                    if(r.kind==='done'){
+                        return `<tr class="done">
+                            <td class="chk"><input type="checkbox" ${r.checked?'checked':''} onchange="toggleRow('${r.key}',this.checked)"></td>
+                            <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
+                            <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.qty)}</td><td>${esc(r.바코드)}</td>
+                            <td class="loc-text">${dashCell(r.위치)}</td><td class="ctr done-col">✅</td>
+                        </tr>`;
+                    }
+                    return `<tr>
+                        <td class="chk"><input type="checkbox" ${r.checked?'checked':''} onchange="toggleRow('${r.key}',this.checked)"></td>
+                        <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
+                        <td class="pname">${esc(r.상품명)}</td>
+                        <td class="ctr qty-edit" contenteditable="true" data-orig="${esc(r.qty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onblur="saveQty('${r.key}',this)">${esc(r.qty)}</td>
+                        <td>${esc(r.바코드)}</td>
+                        <td class="loc-cell">${locCell(r)}</td><td class="ctr done-col"></td>
+                    </tr>`;
+                }).join('');
             }
-            document.getElementById('rowCount').textContent=viewRows.length;
+            document.getElementById('pendCount').textContent=rows.filter(r=>r.kind==='pending').length;
+            document.getElementById('doneCount').textContent=rows.filter(r=>r.kind==='done').length;
             updateSel();
-            const addingRow=viewRows.find(r=>r.adding);
+            const addingRow=rows.find(r=>r.adding);
             if(addingRow){ const inp=document.querySelector('.loc-input'); if(inp)inp.focus(); }
         }
 
-        function selectLoc(id,loc){ const r=rowById(id); if(r){ r.selectedLoc=loc; render(); } }
-        function startAdd(id){ const r=rowById(id); if(r){ viewRows.forEach(x=>x.adding=false); r.adding=true; render(); } }
-        function finishAdd(id,val){
-            const r=rowById(id); if(!r) return;
+        // 위치 선택/추가
+        function selectLoc(key,loc){ const r=rowByKey(key); if(r){ r.selectedLoc=loc; render(); } }
+        function startAdd(key){ const r=rowByKey(key); if(r){ rows.forEach(x=>x.adding=false); r.adding=true; render(); } }
+        function finishAdd(key,val){
+            const r=rowByKey(key); if(!r) return;
             const v=String(val||'').trim();
             if(v){ if(!r.위치후보.includes(v)) r.위치후보.push(v); r.selectedLoc=v; }
             r.adding=false; render();
         }
 
-        function toggleRow(id,ch){ const r=rowById(id); if(r){ r.checked=ch; } updateSel(); }
-        function toggleAll(el){ viewRows.forEach(r=>r.checked=el.checked); render(); }
+        // 수량 인라인 편집 (대기 행, 클라이언트 배치량)
+        function saveQty(key,cell){
+            const r=rowByKey(key); if(!r) return;
+            const n=parseInt(String(cell.textContent).replace(/[^0-9]/g,''));
+            if(!Number.isFinite(n)||n<1){ cell.textContent=cell.dataset.orig; return; }
+            r.qty=n; cell.dataset.orig=String(n); cell.textContent=String(n);
+        }
+
+        // 위치 분할
+        let splitKey=null;
+        function openSplit(key){
+            const r=rowByKey(key); if(!r) return;
+            splitKey=key;
+            document.getElementById('splitLoc').value='';
+            document.getElementById('splitQty').value='';
+            document.getElementById('splitQty').max=r.qty;
+            document.getElementById('splitMax').textContent=r.qty;
+            document.getElementById('splitModal').classList.add('show');
+            setTimeout(()=>document.getElementById('splitLoc').focus(),50);
+        }
+        function closeSplit(){ document.getElementById('splitModal').classList.remove('show'); splitKey=null; }
+        function confirmSplit(){
+            const r=rowByKey(splitKey); if(!r){closeSplit();return;}
+            const loc=document.getElementById('splitLoc').value.trim();
+            const qty=parseInt(document.getElementById('splitQty').value);
+            if(!loc){toast('위치를 입력하세요.');return;}
+            if(!(qty>0)||qty>r.qty){toast(`수량은 1 ~ ${r.qty} 사이여야 합니다.`);return;}
+            const cand=r.위치후보.includes(loc)?r.위치후보.slice():[...r.위치후보,loc];
+            const newRow={kind:'pending', key:'s'+(++keySeq), itemId:r.itemId, 출고코드:r.출고코드, 박스명:r.박스명,
+                중국번호:r.중국번호, 상품명:r.상품명, 바코드:r.바코드, qty:qty, 위치후보:cand, selectedLoc:loc, adding:false, checked:r.checked};
+            const idx=rows.indexOf(r);
+            r.qty-=qty;
+            if(r.qty<=0){ rows.splice(idx,1,newRow); } else { rows.splice(idx+1,0,newRow); }
+            closeSplit(); render();
+        }
+        document.getElementById('splitQty').addEventListener('keydown',e=>{if(e.key==='Enter')confirmSplit();if(e.key==='Escape')closeSplit();});
+
+        // 체크
+        function toggleRow(key,ch){ const r=rowByKey(key); if(r)r.checked=ch; updateSel(); }
+        function toggleAll(el){ filtered().forEach(r=>r.checked=el.checked); render(); }
         function updateSel(){
-            const n=viewRows.filter(r=>r.checked).length;
+            const vis=filtered();
+            const n=vis.filter(r=>r.checked).length;
             document.getElementById('selCount').textContent=n;
             const all=document.getElementById('selectAll');
-            all.checked=viewRows.length>0&&n===viewRows.length;
-            all.indeterminate=n>0&&n<viewRows.length;
+            all.checked=vis.length>0&&n===vis.length;
+            all.indeterminate=n>0&&n<vis.length;
         }
 
-        async function doDelete(){
-            const checked=viewRows.filter(r=>r.checked);
-            if(!checked.length){toast('삭제할 항목을 체크해주세요.');return;}
-            if(!confirm(`${checked.length}건을 삭제하시겠습니까?`))return;
-            const ids=checked.map(r=>r.id);
-            try{
-                const res=await fetch('/api/inbound/stock-arrange-delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
-                const data=await res.json();
-                if(!res.ok)throw new Error(data.error||'삭제 실패');
-                toast(data.message||'삭제되었습니다.');
-                await loadData();
-            }catch(e){toast('삭제 실패: '+e.message);}
-        }
-
-        // 수량 인라인 편집 (구글시트식: 클릭 → 커서 → 숫자 수정)
-        async function saveQty(id, cell){
-            const r=rowById(id); if(!r) return;
-            const n=parseInt(String(cell.textContent).replace(/[^0-9]/g,''));
-            const orig=parseInt(cell.dataset.orig);
-            if(!Number.isFinite(n)||n<0){ cell.textContent=cell.dataset.orig; return; }
-            if(n===orig){ cell.textContent=String(n); return; }
-            // 낙관적 반영
-            r.수량=n; cell.dataset.orig=String(n); cell.textContent=String(n);
-            try{
-                const res=await fetch('/api/inbound/stock-arrange-qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,qty:n})});
-                if(!res.ok)throw new Error();
-                toast('수량 저장됨');
-            }catch(e){
-                r.수량=orig; cell.dataset.orig=String(orig); cell.textContent=String(orig);
-                toast('수량 저장 실패');
-            }
-        }
-
+        // 처리완료 (체크된 '대기' 행 → 재고 원장)
         async function doComplete(){
-            const checked=viewRows.filter(r=>r.checked);
-            if(!checked.length){toast('처리할 항목을 체크해주세요.');return;}
+            const checked=rows.filter(r=>r.kind==='pending'&&r.checked);
+            if(!checked.length){toast('처리할 남은상품(대기)을 체크해주세요.');return;}
             const missing=checked.filter(r=>!r.selectedLoc);
             if(missing.length){toast(`위치를 선택해주세요. (${missing.length}건 위치 미선택)`);return;}
-            const payload=checked.map(r=>({id:r.id, barcode:r.바코드, location:r.selectedLoc, qty:r.수량}));
+            const items=checked.map(r=>({shipment_item_id:r.itemId, barcode:r.바코드, location:r.selectedLoc, qty:r.qty}));
             toast('처리 중…');
             try{
-                const res=await fetch('/api/inbound/stock-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:payload})});
+                const res=await fetch('/api/inbound/stock-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
                 const data=await res.json();
                 if(!res.ok)throw new Error(data.error||'처리완료 실패');
                 toast(data.message||'처리완료');
                 await loadData();
             }catch(e){toast('처리완료 실패: '+e.message);}
+        }
+
+        // 삭제 (체크된 '완료' 행 → 원장/재고 취소)
+        async function doDelete(){
+            const checked=rows.filter(r=>r.kind==='done'&&r.checked);
+            if(!checked.length){toast('취소할 완료(✅) 항목을 체크해주세요.');return;}
+            if(!confirm(`완료된 ${checked.length}건을 취소하시겠습니까? (재고에서 차감됩니다)`))return;
+            const ids=checked.map(r=>r.id);
+            try{
+                const res=await fetch('/api/inbound/stock-arrange-delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'취소 실패');
+                toast(data.message||'취소되었습니다.');
+                await loadData();
+            }catch(e){toast('취소 실패: '+e.message);}
         }
 
         let toastTimer;

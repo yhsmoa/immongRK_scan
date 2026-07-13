@@ -126,7 +126,6 @@
                     <select id="monthSel" onchange="onMonthChange()"></select>
                     <select id="codeSel" class="sel-code" onchange="onCodeChange()"></select>
                     <button class="btn primary" id="prepareBtn" onclick="openOrderPanel()">출고준비</button>
-                    <button class="btn" id="stockArrangeBtn" onclick="doStockArrange()">재고정리</button>
                 </div>
             </div>
 
@@ -247,24 +246,10 @@
             render();
         }
 
-        // 출고준비/재고정리 버튼: 남은상품 탭 + 출고코드 선택 시에만 활성화
+        // 출고준비 버튼: 남은상품 탭 + 출고코드 선택 시에만 활성화
         function updateActionButtons(){
             const on = activeTab==='stock' && !!selectedCode();
             document.getElementById('prepareBtn').disabled = !on;
-            document.getElementById('stockArrangeBtn').disabled = !on;
-        }
-
-        // 재고정리: 현재 출고코드의 남은상품을 재고정리 페이지로 저장
-        async function doStockArrange(){
-            const code=selectedCode();
-            if(!code){toast('출고코드를 선택하세요.');return;}
-            toast('재고정리 저장 중…');
-            try{
-                const res=await fetch('/api/inbound/stock-arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shipmentCode:code})});
-                const data=await res.json();
-                if(!res.ok)throw new Error(data.error||'재고정리 실패');
-                toast((data.message||'재고정리 완료')+' · CN입고 › 재고정리에서 확인하세요');
-            }catch(e){toast('재고정리 실패: '+e.message);}
         }
 
         function maxBatch(){ return shippingRows.reduce((m,r)=>Math.max(m,r.회차||0),0); }
