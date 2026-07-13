@@ -144,13 +144,13 @@
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:76px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:50px"><col style="width:84px"><col style="width:99px">
+                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:50px"><col style="width:84px"><col style="width:76px"><col style="width:99px">
                     </colgroup>
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
-                            <th>발주번호</th><th>물류센터</th><th>입고예정일</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
-                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고1</th><th class="ctr">입고2</th><th>위치</th><th class="c-created">created_at</th>
+                            <th>발주번호</th><th>물류센터</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고1</th><th class="ctr">입고2</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
                         </tr>
                     </thead>
                     <tbody id="tbody"><tr class="state-row"><td colspan="15">데이터를 불러오는 중…</td></tr></tbody>
@@ -237,12 +237,12 @@
                     const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
                     return `<tr data-i="${i}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
-                        <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td><td>${esc(r.입고예정일)}</td>
+                        <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
                         <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${esc(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${dashCell(r.재고)}</td>
-                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }
@@ -505,12 +505,19 @@
 
         // ── 인쇄 ──
         function printRows(){
-            const rows=selectedRows().length?selectedRows():viewRows;
+            let rows=selectedRows().length?selectedRows():viewRows;
             if(!rows.length){toast('인쇄할 행이 없습니다.');return;}
-            const head=['발주번호','물류센터','입고예정일','상품번호','상품바코드','상품명','발주수량','확정수량','스캔수량','입고1','입고2','위치'];
-            const body=rows.map(r=>`<tr>${[r.발주번호,r.물류센터,r.입고예정일,r.상품번호,r.상품바코드,r.상품명,r.발주수량,r.확정수량,r.스캔수량,r.입고1,r.입고2,r.위치].map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('');
+            // 정렬: 입고예정일 > 물류센터 > 위치
+            const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
+            rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.물류센터,b.물류센터)||cmp(a.위치,b.위치));
+            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','입고1','입고2','위치','입고예정일'];
+            const body=rows.map((r,idx)=>{
+                const groupEnd=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
+                const cells=[r.발주번호,r.물류센터,r.상품번호,r.상품바코드,r.상품명,r.발주수량,r.스캔수량,r.입고1,r.입고2,r.위치,r.입고예정일];
+                return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`;
+            }).join('');
             const w=window.open('','_blank');
-            w.document.write(`<html><head><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}</style></head><body><h2>발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}</style></head><body><h2>발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
             w.document.close();
         }
 

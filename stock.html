@@ -37,6 +37,9 @@
         td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
         td.pname{white-space:normal;color:#334155;}
         td.loc{font-weight:600;color:#1e293b;}
+        td.loc-edit{cursor:text;}
+        td.loc-edit:hover{background:#f8faff;}
+        td.loc-edit:focus{outline:none;background:#fff;box-shadow:inset 0 0 0 2px #c7d2fe;}
         .dash{color:#cbd5e1;}
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
         .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
@@ -143,7 +146,7 @@
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const items=await res.json();
                 allRows=items.map(it=>({
-                    위치:it.location, 상품번호:it.skuId, 바코드:it.barcode, 상품명:it.itemName, 수량:it.qty, 시즌:it.season, 비고:it.note
+                    id:it.id, 위치:it.location, 상품번호:it.skuId, 바코드:it.barcode, 상품명:it.itemName, 수량:it.qty, 시즌:it.season, 비고:it.note
                 }));
                 applySearch();
             }catch(e){
@@ -161,7 +164,7 @@
                 tb.innerHTML=`<tr class="state-row"><td colspan="7">표시할 재고가 없습니다.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map(r=>`<tr>
-                    <td class="loc">${dashCell(r.위치)}</td>
+                    <td class="loc loc-edit" contenteditable="true" data-id="${esc(r.id)}" data-orig="${esc(r.위치||'')}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveLoc('${esc(r.id)}',this)">${esc(r.위치||'')}</td>
                     <td>${esc(r.상품번호)}</td>
                     <td>${esc(r.바코드)}</td>
                     <td class="pname">${esc(r.상품명)}</td>
@@ -216,6 +219,23 @@
             }
             currentPage=1;
             render();
+        }
+
+        // ── 위치 인라인 수정 (셀 클릭 편집) ──
+        async function saveLoc(id,cell){
+            const row=allRows.find(r=>String(r.id)===String(id));
+            const val=String(cell.textContent).trim();
+            const orig=cell.dataset.orig||'';
+            if(val===orig){ cell.textContent=orig; return; }
+            if(!val){ cell.textContent=orig; toast('위치를 입력하세요.'); return; }
+            try{
+                const res=await fetch('/api/stocks/'+encodeURIComponent(id)+'/location',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:val})});
+                const data=await res.json().catch(()=>({}));
+                if(!res.ok) throw new Error(data.error||'저장 실패');
+                if(row) row.위치=val;
+                cell.dataset.orig=val; cell.textContent=val;
+                toast('위치 수정 완료');
+            }catch(e){ cell.textContent=orig; toast('위치 수정 실패: '+e.message); }
         }
 
         // ── 토스트 ──

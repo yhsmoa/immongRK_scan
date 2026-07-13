@@ -183,4 +183,25 @@ router.post('/api/stocks/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// 위치 인라인 수정 (셀 클릭 편집)
+router.patch('/api/stocks/:id/location', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const location = String(req.body.location ?? '').trim();
+    if (!location) return res.status(400).json({ error: '위치를 입력하세요.' });
+    const { data, error } = await sb
+      .from('rk_stocks')
+      .update({ location })
+      .eq('id', id)
+      .select('id')
+      .single();
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: '재고를 찾을 수 없습니다.' });
+    res.json({ ok: true, id: data.id, location });
+  } catch (e) {
+    console.error('[rk] stocks/location:', e);
+    res.status(500).json({ error: '위치 수정 실패: ' + e.message });
+  }
+});
+
 module.exports = router;
