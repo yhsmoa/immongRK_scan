@@ -270,11 +270,35 @@ router.post('/api/inbound/prepare', async (req, res) => {
     }
 
     // 저장 (기존 유지 + 신규 추가)
+    const insertedIds = [];
     if (allocRows.length) {
       const BATCH = 1000;
       for (let i = 0; i < allocRows.length; i += BATCH) {
-        const { error } = await sb.from('rk_cn_shipping').insert(allocRows.slice(i, i + BATCH));
+        const { data, error } = await sb.from('rk_cn_shipping').insert(allocRows.slice(i, i + BATCH)).select('id');
         if (error) throw error;
+        insertedIds.push(...(data || []).map(d => d.id));
+      }
+    }
+
+    // rk_shipping_list 미러링 (통합 출고리스트, source='입고') — 비파괴: 실패해도 기존 동작 유지
+    if (allocRows.length) {
+      try {
+        const nameByItem = new Map(items.map(i => [i.id, i.product_name]));
+        const mirror = allocRows.map((r, idx) => ({
+          source: '입고', status: '출고예정',
+          barcode: r.barcode, product_name: nameByItem.get(r.shipment_item_id) || null,
+          order_number: r.order_number, center: r.center, shipping_date: r.shipping_date || null,
+          qty: r.ship_qty,
+          shipment_id: r.shipment_id, shipment_item_id: r.shipment_item_id,
+          cn_shipping_id: insertedIds[idx] || null, batch_no: r.batch_no, prepared_at: r.prepared_at,
+        }));
+        const BATCH = 1000;
+        for (let i = 0; i < mirror.length; i += BATCH) {
+          const { error } = await sb.from('rk_shipping_list').insert(mirror.slice(i, i + BATCH));
+          if (error) throw error;
+        }
+      } catch (mirrorErr) {
+        console.error('[rk] shipping_list 미러링 실패(출고준비는 정상 처리됨):', mirrorErr.message);
       }
     }
 

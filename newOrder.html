@@ -89,6 +89,10 @@
         .scan-orange{background:#ffedd5;color:#ea580c;}
         .dash{color:#cbd5e1;}
         .loc-disc{color:#e11d48;font-weight:600;}
+        .loc-v2{color:#F0492F;font-weight:600;}     /* 위치v2 계산(미저장) — 주황 */
+        .stock-v2{color:#F0492F;font-weight:600;}
+        .loc-v2s{color:#111827;font-weight:600;}    /* 준비v2 저장됨(불러옴) — 검정 */
+        .stock-v2s{color:#111827;font-weight:600;}
         th.chk,td.chk{width:42px;text-align:center;padding-left:0;padding-right:0;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
@@ -120,6 +124,8 @@
                 <div class="actions">
                     <button class="btn" onclick="openOrderPanel()">전체보기</button>
                     <button class="btn" onclick="loadLocations()">위치 불러오기</button>
+                    <button class="btn" onclick="loadLocationsV2()">위치v2</button>
+                    <button class="btn" onclick="prepareV2()">준비v2</button>
                     <button class="btn" onclick="exportSelectedOrders()">엑셀저장</button>
                     <button class="btn" onclick="printRows()">인쇄</button>
                     <button class="btn danger" onclick="deleteRows()">삭제</button>
@@ -225,6 +231,7 @@
                             입고1:p.입고1,입고2:p.입고2,위치:p.위치,created_at:o.created_at});
                     }
                 }
+                await loadSavedV2();
                 applySearch();
             }catch(e){
                 document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="15">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
@@ -254,8 +261,8 @@
                         <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${esc(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
-                        <td class="ctr">${dashCell(r.재고)}</td>
-                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                        <td class="ctr">${r.위치v2?((Number(r.재고)||0)>0?`<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${Number(r.재고)}</span>`:'<span class="dash">-</span>'):dashCell(r.재고)}</td>
+                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${v2LocHtml(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }
@@ -498,6 +505,98 @@
                 render();
                 toast(`위치 ${updates.length}건 업데이트`);
             }catch(e){toast('위치 불러오기 실패: '+e.message);}
+        }
+
+        // ── 위치v2 / 준비v2 (재고 출고배정 → rk_shipping_list, docs/plan-shipping-list.md) ──
+        // v2Saved=true → 저장됨(검정) / false → 계산만 됨(주황)
+        function v2LocHtml(r){
+            if(!r.위치v2) return locCell(r.위치);
+            const allocs=r.위치v2;
+            if(!allocs.length) return '<span class="dash">-</span>';
+            const cls=r.v2Saved?'loc-v2s':'loc-v2';
+            if(allocs.length===1) return `<span class="${cls}">${esc(allocs[0].location)}</span>`;
+            return `<span class="${cls}">${allocs.map(a=>esc(a.location+'-'+a.qty)).join('<br>')}</span>`;
+        }
+        function v2TargetRows(){ return selectedRows().length?selectedRows():viewRows; }
+        function v2Payload(rows){
+            return rows.filter(r=>r.상품바코드).map(r=>({
+                orderNumber:r.발주번호, center:r.물류센터, shippingDate:r.입고예정일,
+                barcode:r.상품바코드, productName:r.상품명, qty:Number(r.발주수량)||0
+            }));
+        }
+        // 저장된 재고건(출고예정) 불러와 행에 적용 (검정 표시) — 페이지 진입/새로고침 시
+        async function loadSavedV2(){
+            try{
+                const res=await fetch('/api/shipping-list?source=재고&status=출고예정');
+                if(!res.ok) return;
+                const list=await res.json();
+                const map=new Map();
+                for(const x of list){
+                    const key=`${x.orderNumber}|${x.barcode}`;
+                    if(!map.has(key)) map.set(key,[]);
+                    map.get(key).push({location:x.location, qty:Number(x.qty)||0});
+                }
+                for(const r of allRows){
+                    const allocs=map.get(`${r.발주번호}|${r.상품바코드}`);
+                    if(allocs&&allocs.length){
+                        allocs.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
+                        r.위치v2=allocs;
+                        r.재고=allocs.reduce((s,a)=>s+a.qty,0);
+                        r.v2Saved=true;
+                    }
+                }
+            }catch(e){/* 저장분 불러오기 실패는 무시 */}
+        }
+        // 계산 결과(주황) 적용 — 이미 저장된(검정) 행은 유지
+        function v2Apply(rows,results){
+            let i=0;
+            for(const r of rows){
+                if(!r.상품바코드) continue;
+                const out=results[i++];
+                if(!out||r.v2Saved) continue;
+                r.재고=out.allocated;
+                r.위치v2=out.allocations;
+                r.v2Saved=false;
+            }
+            render();
+        }
+        async function loadLocationsV2(){
+            const rows=v2TargetRows();
+            const payload=v2Payload(rows);
+            if(!payload.length){toast('대상이 없습니다.');return;}
+            toast('재고 배정 계산 중…');
+            try{
+                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:payload,save:false})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
+                v2Apply(rows,data.results);
+                const total=data.results.reduce((s,r)=>s+r.allocated,0);
+                toast(`위치v2: ${data.results.filter(r=>r.allocated>0).length}행 배정, 총 ${total}개`);
+            }catch(e){toast('위치v2 실패: '+e.message);}
+        }
+        async function prepareV2(){
+            const rows=v2TargetRows().filter(r=>r.위치v2&&r.위치v2.length&&!r.v2Saved);
+            if(!rows.length){toast('저장할 새 배정이 없습니다. 먼저 위치v2를 클릭하세요.');return;}
+            const totalQty=rows.reduce((s,r)=>s+(Number(r.재고)||0),0);
+            if(!confirm(`${rows.length}행 / 총 ${totalQty}개를 출고예정으로 저장하시겠습니까?`))return;
+            const payload=v2Payload(rows);
+            toast('출고예정 저장 중…');
+            try{
+                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:payload,save:true})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
+                if(data.saved>0){
+                    let i=0;
+                    for(const r of rows){
+                        const out=data.results[i++];
+                        if(out&&out.allocated>0){ r.위치v2=out.allocations; r.재고=out.allocated; r.v2Saved=true; }
+                    }
+                    render();
+                    toast(`출고예정 ${data.saved}건 저장 완료`);
+                }else{
+                    toast('저장할 배정이 없습니다. (이미 예약되었거나 재고 없음)');
+                }
+            }catch(e){toast('준비v2 실패: '+e.message);}
         }
 
         // ── 인쇄 ──

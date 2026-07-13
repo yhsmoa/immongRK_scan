@@ -90,6 +90,7 @@ app.use(require('./routes/rkInventory'));
 app.use(require('./routes/rkChinaImport'));
 app.use(require('./routes/rkStocks'));
 app.use(require('./routes/rkInbound'));
+app.use(require('./routes/rkShippingList'));
 
 // 발주서 목록 가져오기
 app.get('/api/orders', async (req, res) => {
