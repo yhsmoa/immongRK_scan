@@ -57,6 +57,9 @@
         tbody td{padding:12px;border-bottom:1px solid #eef2f7;color:var(--ink-soft);font-size:13.5px;vertical-align:middle;}
         tbody tr:last-child td{border-bottom:none;}
         tbody tr:hover td{background:var(--hover);}
+        /* 방금 스캔된 맨 위 행 — 파란 배경 천천히 깜빡 */
+        @keyframes rowPulse{0%,100%{background:#fff;}50%{background:#cfe4fe;}}
+        tbody tr.row-latest td{animation:rowPulse 1.8s ease-in-out infinite;}
         td.loc{font-weight:700;color:#1e293b;white-space:nowrap;text-align:center;}
         td.bc{white-space:nowrap;color:#475569;font-variant-numeric:tabular-nums;text-align:center;}
         td.pname{white-space:normal;word-break:break-word;color:#334155;line-height:1.5;}  /* 좁으면 2줄 줄바꿈 */
@@ -240,7 +243,7 @@
             if(!rows.length){
                 tb.innerHTML=`<tr class="state-row"><td colspan="5">위치 → 바코드 순으로 스캔하세요.</td></tr>`;
             }else{
-                tb.innerHTML=rows.map(r=>`<tr>
+                tb.innerHTML=rows.map((r,idx)=>`<tr class="${idx===0?'row-latest':''}">
                     <td class="loc">${esc(r.위치)}</td>
                     <td class="bc">${esc(r.바코드)}</td>
                     <td class="pname">${pnameHtml(r.상품명)}</td>
