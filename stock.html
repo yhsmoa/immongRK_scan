@@ -29,7 +29,7 @@
         .page-size select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
 
         .table-scroll{overflow-x:auto;}
-        table{width:100%;border-collapse:collapse;min-width:900px;table-layout:fixed;}
+        table{width:100%;border-collapse:collapse;min-width:1150px;table-layout:fixed;}
         thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
         thead th.ctr{text-align:center;}
         tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
@@ -66,6 +66,10 @@
         .btn:hover{background:var(--hover);border-color:#cbd5e1;}
         .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+        .btn.danger:not(:disabled){color:#dc2626;border-color:#fecaca;}
+        .btn.danger:not(:disabled):hover{background:#fef2f2;border-color:#fca5a5;}
+        th.chk,td.chk{width:44px;text-align:center;padding-left:0;padding-right:0;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
         .xlsx-drop{position:relative;display:inline-block;}
         .xlsx-menu{position:absolute;top:100%;right:0;margin-top:6px;min-width:160px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 8px 24px rgba(15,23,42,.12);padding:6px;display:none;z-index:50;}
         .xlsx-menu::before{content:"";position:absolute;top:-6px;left:0;right:0;height:6px;} /* hover 브릿지 */
@@ -90,6 +94,7 @@
                     <span class="subtitle">전체 <b id="rowCount">0</b>개</span>
                 </div>
                 <div class="actions">
+                    <button class="btn" onclick="location.href='/stockScan'">재고스캔</button>
                     <div class="xlsx-drop">
                         <button class="btn primary">
                             xlsx
@@ -102,7 +107,7 @@
                             <button onclick="downloadTemplate()">xlsx 양식</button>
                         </div>
                     </div>
-                    <button class="btn" onclick="location.href='/stockScan'">재고스캔</button>
+                    <button class="btn danger" id="delBtn" onclick="deleteSelected()" disabled>삭제</button>
                     <button class="btn" id="saveBtn" onclick="saveAllQty()" disabled>저장</button>
                 </div>
             </div>
@@ -127,14 +132,15 @@
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:140px"><col style="width:130px"><col style="width:150px"><col><col style="width:90px"><col style="width:90px"><col style="width:200px">
+                        <col style="width:44px"><col style="width:140px"><col style="width:130px"><col style="width:150px"><col><col style="width:90px"><col style="width:90px"><col style="width:200px">
                     </colgroup>
                     <thead>
                         <tr>
+                            <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>위치</th><th>상품번호</th><th>바코드</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">시즌</th><th>비고</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="7">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="8">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
@@ -171,9 +177,10 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(pageRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="7">표시할 재고가 없습니다.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="8">표시할 재고가 없습니다.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map(r=>`<tr>
+                    <td class="chk"><input type="checkbox" class="rowchk" data-id="${esc(r.id)}" onchange="updateDelBtn()"></td>
                     <td class="loc loc-edit" contenteditable="true" data-id="${esc(r.id)}" data-orig="${esc(r.위치||'')}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveLoc('${esc(r.id)}',this)">${esc(r.위치||'')}</td>
                     <td>${esc(r.상품번호)}</td>
                     <td>${esc(r.바코드)}</td>
@@ -184,8 +191,10 @@
                 </tr>`).join('');
             }
             document.getElementById('rowCount').textContent=viewRows.length;
+            document.getElementById('checkAll').checked=false;
             renderPagination(totalPages);
             updateSaveBtn();
+            updateDelBtn();
         }
 
         function renderPagination(totalPages){
@@ -230,6 +239,33 @@
             }
             currentPage=1;
             render();
+        }
+
+        // ── 체크박스 선택 + 삭제 ──
+        function toggleAll(el){
+            document.querySelectorAll('.rowchk').forEach(c=>c.checked=el.checked);
+            updateDelBtn();
+        }
+        function updateDelBtn(){
+            const checks=[...document.querySelectorAll('.rowchk')];
+            const n=checks.filter(c=>c.checked).length;
+            const btn=document.getElementById('delBtn');
+            if(btn) btn.disabled=n===0;
+            const all=document.getElementById('checkAll');
+            if(all){ all.checked=checks.length>0&&n===checks.length; all.indeterminate=n>0&&n<checks.length; }
+        }
+        async function deleteSelected(){
+            const ids=[...document.querySelectorAll('.rowchk')].filter(c=>c.checked).map(c=>c.dataset.id);
+            if(!ids.length){ toast('삭제할 항목을 선택하세요.'); return; }
+            if(!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까?`)) return;
+            const btn=document.getElementById('delBtn'); if(btn) btn.disabled=true;
+            try{
+                const res=await fetch('/api/stocks/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids})});
+                const data=await res.json().catch(()=>({}));
+                if(!res.ok) throw new Error(data.error||'삭제 실패');
+                toast(`${data.deleted ?? ids.length}건 삭제되었습니다.`);
+                await loadData();
+            }catch(e){ updateDelBtn(); toast('삭제 실패: '+e.message); }
         }
 
         // ── 위치 인라인 수정 (셀 클릭 편집) ──

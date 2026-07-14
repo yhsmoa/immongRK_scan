@@ -204,6 +204,20 @@ router.patch('/api/stocks/:id/location', async (req, res) => {
   }
 });
 
+// 재고 삭제 (체크박스 선택 → 삭제)
+router.post('/api/stocks/delete', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(x => parseInt(x, 10)).filter(Number.isFinite);
+    if (!ids.length) return res.status(400).json({ error: '삭제할 항목이 없습니다.' });
+    const { error } = await sb.from('rk_stocks').delete().in('id', ids);
+    if (error) throw error;
+    res.json({ ok: true, deleted: ids.length });
+  } catch (e) {
+    console.error('[rk] stocks/delete:', e);
+    res.status(500).json({ error: '재고 삭제 실패: ' + e.message });
+  }
+});
+
 // 바코드 → 상품명 조회 (재고스캔용) — rk_inventories 우선, 없으면 rk_stocks.item_name
 router.post('/api/stocks/lookup', async (req, res) => {
   try {
@@ -240,22 +254,42 @@ router.post('/api/stocks/scan-save', async (req, res) => {
       const location = String(it.location || '').trim();
       const barcode = String(it.barcode || '').trim();
       const qty = parseInt(it.qty, 10);
-      if (location && barcode && Number.isFinite(qty) && qty > 0) clean.push({ location, barcode, qty });
+      if (location && barcode && Number.isFinite(qty) && qty > 0) {
+        clean.push({ location, barcode, qty, productName: String(it.productName || '').trim(), skuId: String(it.skuId || '').trim() });
+      }
     }
     if (!clean.length) return res.status(400).json({ error: '저장할 유효한 항목이 없습니다.' });
+
+    // 상품명/상품번호 해석: rk_inventories 우선 → 기존 rk_stocks 값 → 클라이언트 표시값 (스캔 화면과 동일)
+    async function resolveMeta(barcode, fallbackName, fallbackSku) {
+      let skuId = null, itemName = null;
+      const { data: inv } = await sb.from('rk_inventories').select('sku_id, name').eq('barcode', barcode).limit(1);
+      if (inv && inv.length) { skuId = inv[0].sku_id; itemName = inv[0].name; }
+      if (!itemName || !skuId) {
+        const { data: st } = await sb.from('rk_stocks').select('sku_id, item_name').eq('barcode', barcode).limit(50);
+        if (!itemName) { const r = (st || []).find(x => x.item_name); if (r) itemName = r.item_name; }
+        if (!skuId) { const r = (st || []).find(x => x.sku_id); if (r) skuId = r.sku_id; }
+      }
+      if (!itemName && fallbackName) itemName = fallbackName;
+      if (!skuId && fallbackSku) skuId = fallbackSku;
+      return { skuId: skuId || null, itemName: itemName || null };
+    }
+
     let updated = 0, inserted = 0;
     for (const it of clean) {
-      const { data: ex, error: eSel } = await sb.from('rk_stocks').select('id, qty').eq('barcode', it.barcode).eq('location', it.location).limit(1);
+      const meta = await resolveMeta(it.barcode, it.productName, it.skuId);
+      const { data: ex, error: eSel } = await sb.from('rk_stocks').select('id, qty, sku_id, item_name').eq('barcode', it.barcode).eq('location', it.location).limit(1);
       if (eSel) throw eSel;
       if (ex && ex.length) {
-        const { error } = await sb.from('rk_stocks').update({ qty: (parseInt(ex[0].qty) || 0) + it.qty }).eq('id', ex[0].id);
+        const patch = { qty: (parseInt(ex[0].qty) || 0) + it.qty };
+        if (!ex[0].item_name && meta.itemName) patch.item_name = meta.itemName; // 비어있으면 백필
+        if (!ex[0].sku_id && meta.skuId) patch.sku_id = meta.skuId;
+        const { error } = await sb.from('rk_stocks').update(patch).eq('id', ex[0].id);
         if (error) throw error;
         updated++;
       } else {
-        const { data: inv } = await sb.from('rk_inventories').select('sku_id, name').eq('barcode', it.barcode).limit(1);
         const { error } = await sb.from('rk_stocks').insert({
-          barcode: it.barcode, location: it.location, qty: it.qty,
-          sku_id: inv && inv.length ? inv[0].sku_id : null, item_name: inv && inv.length ? inv[0].name : null,
+          barcode: it.barcode, location: it.location, qty: it.qty, sku_id: meta.skuId, item_name: meta.itemName,
         });
         if (error) throw error;
         inserted++;
