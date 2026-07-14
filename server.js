@@ -91,6 +91,7 @@ app.use(require('./routes/rkChinaImport'));
 app.use(require('./routes/rkStocks'));
 app.use(require('./routes/rkInbound'));
 app.use(require('./routes/rkShippingList'));
+app.use(require('./routes/rkShipScan'));
 
 // 발주서 목록 가져오기
 app.get('/api/orders', async (req, res) => {
@@ -1451,6 +1452,10 @@ app.get('/stock', (req, res) => {
 
 app.get('/stockScan', (req, res) => {
     res.sendFile(path.join(__dirname, 'stockScan.html'));
+});
+
+app.get('/shipScan', (req, res) => {
+    res.sendFile(path.join(__dirname, 'shipScan.html'));
 });
 
 // CN입고 > 입고리스트 (엑셀 원본 적재)
