@@ -204,4 +204,24 @@ router.patch('/api/stocks/:id/location', async (req, res) => {
   }
 });
 
+// 수량 일괄 수정 (저장 버튼)
+router.post('/api/stocks/batch-update-qty', async (req, res) => {
+  try {
+    const updates = Array.isArray(req.body.updates) ? req.body.updates : [];
+    if (!updates.length) return res.status(400).json({ error: '수정할 항목이 없습니다.' });
+    let updated = 0;
+    for (const u of updates) {
+      const qty = parseInt(u.qty, 10);
+      if (!u.id || !Number.isFinite(qty) || qty < 0) continue;
+      const { data, error } = await sb.from('rk_stocks').update({ qty }).eq('id', u.id).select('id');
+      if (error) throw error;
+      updated += (data ? data.length : 0);
+    }
+    res.json({ ok: true, updated });
+  } catch (e) {
+    console.error('[rk] stocks/batch-update-qty:', e);
+    res.status(500).json({ error: '수량 저장 실패: ' + e.message });
+  }
+});
+
 module.exports = router;
