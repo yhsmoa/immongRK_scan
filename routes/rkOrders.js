@@ -10,6 +10,9 @@ const S = require('./rkShared');
 
 const upload = multer({ storage: multer.memoryStorage() });
 
+// 엑셀 숫자 파싱: 천단위 콤마(예: "6,300") 제거 후 숫자화. parseFloat 콤마 절단 방지.
+const num = (v) => parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0;
+
 // ── dedup: 원본(박스정보 없음) 우선, 바코드별 1행 (server.js 원본 로직 재현) ──
 function dedupUnique(items, { withInboundDefault = false } = {}) {
   const unique = [];
@@ -162,8 +165,8 @@ module.exports = (io) => {
           발주수량: parseInt(row['H']) || 0, 확정수량: parseInt(row['I']) || 0, 스캔수량: 0,
           '유통(소비)기한': row['J'] || '', 제조일자: row['K'] || '', 생산년도: row['L'] || '',
           납품부족사유: row['M'] || '', 회송담당자: row['N'] || '', '회송담당자 연락처': row['O'] || '',
-          회송지주소: row['P'] || '', 매입가: parseFloat(row['Q']) || 0, 공급가: parseFloat(row['R']) || 0,
-          부가세: parseFloat(row['S']) || 0, '총발주 매입금': parseFloat(row['T']) || 0,
+          회송지주소: row['P'] || '', 매입가: num(row['Q']), 공급가: num(row['R']),
+          부가세: num(row['S']), '총발주 매입금': num(row['T']),
           입고유형: row['C'] || '', 발주상태: row['D'] || '', 발주등록일시: row['V'] || '',
         });
       });
