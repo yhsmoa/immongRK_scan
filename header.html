@@ -50,7 +50,13 @@
                 </div>
             </div>
             <a href="/inventory" class="m-link" data-path="/inventory">상품관리</a>
-            <a href="/stock" class="m-link" data-path="/stock">재고관리</a>
+            <div class="m-item" data-path="/stock,/stockScan">
+                <a href="/stock" class="m-link">재고관리</a>
+                <div class="m-dropdown">
+                    <a href="/stockScan">재고스캔</a>
+                    <a href="/stock">전체재고</a>
+                </div>
+            </div>
             <a href="/warehouse" class="m-link" data-path="/warehouse">쿠팡 물류센터</a>
             <a href="/salesdata" class="m-link" data-path="/salesdata">판매데이터</a>
             <a href="/shortage" class="m-link" data-path="/shortage">상품부족</a>

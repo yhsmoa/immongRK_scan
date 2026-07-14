@@ -1449,6 +1449,10 @@ app.get('/stock', (req, res) => {
     res.sendFile(path.join(__dirname, 'stock.html'));
 });
 
+app.get('/stockScan', (req, res) => {
+    res.sendFile(path.join(__dirname, 'stockScan.html'));
+});
+
 // CN입고 > 입고리스트 (엑셀 원본 적재)
 app.get('/inboundList', (req, res) => {
     res.sendFile(path.join(__dirname, 'inboundList.html'));

@@ -204,6 +204,70 @@ router.patch('/api/stocks/:id/location', async (req, res) => {
   }
 });
 
+// 바코드 → 상품명 조회 (재고스캔용) — rk_inventories 우선, 없으면 rk_stocks.item_name
+router.post('/api/stocks/lookup', async (req, res) => {
+  try {
+    const barcodes = [...new Set((Array.isArray(req.body.barcodes) ? req.body.barcodes : []).map(b => String(b || '').trim()).filter(Boolean))];
+    if (!barcodes.length) return res.json([]);
+    const map = new Map();
+    const BATCH = 200;
+    for (let i = 0; i < barcodes.length; i += BATCH) {
+      const chunk = barcodes.slice(i, i + BATCH);
+      const { data, error } = await sb.from('rk_inventories').select('barcode, name, sku_id').in('barcode', chunk);
+      if (error) throw error;
+      for (const x of (data || [])) if (!map.has(x.barcode)) map.set(x.barcode, { barcode: x.barcode, name: x.name || '', skuId: x.sku_id || '' });
+    }
+    const missing = barcodes.filter(b => !map.has(b));
+    for (let i = 0; i < missing.length; i += BATCH) {
+      const chunk = missing.slice(i, i + BATCH);
+      const { data, error } = await sb.from('rk_stocks').select('barcode, item_name, sku_id').in('barcode', chunk);
+      if (error) throw error;
+      for (const x of (data || [])) if (!map.has(x.barcode)) map.set(x.barcode, { barcode: x.barcode, name: x.item_name || '', skuId: x.sku_id || '' });
+    }
+    res.json([...map.values()]);
+  } catch (e) {
+    console.error('[rk] stocks/lookup:', e);
+    res.status(500).json({ error: '바코드 조회 실패: ' + e.message });
+  }
+});
+
+// 재고스캔 저장 — 같은 위치+바코드가 있으면 수량 합산, 없으면 신규
+router.post('/api/stocks/scan-save', async (req, res) => {
+  try {
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    const clean = [];
+    for (const it of items) {
+      const location = String(it.location || '').trim();
+      const barcode = String(it.barcode || '').trim();
+      const qty = parseInt(it.qty, 10);
+      if (location && barcode && Number.isFinite(qty) && qty > 0) clean.push({ location, barcode, qty });
+    }
+    if (!clean.length) return res.status(400).json({ error: '저장할 유효한 항목이 없습니다.' });
+    let updated = 0, inserted = 0;
+    for (const it of clean) {
+      const { data: ex, error: eSel } = await sb.from('rk_stocks').select('id, qty').eq('barcode', it.barcode).eq('location', it.location).limit(1);
+      if (eSel) throw eSel;
+      if (ex && ex.length) {
+        const { error } = await sb.from('rk_stocks').update({ qty: (parseInt(ex[0].qty) || 0) + it.qty }).eq('id', ex[0].id);
+        if (error) throw error;
+        updated++;
+      } else {
+        const { data: inv } = await sb.from('rk_inventories').select('sku_id, name').eq('barcode', it.barcode).limit(1);
+        const { error } = await sb.from('rk_stocks').insert({
+          barcode: it.barcode, location: it.location, qty: it.qty,
+          sku_id: inv && inv.length ? inv[0].sku_id : null, item_name: inv && inv.length ? inv[0].name : null,
+        });
+        if (error) throw error;
+        inserted++;
+      }
+    }
+    res.json({ ok: true, updated, inserted });
+  } catch (e) {
+    console.error('[rk] stocks/scan-save:', e);
+    res.status(500).json({ error: '재고 저장 실패: ' + e.message });
+  }
+});
+
 // 수량 일괄 수정 (저장 버튼)
 router.post('/api/stocks/batch-update-qty', async (req, res) => {
   try {

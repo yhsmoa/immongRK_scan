@@ -507,9 +507,9 @@
         function printRows(){
             let rows=selectedRows().length?selectedRows():viewRows;
             if(!rows.length){toast('인쇄할 행이 없습니다.');return;}
-            // 정렬: 입고예정일 > 물류센터 > 위치
+            // 정렬: 입고예정일 > 발주번호 > 위치
             const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
-            rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.물류센터,b.물류센터)||cmp(a.위치,b.위치));
+            rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.발주번호,b.발주번호)||cmp(a.위치,b.위치));
             const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','입고1','입고2','위치','입고예정일'];
             const body=rows.map((r,idx)=>{
                 const groupEnd=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
