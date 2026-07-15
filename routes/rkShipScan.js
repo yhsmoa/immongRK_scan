@@ -38,7 +38,7 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
     const orderId = await S.getOrderId('rk_orders', orderNumber);
     if (!orderId) return res.status(404).json({ valid: false, error: '존재하지 않는 발주서입니다.' });
 
-    const { limit, name } = await orderBarcodeMeta(orderNumber);
+    const { order, limit, name } = await orderBarcodeMeta(orderNumber);
     const products = [...limit.keys()].map(bc => ({ barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0 }));
 
     // 기존 박스 + 출고리스트
@@ -58,6 +58,7 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
     res.json({
       valid: true,
       orderNumber,
+      center: (order && order.물류센터) || '',
       products,
       boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at })),
       items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty })),
@@ -68,78 +69,90 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
   }
 });
 
-// 저장 — 기록(합산분) → 박스 upsert + (box, barcode) 합산 upsert. 초과 차단 재검증.
+// 저장 — 현재 작업 상태(박스아이템 전체)를 그대로 반영(SET). 스캔·개수편집·삭제 모두 지원.
+// body: { orderNumber, boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty}] }
 router.post('/api/ship-scan/save', async (req, res) => {
   try {
     const orderNumber = String(req.body.orderNumber || '').trim();
-    const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+    const boxesIn = Array.isArray(req.body.boxes) ? req.body.boxes : [];
+    const itemsIn = Array.isArray(req.body.items) ? req.body.items : [];
     if (!orderNumber) return res.status(400).json({ error: '발주번호가 없습니다.' });
 
     const orderId = await S.getOrderId('rk_orders', orderNumber);
     if (!orderId) return res.status(404).json({ error: '존재하지 않는 발주서입니다.' });
 
-    // 정리: boxNo+barcode 로 합산
-    const merged = new Map(); // `${boxNo}|${barcode}` -> {boxNo, boxSize, barcode, productName, qty}
-    for (const it of rawItems) {
+    // 아이템 정리 (boxNo+barcode 합산)
+    const merged = new Map();
+    for (const it of itemsIn) {
       const boxNo = parseInt(it.boxNo, 10);
       const barcode = String(it.barcode || '').trim();
       const qty = parseInt(it.qty, 10);
       if (!Number.isFinite(boxNo) || boxNo < 1 || !barcode || !Number.isFinite(qty) || qty <= 0) continue;
       const k = `${boxNo}|${barcode}`;
-      if (!merged.has(k)) merged.set(k, { boxNo, boxSize: String(it.boxSize || '극소').trim() || '극소', barcode, productName: String(it.productName || '').trim(), qty: 0 });
+      if (!merged.has(k)) merged.set(k, { boxNo, barcode, productName: String(it.productName || '').trim(), qty: 0 });
       merged.get(k).qty += qty;
     }
     const list = [...merged.values()];
-    if (!list.length) return res.status(400).json({ error: '저장할 스캔 기록이 없습니다.' });
 
-    // 한도/기존 저장분 로드 → 초과 검증 (바코드 단위, 발주서 전체)
+    // 초과/미존재 검증 (바코드 단위, SET이므로 전체 = list 합)
     const { limit, name } = await orderBarcodeMeta(orderNumber);
-    const { data: existBoxes } = await sb.from('rk_ship_boxes').select('id, box_no, box_size').eq('order_number', orderNumber);
-    const boxByNo = new Map((existBoxes || []).map(b => [b.box_no, b]));
-    const savedByBarcode = new Map();
-    if (existBoxes && existBoxes.length) {
-      const { data: savedItems } = await sb.from('rk_ship_box_items').select('barcode, qty').in('box_id', existBoxes.map(b => b.id));
-      for (const s of (savedItems || [])) savedByBarcode.set(s.barcode, (savedByBarcode.get(s.barcode) || 0) + (s.qty || 0));
-    }
-    const incomingByBarcode = new Map();
-    for (const it of list) incomingByBarcode.set(it.barcode, (incomingByBarcode.get(it.barcode) || 0) + it.qty);
-    for (const [bc, inc] of incomingByBarcode) {
+    const byBc = new Map();
+    for (const it of list) byBc.set(it.barcode, (byBc.get(it.barcode) || 0) + it.qty);
+    for (const [bc, q] of byBc) {
       if (!limit.has(bc)) return res.status(400).json({ error: `발주서에 없는 바코드입니다: ${bc}` });
-      const total = (savedByBarcode.get(bc) || 0) + inc;
-      if (total > limit.get(bc)) return res.status(400).json({ error: `확정수량(${limit.get(bc)})을 초과했습니다: ${bc}` });
+      if (q > limit.get(bc)) return res.status(400).json({ error: `확정수량(${limit.get(bc)})을 초과했습니다: ${bc}` });
     }
 
-    // 박스 upsert (없으면 생성) → box_id 확보
-    const boxIdByNo = new Map();
-    for (const [no, b] of boxByNo) boxIdByNo.set(no, b.id);
-    for (const it of list) {
-      if (boxIdByNo.has(it.boxNo)) continue;
+    // 박스 upsert (없으면 생성) — 크기는 boxes 입력 우선
+    const sizeByNo = new Map(boxesIn.map(b => [parseInt(b.boxNo, 10), String(b.boxSize || '극소').trim() || '극소']));
+    const { data: existBoxes } = await sb.from('rk_ship_boxes').select('id, box_no').eq('order_number', orderNumber);
+    const boxIdByNo = new Map((existBoxes || []).map(b => [b.box_no, b.id]));
+    const allBoxNos = new Set([...list.map(i => i.boxNo), ...sizeByNo.keys()].filter(n => Number.isFinite(n) && n >= 1));
+    for (const no of allBoxNos) {
+      if (boxIdByNo.has(no)) continue;
       const { data, error } = await sb.from('rk_ship_boxes')
-        .insert({ order_number: orderNumber, box_no: it.boxNo, box_size: it.boxSize }).select('id').single();
+        .insert({ order_number: orderNumber, box_no: no, box_size: sizeByNo.get(no) || '극소' }).select('id').single();
       if (error) throw error;
-      boxIdByNo.set(it.boxNo, data.id);
+      boxIdByNo.set(no, data.id);
     }
 
-    // 아이템 (box_id, barcode) 합산 upsert
-    let saved = 0;
-    for (const it of list) {
-      const boxId = boxIdByNo.get(it.boxNo);
-      const pname = it.productName || name.get(it.barcode) || null;
-      const { data: ex } = await sb.from('rk_ship_box_items').select('id, qty').eq('box_id', boxId).eq('barcode', it.barcode).limit(1);
-      if (ex && ex.length) {
-        const { error } = await sb.from('rk_ship_box_items').update({ qty: (ex[0].qty || 0) + it.qty, product_name: pname, updated_at: new Date().toISOString() }).eq('id', ex[0].id);
-        if (error) throw error;
-      } else {
-        const { error } = await sb.from('rk_ship_box_items').insert({ box_id: boxId, order_number: orderNumber, barcode: it.barcode, product_name: pname, qty: it.qty });
+    // 아이템 SET: 이 발주서의 기존 박스아이템 전부 삭제 후 현재 상태 삽입
+    const allBoxIds = [...boxIdByNo.values()];
+    if (allBoxIds.length) {
+      const { error } = await sb.from('rk_ship_box_items').delete().in('box_id', allBoxIds);
+      if (error) throw error;
+    }
+    if (list.length) {
+      const rows = list.map(it => ({
+        box_id: boxIdByNo.get(it.boxNo), order_number: orderNumber, barcode: it.barcode,
+        product_name: it.productName || name.get(it.barcode) || null, qty: it.qty,
+      }));
+      const BATCH = 500;
+      for (let i = 0; i < rows.length; i += BATCH) {
+        const { error } = await sb.from('rk_ship_box_items').insert(rows.slice(i, i + BATCH));
         if (error) throw error;
       }
-      saved += it.qty;
     }
 
-    res.json({ ok: true, savedQty: saved, rows: list.length });
+    res.json({ ok: true, savedQty: list.reduce((s, i) => s + i.qty, 0), rows: list.length });
   } catch (e) {
     console.error('[rk] ship-scan/save:', e);
     res.status(500).json({ error: '출고스캔 저장 실패: ' + e.message });
+  }
+});
+
+// 박스 전체삭제 — 박스 + 담긴 아이템(cascade) 삭제
+router.post('/api/ship-scan/delete-box', async (req, res) => {
+  try {
+    const orderNumber = String(req.body.orderNumber || '').trim();
+    const boxNo = parseInt(req.body.boxNo, 10);
+    if (!orderNumber || !Number.isFinite(boxNo)) return res.status(400).json({ error: '파라미터가 올바르지 않습니다.' });
+    const { error } = await sb.from('rk_ship_boxes').delete().eq('order_number', orderNumber).eq('box_no', boxNo);
+    if (error) throw error; // rk_ship_box_items 는 on delete cascade 로 함께 삭제
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[rk] ship-scan/delete-box:', e);
+    res.status(500).json({ error: '박스 삭제 실패: ' + e.message });
   }
 });
 

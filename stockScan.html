@@ -141,25 +141,8 @@
         </div>
     </div>
 
-    <!-- 숫자패드 모달 -->
-    <div class="np-back" id="npBack">
-        <div class="np">
-            <p class="np-title" id="npTitle">개수 수정</p>
-            <div class="np-display" id="npDisplay">0</div>
-            <div class="np-grid">
-                <button onclick="npTap('1')">1</button><button onclick="npTap('2')">2</button><button onclick="npTap('3')">3</button>
-                <button onclick="npTap('4')">4</button><button onclick="npTap('5')">5</button><button onclick="npTap('6')">6</button>
-                <button onclick="npTap('7')">7</button><button onclick="npTap('8')">8</button><button onclick="npTap('9')">9</button>
-                <button class="fn" onclick="npTap('C')">C</button><button onclick="npTap('0')">0</button><button class="fn" onclick="npTap('back')">←</button>
-            </div>
-            <div class="np-btns">
-                <button class="btn" onclick="closeNumpad()">취소</button>
-                <button class="btn primary" onclick="npConfirm()">확인</button>
-            </div>
-        </div>
-    </div>
-
     <div id="toast"></div>
+    <script src="/numpad.js"></script>
 
     <script>
         fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
@@ -269,31 +252,12 @@
             render();
         }
 
-        // ── 숫자패드 ──
-        let npKey=null, npVal='';
+        // ── 개수 수정: 공용 숫자패드 컴포넌트(NumPad) ──
         function openNumpad(key){
             const r=pending.find(x=>x.key===key); if(!r) return;
-            npKey=key; npVal=String(r.qty);
-            document.getElementById('npTitle').innerHTML=`개수 수정 · <b>${esc(r.위치)} / ${esc(r.바코드)}</b>`;
-            updateNpDisplay();
-            document.getElementById('npBack').classList.add('show');
+            NumPad.open({ title:`개수 수정 · <b>${esc(r.위치)} / ${esc(r.바코드)}</b>`, value:r.qty, min:1,
+                onConfirm:(n)=>{ r.qty=n; render(); } });
         }
-        function closeNumpad(){ document.getElementById('npBack').classList.remove('show'); npKey=null; }
-        function npTap(d){
-            if(d==='C') npVal='';
-            else if(d==='back') npVal=npVal.slice(0,-1);
-            else npVal=(npVal+d).replace(/^0+(?=\d)/,'').slice(0,6);
-            updateNpDisplay();
-        }
-        function updateNpDisplay(){ document.getElementById('npDisplay').textContent=npVal||'0'; }
-        function npConfirm(){
-            const n=parseInt(npVal,10);
-            if(!Number.isFinite(n)||n<1){ toast('1 이상 숫자를 입력하세요.'); return; }
-            const r=pending.find(x=>x.key===npKey);
-            if(r){ r.qty=n; render(); }
-            closeNumpad();
-        }
-        document.getElementById('npBack').addEventListener('click',e=>{ if(e.target.id==='npBack') closeNumpad(); });
 
         // ── 저장 ──
         async function saveScan(){

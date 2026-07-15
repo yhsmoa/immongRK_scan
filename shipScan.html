@@ -42,6 +42,11 @@
         .scan-field input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.12);background:#fff;}
         .scan-field.ord input:focus{border-color:#93c5fd;box-shadow:0 0 0 4px rgba(37,99,235,.12);background:#fff;}
         .scan-field.ord input.has-ord{background:#DBEAFE;border-color:#93c5fd;color:#2563eb;font-weight:800;} /* 유효 발주서 확정 */
+        .scan-field.ord input.locked{pointer-events:none;} /* 조회 후 재입력/초기화 방지 */
+        /* 조회 후 입력폼 자리에 표시되는 박스 (발주서 파랑 + 줄바꿈 물류센터) */
+        .ord-display{width:100%;height:180px;border:2px solid #93c5fd;border-radius:12px;background:#DBEAFE;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#2563eb;text-align:center;padding:0 12px;}
+        .ord-display .od-no{font-size:44px;font-weight:800;line-height:1.05;word-break:break-all;}
+        .ord-display .od-center{font-size:28px;font-weight:800;}
 
         /* 박스 컨트롤 */
         .box-control{margin-bottom:16px;}
@@ -69,6 +74,7 @@
         @keyframes rowPulse{0%,100%{background:#fff;}50%{background:#eff6ff;}}
         tbody tr.row-latest td{animation:rowPulse 1.8s ease-in-out infinite;}
         tbody tr.row-done td{background:#dcfce7 !important;} /* 발주수량=스캔수량 → 연한 초록 */
+        .table-scroll thead th,.table-scroll tbody td{border:1px solid #e2e8f0;} /* 스캔목록 테두리 */
         td.box{font-weight:800;color:#1e293b;white-space:nowrap;text-align:center;}
         td.bc{white-space:nowrap;color:#475569;font-variant-numeric:tabular-nums;text-align:center;}
         td.pname{white-space:normal;word-break:break-word;color:#334155;line-height:1.5;}
@@ -86,9 +92,10 @@
         .boxm h3{margin:0 0 4px;font-size:16px;color:var(--ink);}
         .boxm p{margin:0 0 14px;font-size:12.5px;color:var(--muted);}
         .boxm-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
-        .box-cell{aspect-ratio:1/1;border:1px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;filter:grayscale(1);opacity:.55;}
-        .box-cell .emoji{font-size:31px;line-height:1;}
-        .box-cell .no{font-size:18px;font-weight:800;color:#1e293b;}
+        .box-cell{border:1px solid #e2e8f0;border-radius:12px;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:16px 6px;filter:grayscale(1);opacity:.55;}
+        .box-cell .emoji{font-size:36px;line-height:1;}
+        .box-cell .type{font-size:12.5px;font-weight:700;color:#64748b;line-height:1;}
+        .box-cell .no{font-size:15px;font-weight:800;color:#1e293b;line-height:1;}
         .box-cell.exists{filter:none;opacity:1;background:#eef2ff;border-color:#c7d2fe;} /* 이미 생성된 박스 = 컬러 */
         .box-cell:hover{border-color:#93c5fd;}
         .box-cell.sel{outline:3px solid #4f46e5;outline-offset:-1px;}
@@ -103,7 +110,26 @@
         .rec-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;}
         .rec-body{overflow:auto;flex:1;}
         .rec-body table{min-width:0;}
-        .rec-body thead th{background:#f8fafc;}
+        .rec-body thead th{background:#f8fafc;border:1px solid #e2e8f0;}
+        .rec-body tbody td{border:1px solid #eef2f7;}
+        .list-boxbtns{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;border-bottom:1px solid #eef2f7;}
+        .lbx{border:1px solid #c7d2fe;border-radius:10px;background:#eef2ff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 12px;min-width:62px;}
+        .lbx:hover{background:#e0e7ff;}
+        .lbx .e{font-size:22px;line-height:1;}
+        .lbx .t{font-size:11px;font-weight:700;color:#64748b;line-height:1;}
+        .lbx .n{font-size:14px;font-weight:800;color:#1e293b;line-height:1;}
+        .lbx.sel{outline:2px solid #4f46e5;outline-offset:-1px;background:#dbeafe;}
+        .detail-title{padding:10px 14px 6px;font-size:14px;font-weight:700;color:#0f172a;}
+        .detail-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 14px 6px;}
+        .detail-bar .detail-title{padding:0;}
+        .btn-del-all{height:32px;padding:0 12px;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+        .btn-del-all:hover:not(:disabled){background:#fef2f2;border-color:#fca5a5;}
+        .btn-del-all:disabled{opacity:.45;cursor:default;}
+        .rec-body td.qedit{cursor:pointer;color:#2563eb;font-weight:800;}
+        .rec-body td.qedit:hover{background:#eff6ff;}
+        .del-emoji{border:none;background:transparent;cursor:pointer;font-size:16px;line-height:1;padding:3px 4px;border-radius:6px;}
+        .del-emoji:hover{background:#fef2f2;}
+        .pname-link{cursor:pointer;}
 
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10005;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -128,6 +154,10 @@
                         <div class="scan-field ord">
                             <label>① 발주서</label>
                             <input id="orderInput" type="text" inputmode="none" placeholder="발주번호 스캔/입력 후 Enter" autocomplete="off">
+                            <div class="ord-display" id="ordDisplay" style="display:none;">
+                                <div class="od-no" id="odNo"></div>
+                                <div class="od-center" id="odCenter"></div>
+                            </div>
                         </div>
                         <div class="box-control">
                             <label class="scan-field" style="margin:0 0 7px;display:block;font-size:13px;font-weight:600;color:#475569;">② 박스</label>
@@ -155,6 +185,7 @@
                             <button class="btn" id="recBtn" onclick="openRec()">기록</button>
                             <button class="btn" id="listBtn" onclick="openList()">목록</button>
                             <button class="btn" id="saveBtn" onclick="saveShip()" disabled>저장</button>
+                            <button class="btn" id="doneBtn" onclick="onDone()" disabled>완료</button>
                         </div>
                     </div>
 
@@ -194,22 +225,46 @@
         </div>
     </div>
 
-    <!-- 목록(박스 HEADER) 슬라이드 패널 -->
+    <!-- 목록(박스별 상품) 슬라이드 패널 -->
     <div class="rec-back" id="listBack" onclick="closeList()"></div>
     <div class="rec-panel" id="listPanel">
         <div class="rec-head">
             <span>박스 목록 <span class="sub" id="listSub"></span></span>
             <button onclick="closeList()">✕</button>
         </div>
+        <div class="list-boxbtns" id="listBoxBtns"></div>
+        <div class="detail-bar">
+            <span class="detail-title" id="listDetailTitle">박스를 선택하세요.</span>
+            <button class="btn-del-all" id="delAllBtn" onclick="deleteBox()" disabled>전체삭제</button>
+        </div>
         <div class="rec-body">
             <table>
-                <thead><tr><th>발주번호</th><th class="ctr">박스번호</th><th class="ctr">크기</th><th class="ctr">박스ID</th><th>created_at</th></tr></thead>
-                <tbody id="listBody"><tr class="state-row"><td colspan="5">발주서를 조회하세요.</td></tr></tbody>
+                <colgroup><col style="width:76px"><col style="width:135px"><col><col style="width:74px"><col style="width:42px"></colgroup>
+                <thead><tr><th class="ctr">박스</th><th class="ctr">바코드</th><th>상품명</th><th class="ctr">스캔개수</th><th class="ctr">삭제</th></tr></thead>
+                <tbody id="listBody"><tr class="state-row"><td colspan="4">박스를 선택하세요.</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 바코드 상세 슬라이드 패널 (스캔목록 상품명 클릭) -->
+    <div class="rec-back" id="bcBack" onclick="closeBc()"></div>
+    <div class="rec-panel" id="bcPanel">
+        <div class="rec-head">
+            <span>바코드 상세 <span class="sub" id="bcSub"></span></span>
+            <button onclick="closeBc()">✕</button>
+        </div>
+        <div class="detail-title" id="bcDetailTitle"></div>
+        <div class="rec-body">
+            <table>
+                <colgroup><col style="width:76px"><col style="width:135px"><col><col style="width:74px"><col style="width:42px"></colgroup>
+                <thead><tr><th class="ctr">박스</th><th class="ctr">바코드</th><th>상품명</th><th class="ctr">스캔개수</th><th class="ctr">삭제</th></tr></thead>
+                <tbody id="bcBody"><tr class="state-row"><td colspan="4">-</td></tr></tbody>
             </table>
         </div>
     </div>
 
     <div id="toast"></div>
+    <script src="/numpad.js"></script>
 
     <script>
         fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
@@ -218,20 +273,26 @@
 
         // 상태
         let currentOrder='';
-        let products=[];              // 스캔목록 = 발주서 상품 [{barcode, productName, orderQty(발주수량=확정), scannedQty}]
+        let products=[];              // 스캔목록 = 발주서 상품 [{barcode, productName, orderQty, scannedQty}]
+        let boxItems=[];              // 작업중 박스 아이템 [{boxNo, barcode, productName, qty}] (저장분+세션, SET 저장)
         let savedBoxes=[];            // [{id, boxNo, boxSize, createdAt}]
-        let records=[];               // [{boxNo, boxSize, barcode, productName, qty}] 시간순(미저장 델타)
+        let records=[];               // 기록 로그(표시용, 시간순)
         const boxSizeMap=new Map();   // boxNo -> size (세션/저장)
         let currentBoxNo=null;
         let currentBoxSize='극소';
         let lastScanBarcode=null;
+        let dirty=false;              // 미저장 변경 여부
+        let listSelBox=null;          // 목록 패널에서 선택한 박스
+        let bcDetailBc=null;          // 바코드 상세 패널 대상 바코드
         const prodByBarcode=bc=>products.find(p=>p.barcode===bc);
+        const boxItemFor=(box,bc)=>boxItems.find(i=>i.boxNo===box&&i.barcode===bc);
+        function recomputeScanned(){ const m=new Map(); for(const it of boxItems) m.set(it.barcode,(m.get(it.barcode)||0)+it.qty); products.forEach(p=>p.scannedQty=m.get(p.barcode)||0); }
 
         const orderInput=document.getElementById('orderInput');
         const bcInput=document.getElementById('bcInput');
 
-        // ── 발주서: focus 시 초기화, Enter 시 유효성 검증 ──
-        orderInput.addEventListener('focus',()=>{ orderInput.value=''; orderInput.classList.remove('has-ord'); });
+        // ── 발주서: focus 시 초기화, Enter 시 유효성 검증 (조회 후 잠금 시 초기화 안 함) ──
+        orderInput.addEventListener('focus',()=>{ if(orderInput.classList.contains('locked')) return; orderInput.value=''; orderInput.classList.remove('has-ord'); });
         orderInput.addEventListener('keydown',e=>{
             if(e.key!=='Enter') return;
             e.preventDefault();
@@ -247,17 +308,23 @@
                 const data=await res.json().catch(()=>({}));
                 if(!res.ok || !data.valid){ orderInput.classList.remove('has-ord'); toast(data.error||'존재하지 않는 발주서입니다.'); return; }
                 currentOrder=data.orderNumber;
-                orderInput.value=currentOrder; orderInput.classList.add('has-ord');
                 document.getElementById('curOrder').textContent=currentOrder;
-                // 저장된 스캔량(바코드별 합계) baseline
-                const savedByBc=new Map();
-                (data.items||[]).forEach(i=>savedByBc.set(i.barcode,(savedByBc.get(i.barcode)||0)+(i.qty||0)));
-                // 스캔목록 = 발주서 상품 리스트 (발주수량=확정수량, 스캔수량=저장분)
-                products=(data.products||[]).map(p=>({barcode:p.barcode, productName:p.productName||'', orderQty:p.confirmedQty||0, scannedQty:savedByBc.get(p.barcode)||0}));
+                // 입력폼 자리에 발주서(파랑) + 줄바꿈 물류센터 표시 (입력폼은 숨김)
+                document.getElementById('odNo').textContent=currentOrder;
+                document.getElementById('odCenter').textContent=data.center||'-';
+                orderInput.value=currentOrder;
+                orderInput.style.display='none';
+                document.getElementById('ordDisplay').style.display='flex';
+                // 스캔목록 = 발주서 상품 리스트 (발주수량=확정수량)
+                products=(data.products||[]).map(p=>({barcode:p.barcode, productName:p.productName||'', orderQty:p.confirmedQty||0, scannedQty:0}));
+                const nameByBc=new Map(products.map(p=>[p.barcode,p.productName]));
+                // 저장된 박스 아이템(박스별)
+                boxItems=(data.items||[]).map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName||nameByBc.get(i.barcode)||'', qty:i.qty}));
+                recomputeScanned();
                 // 박스 목록 (저장분)
                 savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt}));
                 boxSizeMap.clear(); savedBoxes.forEach(b=>boxSizeMap.set(b.boxNo,b.boxSize));
-                records=[]; currentBoxNo=null; lastScanBarcode=null;
+                records=[]; currentBoxNo=null; lastScanBarcode=null; dirty=false; listSelBox=null;
                 setBoxBtn();
                 renderAll();
                 toast(`발주서 ${currentOrder} 불러옴 (상품 ${products.length}종)`);
@@ -272,12 +339,12 @@
         }
         function closeBoxModal(){ document.getElementById('boxmBack').classList.remove('show'); }
         document.getElementById('boxmBack').addEventListener('click',e=>{ if(e.target.id==='boxmBack') closeBoxModal(); });
-        function boxExists(no){ return savedBoxes.some(b=>b.boxNo===no) || records.some(r=>r.boxNo===no); }
+        function boxExists(no){ return savedBoxes.some(b=>b.boxNo===no) || boxItems.some(i=>i.boxNo===no); }
         function renderBoxGrid(){
             let html='';
             for(let n=1;n<=20;n++){
                 const cls=(boxExists(n)?'exists ':'')+(currentBoxNo===n?'sel':'');
-                html+=`<div class="box-cell ${cls}" onclick="selectBox(${n})"><div class="emoji">📦</div><div class="no">${n}</div></div>`;
+                html+=`<div class="box-cell ${cls}" onclick="selectBox(${n})"><div class="emoji">📦</div><div class="type">${esc(boxSizeOf(n))}</div><div class="no">${n}</div></div>`;
             }
             document.getElementById('boxGrid').innerHTML=html;
         }
@@ -324,8 +391,11 @@
             const size=savedBoxes.find(b=>b.boxNo===boxNo)?.boxSize || boxSizeMap.get(boxNo) || currentBoxSize;
             if(!savedBoxes.some(b=>b.boxNo===boxNo)) boxSizeMap.set(boxNo,size);
 
-            prod.scannedQty++;          // 스캔목록: 바코드별 스캔수량 증가
-            lastScanBarcode=barcode;
+            // 박스 아이템 증가 (같은 박스+바코드 합산)
+            let it=boxItemFor(boxNo,barcode);
+            if(it){ it.qty++; } else { it={boxNo, barcode, productName:prod.productName, qty:1}; boxItems.push(it); }
+            prod.scannedQty++;
+            lastScanBarcode=barcode; dirty=true;
 
             // 기록: 직전 스캔과 같을 때만 +1, 아니면 새 항목
             const last=records[records.length-1];
@@ -357,7 +427,7 @@
             return esc(name);
         }
 
-        function renderAll(){ renderShip(); renderList(); renderRec(); updateCounts(); }
+        function renderAll(){ renderShip(); renderList(); renderRec(); if(bcDetailBc!=null) renderBcDetail(); updateCounts(); }
 
         function boxSizeOf(no){ return savedBoxes.find(b=>b.boxNo===no)?.boxSize || boxSizeMap.get(no) || currentBoxSize; }
         function fmtTs(ts){ if(!ts) return '-'; const d=new Date(ts); if(isNaN(d)) return '-'; const k=new Date(d.getTime()+9*3600*1000); const p=n=>String(n).padStart(2,'0'); return `${k.getUTCFullYear()}-${p(k.getUTCMonth()+1)}-${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}`; }
@@ -372,24 +442,102 @@
                 const cls=done?'row-done':(p.barcode===lastScanBarcode?'row-latest':'');
                 return `<tr data-bc="${esc(p.barcode)}" class="${cls}">
                     <td class="bc">${esc(p.barcode)}</td>
-                    <td class="pname">${pnameHtml(p.productName)}</td>
+                    <td class="pname pname-link" onclick="openBc('${esc(p.barcode)}')">${pnameHtml(p.productName)}</td>
                     <td class="qty">${p.orderQty}</td>
                     <td class="qty">${p.scannedQty}</td>
                 </tr>`;
             }).join('');
         }
 
-        // 목록(박스 HEADER) 슬라이드 패널
+        // 상세 테이블 공용 행 (박스 · 바코드 · 상품명 · 스캔개수[클릭편집])
+        function rowDetailHtml(it){
+            return `<tr>
+                <td class="ctr">📦 ${esc(it.boxNo)}</td>
+                <td class="bc">${esc(it.barcode)}</td>
+                <td class="pname">${pnameHtml(it.productName)}</td>
+                <td class="ctr qedit" onclick="editItemQty(${it.boxNo},'${esc(it.barcode)}')">${it.qty}</td>
+                <td class="ctr"><button class="del-emoji" title="삭제" onclick="delItem(${it.boxNo},'${esc(it.barcode)}')">🗑️</button></td>
+            </tr>`;
+        }
+        function delItem(boxNo, barcode){
+            if(!confirm(`삭제하시겠습니까?\n📦${boxNo} · ${barcode}`)) return;
+            setItemQty(boxNo, barcode, 0); // 제거
+            toast('삭제되었습니다.');
+        }
+
+        // 목록 패널: 존재 박스 버튼 + 선택 박스의 상품 상세
         function renderList(){
+            const btns=document.getElementById('listBoxBtns');
             const tb=document.getElementById('listBody');
-            if(!currentOrder){ tb.innerHTML=`<tr class="state-row"><td colspan="5">발주서를 조회하세요.</td></tr>`; document.getElementById('listSub').textContent=''; return; }
-            const nos=[...new Set([...savedBoxes.map(b=>b.boxNo), ...records.map(r=>r.boxNo)])].sort((a,b)=>a-b);
+            const title=document.getElementById('listDetailTitle');
+            const setDelAll=on=>{ const b=document.getElementById('delAllBtn'); if(b) b.disabled=!on; };
+            setDelAll(false);
+            if(!currentOrder){ btns.innerHTML=''; document.getElementById('listSub').textContent=''; title.textContent='발주서를 조회하세요.'; tb.innerHTML=`<tr class="state-row"><td colspan="5">-</td></tr>`; return; }
+            const nos=[...new Set([...savedBoxes.map(b=>b.boxNo), ...boxItems.map(i=>i.boxNo)])].sort((a,b)=>a-b);
             document.getElementById('listSub').textContent=nos.length?`${nos.length}박스`:'';
-            if(!nos.length){ tb.innerHTML=`<tr class="state-row"><td colspan="5">박스가 없습니다.</td></tr>`; return; }
-            tb.innerHTML=nos.map(no=>{
-                const saved=savedBoxes.find(b=>b.boxNo===no);
-                return `<tr><td>${esc(currentOrder)}</td><td class="ctr">📦 ${no}</td><td class="ctr">${esc(boxSizeOf(no))}</td><td class="ctr">${saved?saved.id:'<span style="color:#cbd5e1">신규</span>'}</td><td>${saved?esc(fmtTs(saved.createdAt)):'<span style="color:#cbd5e1">-</span>'}</td></tr>`;
-            }).join('');
+            if(!nos.length){ btns.innerHTML='<div style="color:#94a3b8;font-size:13px;">아직 박스가 없습니다.</div>'; title.textContent=''; tb.innerHTML=`<tr class="state-row"><td colspan="5">박스가 없습니다.</td></tr>`; return; }
+            if(listSelBox==null || !nos.includes(listSelBox)) listSelBox=nos[0];
+            setDelAll(true);
+            btns.innerHTML=nos.map(no=>`<div class="lbx ${no===listSelBox?'sel':''}" onclick="selectListBox(${no})"><div class="e">📦</div><div class="t">${esc(boxSizeOf(no))}</div><div class="n">${no}</div></div>`).join('');
+            title.textContent=`📦 박스 ${listSelBox} · ${boxSizeOf(listSelBox)}`;
+            const items=boxItems.filter(i=>i.boxNo===listSelBox);
+            tb.innerHTML=items.length?items.map(rowDetailHtml).join(''):`<tr class="state-row"><td colspan="5">이 박스에 담긴 상품이 없습니다.</td></tr>`;
+        }
+        function selectListBox(no){ listSelBox=no; renderList(); }
+
+        // 전체삭제 — 선택 박스 + 담긴 상품 모두 삭제 (DB 즉시 반영, 다른 미저장분은 보존)
+        async function deleteBox(){
+            const no=listSelBox;
+            if(no==null){ toast('삭제할 박스를 선택하세요.'); return; }
+            if(!confirm(`박스 ${no} 전체를 삭제하시겠습니까?\n박스와 담긴 상품이 모두 삭제됩니다.`)) return;
+            if(savedBoxes.some(b=>b.boxNo===no)){
+                try{
+                    const res=await fetch('/api/ship-scan/delete-box',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:currentOrder, boxNo:no})});
+                    if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||'삭제 실패'); }
+                }catch(e){ toast('삭제 실패: '+e.message); return; }
+            }
+            boxItems=boxItems.filter(i=>i.boxNo!==no);
+            savedBoxes=savedBoxes.filter(b=>b.boxNo!==no);
+            boxSizeMap.delete(no);
+            records=records.filter(r=>r.boxNo!==no);
+            if(currentBoxNo===no){ currentBoxNo=null; setBoxBtn(); setSizeActive(); }
+            listSelBox=null;
+            recomputeScanned();
+            renderAll();
+            toast(`박스 ${no} 삭제되었습니다.`);
+        }
+
+        // 바코드 상세 패널: 해당 바코드가 담긴 모든 박스
+        function renderBcDetail(){
+            if(bcDetailBc==null) return;
+            const bc=bcDetailBc, prod=prodByBarcode(bc);
+            document.getElementById('bcDetailTitle').innerHTML=`${esc(bc)} · ${prod?pnameHtml(prod.productName):''}`;
+            const items=boxItems.filter(i=>i.barcode===bc);
+            document.getElementById('bcSub').textContent=items.length?`${items.length}박스`:'';
+            const tb=document.getElementById('bcBody');
+            tb.innerHTML=items.length?items.map(rowDetailHtml).join(''):`<tr class="state-row"><td colspan="5">이 바코드가 담긴 박스가 없습니다.</td></tr>`;
+        }
+        function openBc(barcode){ bcDetailBc=barcode; renderBcDetail(); document.getElementById('bcBack').classList.add('show'); document.getElementById('bcPanel').classList.add('show'); }
+        function closeBc(){ document.getElementById('bcBack').classList.remove('show'); document.getElementById('bcPanel').classList.remove('show'); }
+
+        // 개수 편집 (공용 숫자패드) — 확정수량 초과 방지
+        function editItemQty(boxNo, barcode){
+            const it=boxItemFor(boxNo,barcode); const prod=prodByBarcode(barcode);
+            NumPad.open({ title:`개수 수정 · <b>📦${boxNo} / ${esc(barcode)}</b>`, value:it?it.qty:0, min:0, onConfirm:(n)=>{
+                const otherSum=boxItems.filter(x=>x.barcode===barcode && x.boxNo!==boxNo).reduce((s,x)=>s+x.qty,0);
+                const limit=prod?prod.orderQty:Infinity;
+                let val=n;
+                if(otherSum+val>limit){ val=Math.max(0,limit-otherSum); toast(`확정수량(${limit}) 초과 — ${val}로 조정`); }
+                setItemQty(boxNo,barcode,val);
+            }});
+        }
+        function setItemQty(boxNo,barcode,qty){
+            let it=boxItemFor(boxNo,barcode);
+            if(qty<=0){ if(it) boxItems=boxItems.filter(x=>x!==it); }
+            else if(it){ it.qty=qty; }
+            else{ const prod=prodByBarcode(barcode); boxItems.push({boxNo,barcode,productName:prod?prod.productName:'',qty}); }
+            recomputeScanned(); dirty=true;
+            renderAll();
         }
 
         function renderRec(){
@@ -411,8 +559,8 @@
             document.getElementById('shipSum').textContent=sum;
             document.getElementById('recCount').textContent=records.length;
             const btn=document.getElementById('saveBtn');
-            btn.disabled=records.length===0;
-            btn.classList.toggle('primary', records.length>0);
+            btn.disabled=!dirty;
+            btn.classList.toggle('primary', dirty);
         }
 
         // ── 기록 패널 ──
@@ -422,24 +570,42 @@
         function openList(){ renderList(); document.getElementById('listBack').classList.add('show'); document.getElementById('listPanel').classList.add('show'); }
         function closeList(){ document.getElementById('listBack').classList.remove('show'); document.getElementById('listPanel').classList.remove('show'); }
 
-        // ── 저장 ──
+        // ── 저장 (현재 박스아이템 전체를 SET) ──
         async function saveShip(){
-            if(!records.length){ toast('저장할 기록이 없습니다.'); return; }
-            const items=records.map(r=>({boxNo:r.boxNo, boxSize:r.boxSize, barcode:r.barcode, productName:r.productName, qty:r.qty}));
+            if(!dirty){ toast('저장할 변경이 없습니다.'); return; }
+            const boxes=[...new Set(boxItems.map(i=>i.boxNo))].map(no=>({boxNo:no, boxSize:boxSizeOf(no)}));
+            const items=boxItems.map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName, qty:i.qty}));
             const btn=document.getElementById('saveBtn'); btn.disabled=true;
             toast('저장 중…');
             try{
-                const res=await fetch('/api/ship-scan/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:currentOrder, items})});
+                const res=await fetch('/api/ship-scan/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:currentOrder, boxes, items})});
                 const data=await res.json().catch(()=>({}));
                 if(!res.ok) throw new Error(data.error||'저장 실패');
                 const savedQty=data.savedQty||0;
-                await loadOrder(currentOrder); // baseline 재로드 + 기록 초기화
-                toast(`저장 완료 (${savedQty}개)`);
+                await loadOrder(currentOrder); // baseline 재로드 (dirty=false)
+                document.getElementById('doneBtn').disabled=false; // 저장 후 [완료] 활성화
+                toast(`저장 완료 (${savedQty}개) · [완료]로 새 발주서`);
             }catch(e){ updateCounts(); toast('저장 실패: '+e.message); }
         }
 
-        // 미저장 기록 이탈 경고
-        window.addEventListener('beforeunload', function(e){ if(records.length){ e.preventDefault(); e.returnValue=''; return ''; } });
+        // ── 완료 → 초기화 ──
+        function onDone(){ resetPage(); }
+        function resetPage(){
+            currentOrder=''; products=[]; boxItems=[]; savedBoxes=[]; records=[]; boxSizeMap.clear();
+            currentBoxNo=null; currentBoxSize='극소'; lastScanBarcode=null; dirty=false; listSelBox=null; bcDetailBc=null;
+            orderInput.value=''; orderInput.classList.remove('has-ord','locked'); orderInput.style.display='';
+            document.getElementById('curOrder').textContent='-';
+            document.getElementById('ordDisplay').style.display='none';
+            document.getElementById('doneBtn').disabled=true;
+            bcInput.value='';
+            closeRec(); closeList(); closeBc();
+            setBoxBtn(); setSizeActive(); renderAll();
+            orderInput.focus();
+            toast('초기화 완료 — 새 발주서를 입력하세요.');
+        }
+
+        // 미저장 변경 이탈 경고
+        window.addEventListener('beforeunload', function(e){ if(dirty){ e.preventDefault(); e.returnValue=''; return ''; } });
 
         let toastTimer;
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600);}
