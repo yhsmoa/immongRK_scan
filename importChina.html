@@ -46,6 +46,7 @@
         .table{width:100%;border-collapse:collapse;margin:0;}
         .table thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:center;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 8px;border:1px solid #dfe3ea;white-space:nowrap;}
         .table tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;text-align:center;white-space:nowrap;vertical-align:middle;}
+        .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         .table tbody tr:hover td{background:var(--hover);}
         .table td[contenteditable="true"]{cursor:text;}
         .table td[contenteditable="true"]:focus{outline:2px solid var(--primary);outline-offset:-2px;background:#fff;}
@@ -84,11 +85,12 @@
             body * { visibility: hidden; }
             .card, .card * { visibility: visible; }
             .card { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; border: none; box-shadow: none; }
-            .table { width: 100%; border-collapse: collapse; page-break-inside: auto; font-size: 9px !important; }
+            .table { width: 100%; border-collapse: collapse; page-break-inside: auto; font-size: 11px !important; table-layout: auto; }
             .table tr { page-break-inside: avoid; page-break-after: auto; }
-            .table th, .table td { border: 1px solid #000; padding: 4px; font-size: 9px !important; line-height: 1.2; white-space: nowrap; }
+            .table th, .table td { border: 1px solid #000; padding: 4px; font-size: 11px !important; line-height: 1.2; white-space: nowrap; width: 1%; }
             .table th { background-color: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; position: static; }
-            .table td:nth-child(5) { white-space: normal; max-width: 200px; word-break: break-word; }
+            /* 상품명(5번째) 열만 넓게, 나머지는 내용 너비로 축소 */
+            .table th:nth-child(5), .table td:nth-child(5) { white-space: normal !important; width: auto; max-width: none; word-break: break-word; }
             .table-container { max-height: none !important; overflow: visible !important; }
             .head, .actions, .upload-area, .toolbar { display: none !important; }
             @page { size: A4 landscape; margin: 0.5cm; }
@@ -345,6 +347,19 @@
             }
         }
 
+        // 상품명: 첫 콤마 앞 단어가 영어+숫자 조합(모델코드)이면 연한 파란 배지
+        function modelBadge(name){
+            const s=String(name==null?'':name);
+            const e=t=>t.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            const ci=s.indexOf(',');
+            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
+                if(m){ const t=m[1];
+                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                        const before=prefix.slice(0, prefix.length-m[0].length);
+                        return e(before)+'<span class="name-badge">'+e(t)+'</span>'+e(m[2])+e(rest); } } }
+            return e(s);
+        }
+
         function displayData(data) {
             const tbody = document.getElementById('dataBody');
             tbody.innerHTML = '';
@@ -383,9 +398,9 @@
                 orderNumberCell.textContent = item.orderNumber;
                 row.appendChild(orderNumberCell);
                 
-                // 상품명
+                // 상품명 (첫 콤마 앞 단어 인쇄 시 bold)
                 const productNameCell = document.createElement('td');
-                productNameCell.textContent = item.productName;
+                productNameCell.innerHTML = modelBadge(item.productName);
                 row.appendChild(productNameCell);
                 
                 // 수량

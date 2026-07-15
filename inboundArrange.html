@@ -58,6 +58,7 @@
         tbody tr:hover td{background:var(--hover);}
         td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
         td.pname{white-space:normal;color:#334155;}
+        .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         td.code{font-weight:600;color:#1e293b;}
         td.ord{font-weight:600;color:#1e293b;}
         .dash{color:#cbd5e1;}
@@ -98,10 +99,11 @@
             .card { position: absolute; left: 0; top: 0; width: 100%; padding: 0; margin: 0; border: none; box-shadow: none; }
             .head, .search, .selector, .tabbar { display: none !important; }
             .table-scroll { max-height: none !important; overflow: visible !important; }
-            table { font-size: 9px !important; min-width: 0 !important; }
-            thead th, tbody td { border: 1px solid #000 !important; padding: 4px !important; font-size: 9px !important; }
+            table { font-size: 11px !important; min-width: 0 !important; table-layout: auto; }
+            thead th, tbody td { border: 1px solid #000 !important; padding: 4px !important; font-size: 11px !important; white-space: nowrap; width: 1%; }
             thead th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; position: static !important; }
-            td.pname { white-space: normal !important; }
+            /* 상품명(5번째) 열만 넓게, 나머지는 내용 너비로 축소 */
+            th:nth-child(5), td.pname { white-space: normal !important; width: auto; word-break: break-word; }
             tbody tr.latest td { background: #fff !important; }
             .batch, .newtag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             @page { size: A4 landscape; margin: 0.5cm; }
@@ -181,6 +183,16 @@
         let shippingRows=[], stockRows=[], prepared=false, activeTab='shipping';
         let selectedOrders=new Set();
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        // 상품명: 첫 콤마 앞 단어가 영어+숫자 조합(모델코드)이면 연한 파란 배지
+        function modelBadge(name){
+            const s=String(name==null?'':name); const ci=s.indexOf(',');
+            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
+                if(m){ const t=m[1];
+                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                        const before=prefix.slice(0, prefix.length-m[0].length);
+                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
+            return esc(s);
+        }
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
 
         async function loadData(){
@@ -288,7 +300,7 @@
                     return `<tr class="${latest?'latest':''}">
                         <td class="ctr">${batchCell}</td>
                         <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
-                        <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
+                        <td class="pname">${modelBadge(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
                         <td class="ord">${dashCell(r.출고번호)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td>
                     </tr>`;
                 }).join('');

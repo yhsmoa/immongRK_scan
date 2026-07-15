@@ -73,6 +73,7 @@
         td.c-created,th.c-created{text-align:center;padding-left:2px;padding-right:2px;}
         td.order-no{font-weight:600;color:#1e293b;}
         td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;}
+        .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         .scan-zero{color:#cbd5e1;}
         .scan-pos{color:#1e293b;}
         /* 스캔 열 배지: 확정==스캔 초록(연하게), 스캔>0 & 확정>스캔 주황 */
@@ -188,6 +189,16 @@
         let allRows=[], viewRows=[];
         let pageSize=100, currentPage=1;
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        // 상품명: 첫 콤마 앞 단어가 영어+숫자 조합(모델코드)이면 연한 파란 배지
+        function modelBadge(name){
+            const s=String(name==null?'':name); const ci=s.indexOf(',');
+            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
+                if(m){ const t=m[1];
+                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                        const before=prefix.slice(0, prefix.length-m[0].length);
+                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
+            return esc(s);
+        }
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         const locCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':(String(v).trim()==='단종'?'<span class="loc-disc">단종</span>':esc(v));
         function fmtCreatedAt(ts){
@@ -238,7 +249,7 @@
                     return `<tr data-i="${i}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
                         <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
-                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${esc(r.상품명)}</td>
+                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${dashCell(r.재고)}</td>
