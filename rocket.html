@@ -139,6 +139,10 @@
                         <option value="200">200개씩</option>
                         <option value="500">500개씩</option>
                     </select>
+                    <select id="scanFilter" onchange="applySearch()">
+                        <option value="all" selected>전체</option>
+                        <option value="unscanned">미스캔</option>
+                    </select>
                 </div>
             </div>
 
@@ -319,6 +323,13 @@
                 viewRows=allRows.filter(r=>{
                     const hay=[r.발주번호,r.물류센터,r.상품명,r.상품바코드,r.위치].map(v=>String(v||'').toLowerCase());
                     return terms.some(t=>hay.some(h=>h.includes(t)));
+                });
+            }
+            // 미스캔 필터: (재고 + 입고V2) > 스캔 그리고 (재고 + 입고V2) > 0
+            if(document.getElementById('scanFilter').value==='unscanned'){
+                viewRows=viewRows.filter(r=>{
+                    const prep=(Number(r.재고)||0)+(Number(r.입고V2)||0);
+                    return prep>0 && prep>(Number(r.스캔수량)||0);
                 });
             }
             currentPage=1;
