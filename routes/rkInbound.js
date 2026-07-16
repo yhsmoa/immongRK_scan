@@ -160,7 +160,7 @@ function buildArranged(items, allocs) {
     const list = byItem.get(it.id) || [];
     let allocated = 0;
     for (const a of list) {
-      shipping.push({ ...base, 수량: total, 출고번호: a.order_number, 센터: a.center, 출고개수: a.ship_qty, 출고예정일: a.shipping_date || '', 회차: a.batch_no || 1, preparedAt: a.prepared_at });
+      shipping.push({ ...base, allocId: a.id, 수량: total, 출고번호: a.order_number, 센터: a.center, 출고개수: a.ship_qty, 출고예정일: a.shipping_date || '', 회차: a.batch_no || 1, preparedAt: a.prepared_at });
       allocated += a.ship_qty || 0;
     }
     const leftover = total - allocated;
@@ -182,6 +182,23 @@ router.get('/api/inbound/arranged', async (req, res) => {
   } catch (e) {
     console.error('[rk] inbound/arranged:', e);
     res.status(500).json({ error: '출고배정 조회 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// 출고배정 취소(삭제) — rk_cn_shipping 삭제 + rk_shipping_list 미러 정리.
+// 남은상품은 아이템수량-배정합계로 매번 계산되므로 삭제하면 자동 복원됨.
+router.post('/api/inbound/shipping/delete', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.allocIds) ? req.body.allocIds : []).map(v => parseInt(v, 10)).filter(Number.isFinite);
+    if (!ids.length) return res.status(400).json({ error: '취소할 항목이 없습니다.' });
+    const { error: eMirror } = await sb.from('rk_shipping_list').delete().in('cn_shipping_id', ids);
+    if (eMirror) console.error('[rk] shipping_list 미러 삭제 실패(계속 진행):', eMirror.message);
+    const { data, error } = await sb.from('rk_cn_shipping').delete().in('id', ids).select('id');
+    if (error) throw error;
+    res.json({ ok: true, deleted: data ? data.length : 0 });
+  } catch (e) {
+    console.error('[rk] inbound/shipping/delete:', e);
+    res.status(500).json({ error: '출고배정 취소 중 오류가 발생했습니다: ' + e.message });
   }
 });
 
@@ -387,7 +404,9 @@ router.get('/api/inbound/stock-arranges', async (req, res) => {
   }
 });
 
-// 처리완료: 대기 배치를 재고 원장에 기록 + rk_stocks 합산. 남은 초과 방지.
+// 처리완료: 대기 배치를 재고 원장에 기록 + rk_stocks 합산.
+// ⚠️ 임시: 재고조사 병행을 위해 '남은 수량 초과' 검증을 일시 해제(사용자 요청, 당분간).
+//    초과 입력분도 그대로 원장 기록 + rk_stocks 합산됨. 재고조사 종료 후 초과 검증 복원 필요.
 router.post('/api/inbound/stock-complete', async (req, res) => {
   try {
     const reqItems = Array.isArray(req.body.items) ? req.body.items : [];
@@ -397,20 +416,11 @@ router.post('/api/inbound/stock-complete', async (req, res) => {
       if (!(parseInt(it.qty) > 0)) return res.status(400).json({ error: '수량이 올바르지 않은 항목이 있습니다.' });
     }
 
-    // 남은 초과 검증 (아이템별 합계 ≤ 남은)
+    // 아이템 존재만 확인 (남은 수량 초과 검증은 위 사유로 일시 해제)
     const items = await fetchAllItems();
     const itemById = new Map(items.map(i => [i.id, i]));
-    const { data: shipping } = await sb.from('rk_cn_shipping').select('shipment_item_id, ship_qty');
-    const { data: arr } = await sb.from('rk_cn_stock_arranges').select('shipment_item_id, qty');
-    const shipByItem = new Map(); for (const a of (shipping || [])) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
-    const arrByItem = new Map(); for (const a of (arr || [])) arrByItem.set(a.shipment_item_id, (arrByItem.get(a.shipment_item_id) || 0) + (a.qty || 0));
-    const reqByItem = new Map();
-    for (const it of reqItems) reqByItem.set(it.shipment_item_id, (reqByItem.get(it.shipment_item_id) || 0) + parseInt(it.qty));
-    for (const [itemId, sum] of reqByItem) {
-      const it = itemById.get(itemId);
-      if (!it) return res.status(400).json({ error: '아이템을 찾을 수 없습니다.' });
-      const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(itemId) || 0) - (arrByItem.get(itemId) || 0);
-      if (sum > remaining) return res.status(400).json({ error: `남은 수량(${remaining})을 초과했습니다.` });
+    for (const it of reqItems) {
+      if (!itemById.get(it.shipment_item_id)) return res.status(400).json({ error: '아이템을 찾을 수 없습니다.' });
     }
 
     for (const it of reqItems) {

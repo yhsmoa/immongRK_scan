@@ -154,6 +154,8 @@
         let pageSize=100, currentPage=1;
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
+        // 수량 비교: null(빈칸)과 0을 구별
+        const qtyEq=(a,b)=>(a==null&&b==null)||(a!=null&&b!=null&&Number(a)===Number(b));
 
         async function loadData(){
             try{
@@ -162,7 +164,7 @@
                 const items=await res.json();
                 allRows=items.map(it=>({
                     id:it.id, 위치:it.location, 상품번호:it.skuId, 바코드:it.barcode, 상품명:it.itemName,
-                    수량:Number(it.qty)||0, origQty:Number(it.qty)||0, 시즌:it.season, 비고:it.note
+                    수량:it.qty==null?null:Number(it.qty), origQty:it.qty==null?null:Number(it.qty), 시즌:it.season, 비고:it.note
                 }));
                 applySearch();
             }catch(e){
@@ -185,7 +187,7 @@
                     <td>${esc(r.상품번호)}</td>
                     <td>${esc(r.바코드)}</td>
                     <td class="pname">${esc(r.상품명)}</td>
-                    <td class="ctr qty-edit${(Number(r.수량)||0)===0?' qty-zero':''}${Number(r.수량)!==Number(r.origQty)?' qty-dirty':''}" contenteditable="true" data-id="${esc(r.id)}" data-orig="${esc(r.origQty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveQtyCell('${esc(r.id)}',this)">${esc(r.수량)}</td>
+                    <td class="ctr qty-edit${r.수량===0?' qty-zero':''}${!qtyEq(r.수량,r.origQty)?' qty-dirty':''}" contenteditable="true" data-id="${esc(r.id)}" data-orig="${r.origQty==null?'':esc(r.origQty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveQtyCell('${esc(r.id)}',this)">${r.수량==null?'':esc(r.수량)}</td>
                     <td class="ctr">${dashCell(r.시즌)}</td>
                     <td>${dashCell(r.비고)}</td>
                 </tr>`).join('');
@@ -289,16 +291,22 @@
         function saveQtyCell(id,cell){
             const row=allRows.find(r=>String(r.id)===String(id));
             const orig=cell.dataset.orig;
-            const raw=String(cell.textContent).replace(/[^0-9]/g,'');
-            const n=parseInt(raw,10);
-            if(!Number.isFinite(n)||n<0){ cell.textContent=orig; return; }
-            cell.textContent=String(n);
+            const text=String(cell.textContent).trim();
+            let n; // null=빈칸, 숫자=수량(0 포함)
+            if(text===''){ n=null; }
+            else{
+                const raw=text.replace(/[^0-9]/g,'');
+                if(raw===''){ cell.textContent=orig; return; }
+                n=parseInt(raw,10);
+                if(!Number.isFinite(n)||n<0){ cell.textContent=orig; return; }
+            }
+            cell.textContent=n==null?'':String(n);
             if(row) row.수량=n;
             cell.classList.toggle('qty-zero', n===0);
-            cell.classList.toggle('qty-dirty', row && Number(n)!==Number(row.origQty));
+            cell.classList.toggle('qty-dirty', row && !qtyEq(n,row.origQty));
             updateSaveBtn();
         }
-        function hasDirty(){ return allRows.some(r=>Number(r.수량)!==Number(r.origQty)); }
+        function hasDirty(){ return allRows.some(r=>!qtyEq(r.수량,r.origQty)); }
         function updateSaveBtn(){
             const btn=document.getElementById('saveBtn');
             if(!btn) return;
@@ -307,14 +315,14 @@
             btn.classList.toggle('primary', dirty);
         }
         async function saveAllQty(){
-            const updates=allRows.filter(r=>Number(r.수량)!==Number(r.origQty)).map(r=>({id:r.id, qty:Number(r.수량)}));
+            const updates=allRows.filter(r=>!qtyEq(r.수량,r.origQty)).map(r=>({id:r.id, qty:r.수량==null?null:Number(r.수량)}));
             if(!updates.length){ toast('수정된 수량이 없습니다.'); return; }
             const btn=document.getElementById('saveBtn'); if(btn) btn.disabled=true;
             try{
                 const res=await fetch('/api/stocks/batch-update-qty',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates})});
                 const data=await res.json().catch(()=>({}));
                 if(!res.ok) throw new Error(data.error||'저장 실패');
-                allRows.forEach(r=>{ r.origQty=Number(r.수량); });
+                allRows.forEach(r=>{ r.origQty=r.수량==null?null:Number(r.수량); });
                 render();
                 toast(`수량 ${data.updated ?? updates.length}건 저장 완료`);
             }catch(e){ updateSaveBtn(); toast('저장 실패: '+e.message); }

@@ -59,6 +59,7 @@
         td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
         td.pname{white-space:normal;color:#334155;}
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+        th.chk,td.chk{width:42px;text-align:center;padding-left:0;padding-right:0;}
         td.code{font-weight:600;color:#1e293b;}
         td.ord{font-weight:600;color:#1e293b;}
         .dash{color:#cbd5e1;}
@@ -102,8 +103,9 @@
             table { font-size: 11px !important; min-width: 0 !important; table-layout: auto; }
             thead th, tbody td { border: 1px solid #000 !important; padding: 4px !important; font-size: 11px !important; white-space: nowrap; width: 1%; }
             thead th { background: #f2f2f2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; position: static !important; }
-            /* 상품명(5번째) 열만 넓게, 나머지는 내용 너비로 축소 */
-            th:nth-child(5), td.pname { white-space: normal !important; width: auto; word-break: break-word; }
+            th.chk, td.chk { display: none !important; } /* 체크박스 열 인쇄 제외 */
+            /* 상품명(6번째) 열만 넓게, 나머지는 내용 너비로 축소 */
+            th:nth-child(6), td.pname { white-space: normal !important; width: auto; word-break: break-word; }
             tbody tr.latest td { background: #fff !important; }
             .batch, .newtag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             @page { size: A4 landscape; margin: 0.5cm; }
@@ -144,13 +146,14 @@
                 <div class="tabbar-right">
                     <select id="batchFilter" onchange="onBatchFilter()"><option value="all">전체 회차</option></select>
                     <button class="btn" onclick="window.print()">인쇄</button>
+                    <button class="btn" id="cancelBtn" onclick="cancelSelected()" disabled>취소</button>
                 </div>
             </div>
 
             <div class="table-scroll">
                 <table id="tbl">
                     <thead id="thead"></thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="10">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="12">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -204,7 +207,7 @@
                 populateYear();
                 await loadArranged();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="10">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="12">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
             }
         }
 
@@ -283,13 +286,13 @@
             const mb=maxBatch();
             const nBatches=new Set(shippingRows.map(r=>r.회차).filter(v=>v!=null)).size;
             const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
-            thead.innerHTML=`<tr><th style="width:88px">회차</th><th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>출고번호</th><th>센터</th><th class="ctr">출고개수</th><th>출고예정일</th></tr>`;
+            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차</th><th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>출고번호</th><th>센터</th><th class="ctr">출고개수</th><th>출고예정일</th></tr>`;
             if(rows.length===0){
                 let msg;
                 if(!selectedCode()) msg='연도 · 월 · 출고코드를 선택하세요.';
                 else if(activeTab==='shipping') msg=prepared?'출고 배정된 항목이 없습니다.':'‘출고준비’ 버튼으로 발주서를 선택해 정리하세요.';
                 else msg='남은상품이 없습니다.';
-                tb.innerHTML=`<tr class="state-row"><td colspan="11">${msg}</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="12">${msg}</td></tr>`;
             }else{
                 tb.innerHTML=rows.map(r=>{
                     const isShip=r.회차!=null;
@@ -298,6 +301,7 @@
                         ? `<span class="batch ${latest?'latest':''}">${r.회차}회차</span>${latest?'<span class="newtag">NEW</span>':''}`
                         : '<span class="dash">-</span>';
                     return `<tr class="${latest?'latest':''}">
+                        <td class="chk">${r.allocId!=null?`<input type="checkbox" class="rowchk" data-allocid="${esc(r.allocId)}" onchange="updateCancelBtn()">`:''}</td>
                         <td class="ctr">${batchCell}</td>
                         <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
                         <td class="pname">${modelBadge(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
@@ -307,6 +311,30 @@
             }
             document.getElementById('rowCount').textContent=rows.length;
             updateActionButtons();
+            updateCancelBtn();
+        }
+
+        // ── 출고배정 취소 (체크된 행 삭제 → 남은상품으로 자동 복원) ──
+        function toggleAllRows(chk){
+            document.querySelectorAll('.rowchk').forEach(c=>{c.checked=chk.checked;});
+            updateCancelBtn();
+        }
+        function updateCancelBtn(){
+            const n=document.querySelectorAll('.rowchk:checked').length;
+            const b=document.getElementById('cancelBtn');
+            if(b) b.disabled=n===0;
+        }
+        async function cancelSelected(){
+            const ids=[...document.querySelectorAll('.rowchk:checked')].map(c=>c.dataset.allocid);
+            if(!ids.length){ toast('선택된 항목이 없습니다.'); return; }
+            if(!confirm(`선택한 ${ids.length}건의 출고배정을 취소하시겠습니까?\n취소된 수량은 남은상품으로 돌아갑니다.`)) return;
+            try{
+                const res=await fetch('/api/inbound/shipping/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allocIds:ids})});
+                const data=await res.json().catch(()=>({}));
+                if(!res.ok) throw new Error(data.error||'취소 실패');
+                toast(`출고배정 ${data.deleted??ids.length}건 취소 완료`);
+                await loadArranged();
+            }catch(e){ toast('취소 실패: '+e.message); }
         }
 
         let batchFilter='all';

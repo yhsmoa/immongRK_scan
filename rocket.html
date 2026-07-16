@@ -151,7 +151,7 @@
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>발주번호</th><th>물류센터</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
-                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고1</th><th class="ctr">입고2</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고V2</th><th class="ctr">입고1</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
                         </tr>
                     </thead>
                     <tbody id="tbody"><tr class="state-row"><td colspan="15">데이터를 불러오는 중…</td></tr></tbody>
@@ -211,16 +211,33 @@
 
         async function loadData(){
             try{
-                const res=await fetch('/api/orders'); // Supabase 기반, referer=/rocket → dedup
+                // 발주서 + 출고준비(rk_shipping_list, 출고예정) 병렬 로드
+                const [res,slRes]=await Promise.all([
+                    fetch('/api/orders'), // Supabase 기반, referer=/rocket → dedup
+                    fetch('/api/shipping-list?status='+encodeURIComponent('출고예정'))
+                ]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const orders=await res.json();
+                // 발주번호|바코드 → {재고합, 입고합} (source: 재고→재고열, 입고→입고V2열)
+                const slMap=new Map();
+                if(slRes.ok){
+                    for(const s of await slRes.json()){
+                        const k=`${s.orderNumber}|${s.barcode}`;
+                        if(!slMap.has(k)) slMap.set(k,{재고:0,입고:0});
+                        const m=slMap.get(k);
+                        if(s.source==='재고') m.재고+=Number(s.qty)||0;
+                        else if(s.source==='입고') m.입고+=Number(s.qty)||0;
+                    }
+                }
                 allRows=[];
                 for(const o of orders){
                     for(const p of (o.상품정보||[])){
+                        const sl=slMap.get(`${o.발주번호}|${p.상품바코드}`);
                         allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
                             상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
                             발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:p.스캔수량,
-                            입고1:p.입고1,입고2:p.입고2,위치:p.위치,created_at:o.created_at});
+                            재고:(sl&&sl.재고>0)?sl.재고:null,입고V2:(sl&&sl.입고>0)?sl.입고:null,
+                            입고1:p.입고1,위치:p.위치,created_at:o.created_at});
                     }
                 }
                 applySearch();
@@ -253,7 +270,7 @@
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${dashCell(r.재고)}</td>
-                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${locCell(r.위치)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                        <td class="ctr">${dashCell(r.입고V2)}</td><td class="ctr">${dashCell(r.입고1)}</td><td>${locCell(r.위치)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }
@@ -521,10 +538,10 @@
             // 정렬: 입고예정일 > 발주번호 > 위치
             const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
             rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.발주번호,b.발주번호)||cmp(a.위치,b.위치));
-            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','입고1','입고2','위치','입고예정일'];
+            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','입고V2','입고1','위치','입고예정일'];
             const body=rows.map((r,idx)=>{
                 const groupEnd=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
-                const cells=[r.발주번호,r.물류센터,r.상품번호,r.상품바코드,r.상품명,r.발주수량,r.스캔수량,r.입고1,r.입고2,r.위치,r.입고예정일];
+                const cells=[r.발주번호,r.물류센터,r.상품번호,r.상품바코드,r.상품명,r.발주수량,r.스캔수량,r.입고V2,r.입고1,r.위치,r.입고예정일];
                 return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`;
             }).join('');
             const w=window.open('','_blank');

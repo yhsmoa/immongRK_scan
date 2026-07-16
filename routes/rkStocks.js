@@ -309,8 +309,13 @@ router.post('/api/stocks/batch-update-qty', async (req, res) => {
     if (!updates.length) return res.status(400).json({ error: '수정할 항목이 없습니다.' });
     let updated = 0;
     for (const u of updates) {
-      const qty = parseInt(u.qty, 10);
-      if (!u.id || !Number.isFinite(qty) || qty < 0) continue;
+      if (!u.id) continue;
+      let qty; // null = 빈칸(미입력), 0과 구별
+      if (u.qty === null || u.qty === '') { qty = null; }
+      else {
+        qty = parseInt(u.qty, 10);
+        if (!Number.isFinite(qty) || qty < 0) continue;
+      }
       const { data, error } = await sb.from('rk_stocks').update({ qty }).eq('id', u.id).select('id');
       if (error) throw error;
       updated += (data ? data.length : 0);
