@@ -96,6 +96,7 @@ function headerToKorean(h, items) {
     발주수량: h.order_qty,
     확정수량: h.confirmed_qty,
     스캔수량: h.scanned_qty,
+    상태: str(h.status),
     created_at: h.created_at,
     상품정보: items,
   };

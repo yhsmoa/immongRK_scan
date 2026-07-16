@@ -263,6 +263,22 @@ module.exports = (io) => {
     }
   });
 
+  // 처리완료 (벌크) — status = 'DONE'
+  router.post('/api/orders/complete', async (req, res) => {
+    try {
+      const { orderNumbers } = req.body;
+      if (!Array.isArray(orderNumbers) || orderNumbers.length === 0)
+        return res.status(400).json({ success: false, message: '처리할 발주서가 선택되지 않았습니다.' });
+      const { data, error } = await S.supabase.from('rk_orders')
+        .update({ status: 'DONE' }).in('order_number', orderNumbers).select('id');
+      if (error) throw error;
+      res.json({ success: true, message: '처리완료되었습니다.', updatedCount: data.length });
+    } catch (e) {
+      console.error('[rk] orders/complete:', e);
+      res.status(500).json({ success: false, message: '처리완료 중 오류가 발생했습니다.' });
+    }
+  });
+
   // 바코드로 상품 조회
   router.get('/api/products/barcode/:barcode', async (req, res) => {
     try {

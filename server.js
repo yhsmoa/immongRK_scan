@@ -57,6 +57,11 @@ app.get('/rocket', (req, res) => {
   res.sendFile(path.join(__dirname, 'rocket.html'));
 });
 
+// ✅ 요약 페이지 (발주서 전체 요약)
+app.get('/summary', (req, res) => {
+  res.sendFile(path.join(__dirname, 'summary.html'));
+});
+
 // ✅ 스캔 페이지 라우트 추가
 app.get('/scan', (req, res) => {
   res.sendFile(path.join(__dirname, 'scan.html'));

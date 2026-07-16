@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>발주서 요약</title>
+    <style>
+        :root{
+            --primary:#F0492F; --ink:#1C1B1A; --ink-soft:#334155; --muted:#94a3b8;
+            --hover:#f8fafc; --line:#e5e9f0;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;background:#FBFAF9;color:var(--ink);
+            font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;}
+        .page{max-width:1280px;width:94%;margin:22px auto 60px;}
+        .card{background:#fff;border:1px solid #EEECE9;border-radius:14px;box-shadow:0 1px 3px rgba(28,27,26,.04);overflow:hidden;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:14px;
+            padding:18px 20px;border-bottom:1px solid #eef2f7;flex-wrap:wrap;}
+        .title-wrap{display:flex;flex-direction:column;gap:2px;}
+        .title{margin:0;font-size:18px;font-weight:800;letter-spacing:-.02em;}
+        .subtitle{font-size:12.5px;color:var(--muted);}
+        .subtitle b{color:var(--ink);}
+        .actions{display:flex;gap:8px;flex-shrink:0;}
+        .btn{height:36px;padding:0 14px;border:1px solid var(--line);border-radius:9px;background:#fff;
+            font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .btn:hover{background:#f5f3f1;}
+        .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;}
+        .btn.primary:hover{background:#d63d26;}
+        .btn:disabled{opacity:.5;cursor:not-allowed;}
+
+        .list{padding:6px 12px 20px;}
+        .date-row{display:flex;align-items:center;gap:8px;margin:16px 6px 10px;}
+        .date-badge{display:inline-block;background:#2563eb;color:#fff;font-size:12.5px;font-weight:700;
+            padding:5px 12px;border-radius:7px;cursor:pointer;user-select:none;}
+        .date-badge:hover{background:#1d4ed8;}
+        .date-badge.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
+        .date-meta{font-size:11.5px;color:var(--muted);}
+        .center-group{margin:0 8px 12px;}
+        .center-head{display:flex;align-items:center;gap:8px;margin:0 2px 8px;}
+        .center-name{display:inline-block;background:#dbeafe;color:#2563eb;
+            font-size:12px;font-weight:700;padding:3px 10px;border-radius:7px;}
+        .center-meta{font-size:11.5px;color:var(--muted);}
+        .orders{display:flex;flex-wrap:wrap;gap:8px;}
+        .order{position:relative;overflow:hidden;border:1px solid #e5e9f0;border-radius:9px;cursor:pointer;
+            background:#fff;transition:border-color .12s,box-shadow .12s;min-width:132px;
+            box-shadow:2px 2px 5px rgba(15,23,42,.07);}
+        .order:hover{border-color:#cbd5e1;}
+        .order.sel{border-color:#f0492f;box-shadow:0 0 0 2px rgba(240,73,47,.20),2px 2px 5px rgba(15,23,42,.09);}
+        /* 스캔수량 비율만큼 아래에서 위로 채워지는 배경 (수면 물결 애니메이션) */
+        .o-fill{position:absolute;left:0;right:0;bottom:0;background:rgba(37,99,235,.14);z-index:0;transition:height .2s;}
+        .order.done .o-fill{background:rgba(22,163,74,.20);}
+        /* 수면 물결: 채움 배경 바로 위에 정확히 맞닿게 배치 (겹치면 반투명색이 이중으로 쌓여 선처럼 보임) */
+        .o-fill::before{content:'';position:absolute;left:0;right:0;top:-6px;height:6px;
+            background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='6'%3E%3Cpath d='M0 3 Q10 0 20 3 T40 3 V6 H0 Z' fill='%232563eb' fill-opacity='.14'/%3E%3C/svg%3E") repeat-x bottom/40px 6px;
+            animation:waveL 3.2s linear infinite;}
+        .order.done .o-fill::before{
+            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='6'%3E%3Cpath d='M0 3 Q10 0 20 3 T40 3 V6 H0 Z' fill='%2316a34a' fill-opacity='.2'/%3E%3C/svg%3E");}
+        @keyframes waveL{from{background-position-x:0;}to{background-position-x:40px;}}
+        .o-body{position:relative;z-index:1;padding:9px 13px;}
+        .o-no{font-size:13.5px;font-weight:700;color:#1e293b;white-space:nowrap;}
+        .o-center{font-size:11.5px;color:#475569;margin-top:2px;}
+        .o-qty{font-size:11.5px;color:#334155;margin-top:3px;font-variant-numeric:tabular-nums;}
+        .o-qty b{color:#16a34a;}
+        .o-done{position:absolute;top:-7px;right:-7px;background:#16a34a;color:#fff;font-size:10px;font-weight:700;
+            padding:2px 6px;border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.15);z-index:2;}
+        .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px;}
+
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;
+            padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);
+            opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+        .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10000;}
+        .modal-back.show{display:flex;}
+        .modal{background:#fff;border-radius:14px;padding:22px 22px 18px;width:400px;max-width:92vw;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .modal h3{margin:0 0 6px;font-size:16px;}
+        .modal p{margin:0 0 14px;font-size:13px;color:var(--muted);}
+        .modal input{width:100%;height:42px;padding:0 12px;border:1px solid #e2e8f0;border-radius:9px;font-size:14px;outline:none;margin-bottom:16px;}
+        .modal input:focus{border-color:#f6b6a8;box-shadow:0 0 0 3px rgba(240,73,47,.12);}
+        .modal-btns{display:flex;justify-content:flex-end;gap:8px;}
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">발주서 요약</h1>
+                    <span class="subtitle">전체 <b id="orderCount">0</b>건 · <b id="selCount">0</b>건 선택</span>
+                </div>
+                <div class="actions">
+                    <button class="btn" id="btnCenter" onclick="changeCenter()">센터변경</button>
+                    <button class="btn primary" id="btnComplete" onclick="completeOrders()">처리완료</button>
+                </div>
+            </div>
+            <div class="list" id="list">
+                <div class="empty">불러오는 중…</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+    <div class="modal-back" id="modalBack">
+        <div class="modal">
+            <h3 id="mTitle"></h3>
+            <p id="mDesc"></p>
+            <input id="mInput" type="text">
+            <div class="modal-btns">
+                <button class="btn" onclick="modalResolve(null)">취소</button>
+                <button class="btn primary" onclick="modalConfirm()">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        let orders=[];              // [{발주번호,물류센터,입고예정일,발주수량,스캔수량,상태}]
+        const selected=new Set();   // 선택된 발주번호
+
+        async function loadData(){
+            try{
+                const res=await fetch('/api/orders');
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                const data=await res.json();
+                orders=data.map(o=>({
+                    발주번호:o.발주번호, 물류센터:o.물류센터||'(미정)', 입고예정일:o.입고예정일||'(미정)',
+                    발주수량:Number(o.발주수량)||0, 스캔수량:Number(o.스캔수량)||0, 상태:o.상태||'PROCESSING'
+                }));
+                render();
+            }catch(e){
+                document.getElementById('list').innerHTML=`<div class="empty">데이터를 불러오지 못했습니다: ${esc(e.message)}</div>`;
+            }
+        }
+
+        function isDone(o){ return o.상태==='DONE'; }
+        function scanPct(o){ return o.발주수량>0 ? Math.min(100,Math.round(o.스캔수량/o.발주수량*100)) : 0; }
+
+        function render(){
+            const list=document.getElementById('list');
+            document.getElementById('orderCount').textContent=orders.length;
+            document.getElementById('selCount').textContent=selected.size;
+            document.getElementById('btnCenter').disabled=selected.size===0;
+            document.getElementById('btnComplete').disabled=selected.size===0;
+            if(orders.length===0){ list.innerHTML=`<div class="empty">표시할 발주서가 없습니다.</div>`; return; }
+
+            // 입고예정일별 그룹 → 그 안에서 물류센터별 그룹
+            const byDate=new Map();
+            for(const o of orders){
+                if(!byDate.has(o.입고예정일)) byDate.set(o.입고예정일,[]);
+                byDate.get(o.입고예정일).push(o);
+            }
+            let html='';
+            for(const [date,dOrders] of byDate){
+                const dateSel=dOrders.length>0 && dOrders.every(o=>selected.has(o.발주번호));
+                html+=`<div class="date-row">
+                    <span class="date-badge ${dateSel?'sel':''}" data-date="${esc(date)}" onclick="toggleDate('${esc(date)}')">${esc(date)}</span>
+                    <span class="date-meta">${dOrders.length}건</span></div>`;
+                const byCenter=new Map();
+                for(const o of dOrders){
+                    if(!byCenter.has(o.물류센터)) byCenter.set(o.물류센터,[]);
+                    byCenter.get(o.물류센터).push(o);
+                }
+                for(const [center,cOrders] of byCenter){
+                    html+=`<div class="center-group"><div class="center-head"><span class="center-name">${esc(center)}</span><span class="center-meta">${cOrders.length}건</span></div><div class="orders">`;
+                    html+=cOrders.map(o=>{
+                        const sel=selected.has(o.발주번호)?'sel':'';
+                        const done=isDone(o);
+                        const doneBadge=done?`<span class="o-done">완료</span>`:'';
+                        const pct=scanPct(o);
+                        return `<div class="order ${sel} ${done?'done':''}" data-no="${esc(o.발주번호)}" onclick="toggleOrder('${esc(o.발주번호)}')">${doneBadge}
+                            ${pct>0?`<div class="o-fill" style="height:${pct}%"></div>`:''}
+                            <div class="o-body">
+                                <div class="o-no">${esc(o.발주번호)}</div>
+                                <div class="o-center">${esc(o.물류센터)}</div>
+                                <div class="o-qty">${o.발주수량} | <b>${o.스캔수량}</b></div>
+                            </div></div>`;
+                    }).join('');
+                    html+=`</div></div>`;
+                }
+            }
+            list.innerHTML=html;
+        }
+
+        // 선택 변경 시 전체 재렌더 대신 클래스만 갱신 (물결 애니메이션 유지)
+        function updateSelectionUI(){
+            document.getElementById('selCount').textContent=selected.size;
+            document.getElementById('btnCenter').disabled=selected.size===0;
+            document.getElementById('btnComplete').disabled=selected.size===0;
+            document.querySelectorAll('.order').forEach(el=>el.classList.toggle('sel',selected.has(el.dataset.no)));
+            document.querySelectorAll('.date-badge').forEach(el=>{
+                const nos=orders.filter(o=>o.입고예정일===el.dataset.date).map(o=>o.발주번호);
+                el.classList.toggle('sel',nos.length>0&&nos.every(n=>selected.has(n)));
+            });
+        }
+        function toggleOrder(no){
+            if(selected.has(no)) selected.delete(no); else selected.add(no);
+            updateSelectionUI();
+        }
+        function toggleDate(date){
+            const nos=orders.filter(o=>o.입고예정일===date).map(o=>o.발주번호);
+            const allSel=nos.length>0 && nos.every(n=>selected.has(n));
+            if(allSel) nos.forEach(n=>selected.delete(n));
+            else nos.forEach(n=>selected.add(n));
+            updateSelectionUI();
+        }
+        function clearSel(){ selected.clear(); updateSelectionUI(); }
+
+        // ── 센터변경 (선택 발주서 물류센터 일괄 변경) ──
+        async function changeCenter(){
+            if(selected.size===0){ toast('선택된 발주서가 없습니다.'); return; }
+            const newCenter=await openModal({title:'센터변경',desc:`선택한 ${selected.size}건의 물류센터를 변경합니다.`,value:''});
+            if(newCenter==null || newCenter.trim()==='') return;
+            toast('변경 중…');
+            try{
+                const res=await fetch('/api/orders/update-center',{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({orderNumbers:[...selected],newCenter:newCenter.trim()})});
+                const data=await res.json();
+                if(!res.ok || data.success===false) throw new Error(data.message||'변경 실패');
+                toast(`물류센터 변경 완료 (${data.updatedCount??selected.size}건)`);
+                clearSel();
+                await loadData();
+            }catch(e){ toast('오류: '+e.message); }
+        }
+
+        // ── 처리완료 (선택 발주서 status = DONE) ──
+        async function completeOrders(){
+            if(selected.size===0){ toast('선택된 발주서가 없습니다.'); return; }
+            const ok=await openModal({title:'처리완료',desc:`선택한 ${selected.size}건을 처리완료(DONE)로 변경합니다. 확인하려면 아무 값이나 입력 후 확인을 누르세요.`,value:''});
+            if(ok==null) return;
+            toast('처리 중…');
+            try{
+                const res=await fetch('/api/orders/complete',{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({orderNumbers:[...selected]})});
+                const data=await res.json();
+                if(!res.ok || data.success===false) throw new Error(data.message||'처리 실패');
+                toast(`처리완료 (${data.updatedCount??selected.size}건)`);
+                clearSel();
+                await loadData();
+            }catch(e){ toast('오류: '+e.message); }
+        }
+
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2800);}
+
+        let _modalResolve=null;
+        function openModal({title,desc,value=''}){
+            document.getElementById('mTitle').textContent=title;
+            document.getElementById('mDesc').textContent=desc||'';
+            const inp=document.getElementById('mInput');inp.value=value;
+            document.getElementById('modalBack').classList.add('show');
+            setTimeout(()=>inp.focus(),50);
+            return new Promise(res=>{_modalResolve=res;});
+        }
+        function modalResolve(v){document.getElementById('modalBack').classList.remove('show');if(_modalResolve){_modalResolve(v);_modalResolve=null;}}
+        function modalConfirm(){modalResolve(document.getElementById('mInput').value);}
+        document.getElementById('mInput').addEventListener('keydown',e=>{if(e.key==='Enter')modalConfirm();if(e.key==='Escape')modalResolve(null);});
+
+        loadData();
+    </script>
+</body>
+</html>
