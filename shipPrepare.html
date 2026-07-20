@@ -83,6 +83,8 @@
         .nav-btn:disabled{opacity:.4;cursor:default;}
         .nav-btn.next{background:var(--primary);color:#fff;border-color:var(--primary);}
         .nav-btn.next:hover{background:var(--primary-dark);}
+        .nav-btn.none{background:#f1f5f9;color:#64748b;border-color:#e2e8f0;}
+        .nav-btn.none:hover{background:#e2e8f0;}
 
         /* 오른쪽 (shipScan과 동일) */
         .right-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;}
@@ -155,6 +157,7 @@
                         </div>
                         <div class="nav-row">
                             <button class="nav-btn" id="prevBtn" onclick="movePrev()">← 이전</button>
+                            <button class="nav-btn none" id="noneBtn" onclick="markNone()">없음</button>
                             <button class="nav-btn next" id="nextBtn" onclick="moveNext()">다음 →</button>
                         </div>
                     </div>
@@ -271,6 +274,13 @@
 
         function movePrev(){ if(curIdx>0){ curIdx--; renderCur(); } }
         function moveNext(){ const o=activeOrder(); if(o&&curIdx<o.items.length-1){ curIdx++; renderCur(); } }
+        // 없음: 현재 상품 재고=0 표시 후 다음으로
+        function markNone(){
+            const o=activeOrder(); const it=o&&o.items[curIdx];
+            if(!it){ toast('품목이 없습니다.'); return; }
+            it.재고=0; renderCur(); renderItems();
+            moveNext();
+        }
 
         // 준비/재고 입력 (공용 숫자패드)
         function editVal(kind){
