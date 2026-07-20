@@ -41,6 +41,7 @@
         tbody tr.done:hover td{background:#eefaf2;}
         td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
         td.pname{white-space:normal;color:#334155;}
+        .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         td.code{font-weight:600;color:#1e293b;}
         td.loc-text{font-weight:600;color:#1e293b;}
         th.chk,td.chk{text-align:center;padding-left:0;padding-right:0;}
@@ -122,7 +123,7 @@
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:40px"><col style="width:100px"><col style="width:90px"><col style="width:100px"><col><col style="width:66px"><col style="width:140px"><col style="width:300px"><col style="width:56px">
+                        <col style="width:40px"><col style="width:88px"><col style="width:90px"><col style="width:112px"><col><col style="width:66px"><col style="width:140px"><col style="width:300px"><col style="width:56px">
                     </colgroup>
                     <thead>
                         <tr>
@@ -160,6 +161,16 @@
         let rows=[];       // display rows (done + pending)
         let keySeq=0;
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        // 상품명: 첫 콤마 앞 마지막 단어가 영어+숫자(모델코드)면 배지 처리
+        function modelBadge(name){
+            const s=String(name==null?'':name); const ci=s.indexOf(',');
+            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
+                if(m){ const t=m[1];
+                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                        const before=prefix.slice(0, prefix.length-m[0].length);
+                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
+            return esc(s);
+        }
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         const rowByKey=k=>rows.find(r=>r.key===k);
 
@@ -221,14 +232,14 @@
                         return `<tr class="done">
                             <td class="chk"><input type="checkbox" ${r.checked?'checked':''} onchange="toggleRow('${r.key}',this.checked)"></td>
                             <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
-                            <td class="pname">${esc(r.상품명)}</td><td class="ctr">${dashCell(r.qty)}</td><td>${esc(r.바코드)}</td>
+                            <td class="pname">${modelBadge(r.상품명)}</td><td class="ctr">${dashCell(r.qty)}</td><td>${esc(r.바코드)}</td>
                             <td class="loc-text">${dashCell(r.위치)}</td><td class="ctr done-col">✅</td>
                         </tr>`;
                     }
                     return `<tr>
                         <td class="chk"><input type="checkbox" ${r.checked?'checked':''} onchange="toggleRow('${r.key}',this.checked)"></td>
                         <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
-                        <td class="pname">${esc(r.상품명)}</td>
+                        <td class="pname">${modelBadge(r.상품명)}</td>
                         <td class="ctr qty-edit" contenteditable="true" data-orig="${esc(r.qty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onblur="saveQty('${r.key}',this)">${esc(r.qty)}</td>
                         <td>${esc(r.바코드)}</td>
                         <td class="loc-cell">${locCell(r)}</td><td class="ctr done-col"></td>

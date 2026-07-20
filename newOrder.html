@@ -93,6 +93,7 @@
         .dash{color:#cbd5e1;}
         .loc-disc{color:#e11d48;font-weight:600;}
         .loc-v2{color:#F0492F;font-weight:600;}     /* 위치v2 계산(미저장) — 주황 */
+        .loc-none{color:#94a3b8;font-weight:500;}   /* 재고 0·NULL 미배정 위치 — 회색 */
         .stock-v2{color:#F0492F;font-weight:600;}
         .loc-v2s{color:#111827;font-weight:600;}    /* 준비v2 저장됨(불러옴) — 검정 */
         .stock-v2s{color:#111827;font-weight:600;}
@@ -274,7 +275,7 @@
                         <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
-                        <td class="ctr">${r.위치v2?((Number(r.재고)||0)>0?`<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${Number(r.재고)}</span>`:'<span class="dash">-</span>'):dashCell(r.재고)}</td>
+                        <td class="ctr">${stockQtyHtml(r)}</td>
                         <td class="ctr">${dashCell(r.입고V2)}</td><td>${v2LocHtml(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
@@ -523,12 +524,29 @@
         // ── 위치v2 / 준비v2 (재고 출고배정 → rk_shipping_list, docs/plan-shipping-list.md) ──
         // v2Saved=true → 저장됨(검정) / false → 계산만 됨(주황)
         function v2LocHtml(r){
+            // '위치' 계산 결과(미저장): 그 바코드의 모든 재고 위치 표시 (배정=주황+수량, 미배정=회색)
+            if(r.stockLocs && r.stockLocs.length && !r.v2Saved){
+                const allocMap=new Map((r.위치v2||[]).map(a=>[a.location,a.qty]));
+                return r.stockLocs.map(sl=>{
+                    const a=allocMap.get(sl.location);
+                    return a>0 ? `<span class="loc-v2">${esc(sl.location+'-'+a)}</span>`
+                               : `<span class="loc-none">${esc(sl.location)}</span>`;
+                }).join('<br>');
+            }
             if(!r.위치v2) return locCell(r.위치);
             const allocs=r.위치v2;
             if(!allocs.length) return '<span class="dash">-</span>';
             const cls=r.v2Saved?'loc-v2s':'loc-v2';
             if(allocs.length===1) return `<span class="${cls}">${esc(allocs[0].location)}</span>`;
             return `<span class="${cls}">${allocs.map(a=>esc(a.location+'-'+a.qty)).join('<br>')}</span>`;
+        }
+        // 재고 열: '위치' 계산 시 위치별 실제 재고(0→0, 값→그대로, NULL→빈칸), 아니면 기존
+        function stockQtyHtml(r){
+            if(r.stockLocs && r.stockLocs.length && !r.v2Saved){
+                return r.stockLocs.map(sl=> sl.qty==null ? '&nbsp;' : String(sl.qty)).join('<br>');
+            }
+            if(r.위치v2) return (Number(r.재고)||0)>0 ? `<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${Number(r.재고)}</span>` : '<span class="dash">-</span>';
+            return dashCell(r.재고);
         }
         function v2TargetRows(){ return selectedRows().length?selectedRows():viewRows; }
         function v2Payload(rows){
@@ -587,6 +605,7 @@
                 if(!out||r.v2Saved) continue;
                 r.재고=out.allocated;
                 r.위치v2=out.allocations;
+                r.stockLocs=out.stockLocs||[];   // 위치별 실제 재고(0/NULL 포함, 표시용)
                 r.v2Saved=false;
             }
             render();
@@ -637,14 +656,14 @@
             // 정렬: 입고예정일 > 물류센터 > 발주번호 > 위치
             const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
             rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.물류센터,b.물류센터)||cmp(a.발주번호,b.발주번호)||cmp(a.위치,b.위치));
-            // 인쇄용: 첫 콤마 앞 마지막 단어가 영어+숫자(배지 조건)면 굵게
+            // 인쇄용: 첫 콤마 앞 마지막 단어가 영어+숫자(모델코드)면 배지 처리
             const modelBold=(name)=>{
                 const s=String(name==null?'':name); const ci=s.indexOf(',');
                 if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
                     if(m){ const t=m[1];
                         if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
                             const before=prefix.slice(0, prefix.length-m[0].length);
-                            return esc(before)+'<b>'+esc(t)+'</b>'+esc(m[2])+esc(rest); } } }
+                            return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
                 return esc(s);
             };
             const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','재고','입고','위치','입고예정일'];
@@ -654,7 +673,7 @@
                 return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${v}</td>`).join('')}</tr>`;
             }).join('');
             const w=window.open('','_blank');
-            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}th:nth-child(2),td:nth-child(2){white-space:nowrap;}th:nth-child(5),td:nth-child(5){word-break:break-word;}</style></head><body><h2>신규 발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}th:nth-child(2),td:nth-child(2){white-space:nowrap;}th:nth-child(5),td:nth-child(5){word-break:break-word;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h2>신규 발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
             w.document.close();
         }
 

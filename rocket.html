@@ -552,14 +552,14 @@
             // 정렬: 입고예정일 > 발주번호 > 위치
             const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
             rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.발주번호,b.발주번호)||cmp(a.위치,b.위치));
-            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','입고V2','입고1','위치','입고예정일'];
+            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','재고','입고','위치','입고예정일'];
             const body=rows.map((r,idx)=>{
                 const groupEnd=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
-                const cells=[r.발주번호,r.물류센터,r.상품번호,r.상품바코드,r.상품명,r.발주수량,r.스캔수량,r.입고V2,r.입고1,r.위치,r.입고예정일];
-                return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`;
+                const cells=[esc(r.발주번호),esc(r.물류센터),esc(r.상품번호),esc(r.상품바코드),modelBadge(r.상품명),esc(r.발주수량),esc(r.스캔수량),esc(r.재고),esc(r.입고V2),esc(r.위치),esc(r.입고예정일)];
+                return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${v}</td>`).join('')}</tr>`;
             }).join('');
             const w=window.open('','_blank');
-            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}</style></head><body><h2>발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h2>발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
             w.document.close();
         }
 

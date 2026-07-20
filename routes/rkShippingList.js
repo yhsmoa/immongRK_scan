@@ -63,15 +63,23 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
 
     // 바코드 → [{stockId, location, avail}] (location 오름차순, 공유 풀)
     const poolByBarcode = new Map();
+    // 바코드 → 위치별 실제 재고 [{location, qty}] (표시용, 0/NULL 포함, location 있는 것만)
+    const stockLocsByBarcode = new Map();
     for (const s of stocks) {
       const loc = String(s.location || '').trim();
       if (!loc || loc === '-') continue;
+      // 표시용: 실제 재고값(0/양수/NULL 구분)
+      if (!stockLocsByBarcode.has(s.barcode)) stockLocsByBarcode.set(s.barcode, []);
+      stockLocsByBarcode.get(s.barcode).push({ location: loc, qty: (s.qty == null ? null : (parseInt(s.qty) || 0)) });
+      // 배정용 풀: 가용(재고−예약)>0 인 위치만
       const avail = (parseInt(s.qty) || 0) - (stockReservedByLoc.get(`${s.barcode}|${loc}`) || 0);
       if (avail <= 0) continue;
       if (!poolByBarcode.has(s.barcode)) poolByBarcode.set(s.barcode, []);
       poolByBarcode.get(s.barcode).push({ stockId: s.id, location: loc, avail });
     }
-    for (const list of poolByBarcode.values()) list.sort((a, b) => a.location.localeCompare(b.location, 'ko', { numeric: true }));
+    const locSort = (a, b) => a.location.localeCompare(b.location, 'ko', { numeric: true });
+    for (const list of poolByBarcode.values()) list.sort(locSort);
+    for (const list of stockLocsByBarcode.values()) list.sort(locSort);
 
     // 3) 행 순서대로 그리디 배정
     const results = [];   // 요청 행별 결과
@@ -96,7 +104,8 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
         }
       }
       const allocatedTotal = allocations.reduce((s, a) => s + a.qty, 0);
-      results.push({ orderNumber, barcode, orderQty, alreadyReserved, allocated: allocatedTotal, allocations });
+      results.push({ orderNumber, barcode, orderQty, alreadyReserved, allocated: allocatedTotal, allocations,
+        stockLocs: stockLocsByBarcode.get(barcode) || [] });
       if (save) {
         for (const a of allocations) {
           insertRows.push({
