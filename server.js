@@ -62,6 +62,11 @@ app.get('/summary', (req, res) => {
   res.sendFile(path.join(__dirname, 'summary.html'));
 });
 
+// ✅ 출고준비 페이지 (요약에서 선택한 발주서 준비 작업)
+app.get('/shipPrepare', (req, res) => {
+  res.sendFile(path.join(__dirname, 'shipPrepare.html'));
+});
+
 // ✅ 스캔 페이지 라우트 추가
 app.get('/scan', (req, res) => {
   res.sendFile(path.join(__dirname, 'scan.html'));

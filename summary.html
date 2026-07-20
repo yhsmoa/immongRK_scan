@@ -30,16 +30,18 @@
 
         .list{padding:6px 12px 20px;}
         .date-row{display:flex;align-items:center;gap:8px;margin:16px 6px 10px;}
-        .date-badge{display:inline-block;background:#2563eb;color:#fff;font-size:12.5px;font-weight:700;
-            padding:5px 12px;border-radius:7px;cursor:pointer;user-select:none;}
+        .date-badge{display:inline-block;background:#2563eb;color:#fff;font-size:13.5px;font-weight:700;
+            padding:6px 14px;border-radius:7px;cursor:pointer;user-select:none;}
         .date-badge:hover{background:#1d4ed8;}
         .date-badge.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
-        .date-meta{font-size:11.5px;color:var(--muted);}
+        .date-meta{font-size:12px;color:var(--muted);}
         .center-group{margin:0 8px 12px;}
         .center-head{display:flex;align-items:center;gap:8px;margin:0 2px 8px;}
         .center-name{display:inline-block;background:#dbeafe;color:#2563eb;
-            font-size:12px;font-weight:700;padding:3px 10px;border-radius:7px;}
-        .center-meta{font-size:11.5px;color:var(--muted);}
+            font-size:13px;font-weight:700;padding:5px 12px;border-radius:7px;cursor:pointer;user-select:none;}
+        .center-name:hover{background:#bfdbfe;}
+        .center-name.sel{background:#2563eb;color:#fff;box-shadow:0 0 0 2px rgba(37,99,235,.30);}
+        .center-meta{font-size:12px;color:var(--muted);}
         .orders{display:flex;flex-wrap:wrap;gap:8px;}
         .order{position:relative;overflow:hidden;border:1px solid #e5e9f0;border-radius:9px;cursor:pointer;
             background:#fff;transition:border-color .12s,box-shadow .12s;min-width:132px;
@@ -65,6 +67,12 @@
             padding:2px 6px;border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.15);z-index:2;}
         .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px;}
 
+        /* 플로팅 출고준비 버튼 (화면 우하단 고정, 태블릿 대응) */
+        #shipPrepBtn{position:fixed;right:22px;bottom:22px;z-index:9998;display:none;
+            height:56px;padding:0 26px;border:none;border-radius:14px;background:var(--primary);color:#fff;
+            font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(240,73,47,.35);}
+        #shipPrepBtn:hover{background:#d63d26;}
+        #shipPrepBtn.show{display:inline-flex;align-items:center;gap:8px;}
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;
             padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);
             opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
@@ -99,6 +107,8 @@
             </div>
         </div>
     </div>
+
+    <button id="shipPrepBtn" onclick="goShipPrepare()">출고준비 <span id="spCnt"></span></button>
 
     <div id="toast"></div>
     <div class="modal-back" id="modalBack">
@@ -164,7 +174,7 @@
                     byCenter.get(o.물류센터).push(o);
                 }
                 for(const [center,cOrders] of byCenter){
-                    html+=`<div class="center-group"><div class="center-head"><span class="center-name">${esc(center)}</span><span class="center-meta">${cOrders.length}건</span></div><div class="orders">`;
+                    html+=`<div class="center-group"><div class="center-head"><span class="center-name" data-date="${esc(date)}" data-center="${esc(center)}" onclick="toggleCenter('${esc(date)}','${esc(center)}')">${esc(center)}</span><span class="center-meta">${cOrders.length}건</span></div><div class="orders">`;
                     html+=cOrders.map(o=>{
                         const sel=selected.has(o.발주번호)?'sel':'';
                         const done=isDone(o);
@@ -182,6 +192,13 @@
                 }
             }
             list.innerHTML=html;
+            updateSelectionUI();
+        }
+
+        // 플로팅 출고준비 → 선택 발주서를 가지고 출고준비 페이지로 이동
+        function goShipPrepare(){
+            if(selected.size===0) return;
+            location.href='/shipPrepare?orders='+encodeURIComponent([...selected].join(','));
         }
 
         // 선택 변경 시 전체 재렌더 대신 클래스만 갱신 (물결 애니메이션 유지)
@@ -189,9 +206,16 @@
             document.getElementById('selCount').textContent=selected.size;
             document.getElementById('btnCenter').disabled=selected.size===0;
             document.getElementById('btnComplete').disabled=selected.size===0;
+            const sp=document.getElementById('shipPrepBtn');
+            sp.classList.toggle('show',selected.size>0);
+            document.getElementById('spCnt').textContent=selected.size>0?`(${selected.size})`:'';
             document.querySelectorAll('.order').forEach(el=>el.classList.toggle('sel',selected.has(el.dataset.no)));
             document.querySelectorAll('.date-badge').forEach(el=>{
                 const nos=orders.filter(o=>o.입고예정일===el.dataset.date).map(o=>o.발주번호);
+                el.classList.toggle('sel',nos.length>0&&nos.every(n=>selected.has(n)));
+            });
+            document.querySelectorAll('.center-name').forEach(el=>{
+                const nos=orders.filter(o=>o.입고예정일===el.dataset.date&&o.물류센터===el.dataset.center).map(o=>o.발주번호);
                 el.classList.toggle('sel',nos.length>0&&nos.every(n=>selected.has(n)));
             });
         }
@@ -201,6 +225,14 @@
         }
         function toggleDate(date){
             const nos=orders.filter(o=>o.입고예정일===date).map(o=>o.발주번호);
+            const allSel=nos.length>0 && nos.every(n=>selected.has(n));
+            if(allSel) nos.forEach(n=>selected.delete(n));
+            else nos.forEach(n=>selected.add(n));
+            updateSelectionUI();
+        }
+        // 센터 배지 클릭 → 그 날짜+센터의 발주서 전부 토글
+        function toggleCenter(date,center){
+            const nos=orders.filter(o=>o.입고예정일===date&&o.물류센터===center).map(o=>o.발주번호);
             const allSel=nos.length>0 && nos.every(n=>selected.has(n));
             if(allSel) nos.forEach(n=>selected.delete(n));
             else nos.forEach(n=>selected.add(n));
@@ -228,8 +260,9 @@
         // ── 처리완료 (선택 발주서 status = DONE) ──
         async function completeOrders(){
             if(selected.size===0){ toast('선택된 발주서가 없습니다.'); return; }
-            const ok=await openModal({title:'처리완료',desc:`선택한 ${selected.size}건을 처리완료(DONE)로 변경합니다. 확인하려면 아무 값이나 입력 후 확인을 누르세요.`,value:''});
+            const ok=await openModal({title:'처리완료',descHtml:`선택한 ${selected.size}건을 처리완료로 변경합니다.<br>진행을 원하시면 <b style="color:#dc2626">패스워드</b>를 입력해주세요.`,value:'',password:true});
             if(ok==null) return;
+            if(String(ok).trim()!=='cheoqkr1!'){ toast('패스워드가 올바르지 않습니다.'); return; }
             toast('처리 중…');
             try{
                 const res=await fetch('/api/orders/complete',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -246,10 +279,11 @@
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2800);}
 
         let _modalResolve=null;
-        function openModal({title,desc,value=''}){
+        function openModal({title,desc,descHtml,value='',password=false}){
             document.getElementById('mTitle').textContent=title;
-            document.getElementById('mDesc').textContent=desc||'';
-            const inp=document.getElementById('mInput');inp.value=value;
+            const d=document.getElementById('mDesc');
+            if(descHtml!=null) d.innerHTML=descHtml; else d.textContent=desc||'';
+            const inp=document.getElementById('mInput');inp.type=password?'password':'text';inp.value=value;
             document.getElementById('modalBack').classList.add('show');
             setTimeout(()=>inp.focus(),50);
             return new Promise(res=>{_modalResolve=res;});
