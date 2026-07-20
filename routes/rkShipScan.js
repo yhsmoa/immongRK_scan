@@ -156,4 +156,32 @@ router.post('/api/ship-scan/delete-box', async (req, res) => {
   }
 });
 
+// 스캔개수 맵 — rk_ship_box_items 를 발주번호+바코드로 합산(박스가 달라도 합침)
+// 응답: { "발주번호|바코드": qty합, ... }  (rocket 스캔수량 표시용)
+router.get('/api/ship-scan/scanned-map', async (req, res) => {
+  try {
+    const map = {};
+    let from = 0;
+    const size = 1000;
+    while (true) {
+      const { data, error } = await sb.from('rk_ship_box_items')
+        .select('order_number, barcode, qty')
+        .order('id', { ascending: true })
+        .range(from, from + size - 1);
+      if (error) throw error;
+      for (const r of data) {
+        if (!r.order_number || !r.barcode) continue;
+        const k = `${r.order_number}|${r.barcode}`;
+        map[k] = (map[k] || 0) + (parseInt(r.qty, 10) || 0);
+      }
+      if (data.length < size) break;
+      from += size;
+    }
+    res.json(map);
+  } catch (e) {
+    console.error('[rk] ship-scan/scanned-map:', e);
+    res.status(500).json({ error: '스캔개수 조회 실패: ' + e.message });
+  }
+});
+
 module.exports = router;

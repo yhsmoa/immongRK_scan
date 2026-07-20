@@ -215,13 +215,16 @@
 
         async function loadData(){
             try{
-                // 발주서 + 출고준비(rk_shipping_list, 출고예정) 병렬 로드
-                const [res,slRes]=await Promise.all([
+                // 발주서 + 출고준비(rk_shipping_list) + 출고스캔개수(rk_ship_box_items) 병렬 로드
+                const [res,slRes,scRes]=await Promise.all([
                     fetch('/api/orders'), // Supabase 기반, referer=/rocket → dedup
-                    fetch('/api/shipping-list?status='+encodeURIComponent('출고예정'))
+                    fetch('/api/shipping-list?status='+encodeURIComponent('출고예정')),
+                    fetch('/api/ship-scan/scanned-map')
                 ]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const orders=await res.json();
+                // 스캔수량: rk_ship_box_items 합계(발주번호+바코드, 박스 무관)로 대체
+                const scanMap=scRes.ok?await scRes.json():{};
                 // 발주번호|바코드 → {재고합, 입고합} (source: 재고→재고열, 입고→입고V2열)
                 const slMap=new Map();
                 if(slRes.ok){
@@ -239,7 +242,7 @@
                         const sl=slMap.get(`${o.발주번호}|${p.상품바코드}`);
                         allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
                             상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
-                            발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:p.스캔수량,
+                            발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:scanMap[`${o.발주번호}|${p.상품바코드}`]||0,
                             재고:(sl&&sl.재고>0)?sl.재고:null,입고V2:(sl&&sl.입고>0)?sl.입고:null,
                             입고1:p.입고1,위치:p.위치,created_at:o.created_at});
                     }
