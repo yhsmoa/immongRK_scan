@@ -614,9 +614,9 @@
         function printRows(){
             let rows=selectedRows().length?selectedRows():viewRows;
             if(!rows.length){toast('인쇄할 행이 없습니다.');return;}
-            // 정렬: 입고예정일 > 발주번호 > 위치
+            // 정렬: 입고예정일 > 물류센터 > 발주번호 > 위치
             const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
-            rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.발주번호,b.발주번호)||cmp(a.위치,b.위치));
+            rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.물류센터,b.물류센터)||cmp(a.발주번호,b.발주번호)||cmp(a.위치,b.위치));
             // 인쇄용: 첫 콤마 앞 마지막 단어가 영어+숫자(배지 조건)면 굵게
             const modelBold=(name)=>{
                 const s=String(name==null?'':name); const ci=s.indexOf(',');
