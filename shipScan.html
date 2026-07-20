@@ -383,10 +383,36 @@
             bcInput.focus();
         });
 
+        // ── 효과음 (오디오 파일 없이 브라우저 API로 생성, /scan 과 동일) ──
+        function playSuccessSound(){
+            try{
+                const ac=new (window.AudioContext||window.webkitAudioContext)();
+                const osc=ac.createOscillator(), g=ac.createGain();
+                osc.type='sine';
+                osc.frequency.setValueAtTime(523.25, ac.currentTime);        // C5
+                osc.frequency.setValueAtTime(659.25, ac.currentTime+0.1);    // E5
+                osc.frequency.setValueAtTime(783.99, ac.currentTime+0.2);    // G5
+                osc.frequency.setValueAtTime(1046.50, ac.currentTime+0.3);   // C6
+                osc.connect(g); g.connect(ac.destination); g.gain.value=0.5; osc.start();
+                setTimeout(()=>osc.stop(), 400);
+            }catch(e){}
+        }
+        function playWarningSound(){
+            try{
+                const ac=new (window.AudioContext||window.webkitAudioContext)();
+                const osc=ac.createOscillator(), g=ac.createGain();
+                osc.type='square'; osc.frequency.value=800;
+                osc.connect(g); g.connect(ac.destination); g.gain.value=0.7; osc.start();
+                setTimeout(()=>{g.gain.value=0;},150); setTimeout(()=>{g.gain.value=0.7;},300);
+                setTimeout(()=>{g.gain.value=0;},450); setTimeout(()=>{g.gain.value=0.7;},600);
+                setTimeout(()=>osc.stop(), 750);
+            }catch(e){}
+        }
+
         function doScan(boxNo, barcode){
             const prod=prodByBarcode(barcode);
-            if(!prod){ toast('발주서에 없는 바코드입니다.'); return; }
-            if(prod.scannedQty >= prod.orderQty){ toast(`이미 확정수량(${prod.orderQty})만큼 스캔되었습니다.`); return; }
+            if(!prod){ playWarningSound(); toast('발주서에 없는 바코드입니다.'); return; }
+            if(prod.scannedQty >= prod.orderQty){ playWarningSound(); toast(`이미 확정수량(${prod.orderQty})만큼 스캔되었습니다.`); return; }
 
             const size=savedBoxes.find(b=>b.boxNo===boxNo)?.boxSize || boxSizeMap.get(boxNo) || currentBoxSize;
             if(!savedBoxes.some(b=>b.boxNo===boxNo)) boxSizeMap.set(boxNo,size);
@@ -402,6 +428,7 @@
             if(last && last.boxNo===boxNo && last.barcode===barcode){ last.qty++; }
             else{ records.push({boxNo, boxSize:size, barcode, productName:prod.productName, qty:1}); }
 
+            playSuccessSound();
             renderAll();
             scrollToBarcode(barcode);
         }
