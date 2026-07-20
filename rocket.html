@@ -149,16 +149,16 @@
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:50px"><col style="width:84px"><col style="width:76px"><col style="width:99px">
+                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:84px"><col style="width:76px"><col style="width:99px">
                     </colgroup>
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>발주번호</th><th>물류센터</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
-                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고V2</th><th class="ctr">입고1</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="15">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="14">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
@@ -246,7 +246,7 @@
                 }
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="15">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="14">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -257,7 +257,7 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(pageRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="15">표시할 발주 상품이 없습니다.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="14">표시할 발주 상품이 없습니다.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map((r,li)=>{
                     const i=start+li;
@@ -274,7 +274,7 @@
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${dashCell(r.재고)}</td>
-                        <td class="ctr">${dashCell(r.입고V2)}</td><td class="ctr">${dashCell(r.입고1)}</td><td>${locCell(r.위치)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                        <td class="ctr">${dashCell(r.입고V2)}</td><td>${locCell(r.위치)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }

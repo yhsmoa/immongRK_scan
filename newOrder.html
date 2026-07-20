@@ -124,9 +124,9 @@
                 </div>
                 <div class="actions">
                     <button class="btn" onclick="openOrderPanel()">전체보기</button>
-                    <button class="btn" onclick="loadLocations()">위치 불러오기</button>
-                    <button class="btn" onclick="loadLocationsV2()">위치v2</button>
-                    <button class="btn" onclick="prepareV2()">준비v2</button>
+                    <button class="btn" onclick="loadLocations()" disabled>위치 불러오기</button>
+                    <button class="btn" onclick="loadLocationsV2()">위치</button>
+                    <button class="btn" onclick="prepareV2()">준비</button>
                     <button class="btn" onclick="exportSelectedOrders()">엑셀저장</button>
                     <button class="btn" onclick="printRows()">인쇄</button>
                     <button class="btn danger" onclick="deleteRows()">삭제</button>
@@ -163,16 +163,16 @@
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:50px"><col style="width:84px"><col style="width:76px"><col style="width:99px">
+                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:84px"><col style="width:76px"><col style="width:99px">
                     </colgroup>
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>발주번호</th><th>물류센터</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
-                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고1</th><th class="ctr">입고2</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="15">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="14">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
@@ -245,7 +245,7 @@
                 await loadSavedV2();
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="15">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="14">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -256,7 +256,7 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(pageRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="15">표시할 발주 상품이 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="14">표시할 발주 상품이 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map((r,li)=>{
                     const i=start+li;
@@ -273,7 +273,7 @@
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${r.위치v2?((Number(r.재고)||0)>0?`<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${Number(r.재고)}</span>`:'<span class="dash">-</span>'):dashCell(r.재고)}</td>
-                        <td class="ctr">${dashCell(r.입고1)}</td><td class="ctr">${dashCell(r.입고2)}</td><td>${v2LocHtml(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                        <td class="ctr">${dashCell(r.입고V2)}</td><td>${v2LocHtml(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }
@@ -538,22 +538,40 @@
         // 저장된 재고건(출고예정) 불러와 행에 적용 (검정 표시) — 페이지 진입/새로고침 시
         async function loadSavedV2(){
             try{
-                const res=await fetch('/api/shipping-list?source=재고&status=출고예정');
-                if(!res.ok) return;
-                const list=await res.json();
-                const map=new Map();
-                for(const x of list){
-                    const key=`${x.orderNumber}|${x.barcode}`;
-                    if(!map.has(key)) map.set(key,[]);
-                    map.get(key).push({location:x.location, qty:Number(x.qty)||0});
+                const [rRes,iRes]=await Promise.all([
+                    fetch('/api/shipping-list?source=재고&status=출고예정'),
+                    fetch('/api/shipping-list?source=입고&status=출고예정')
+                ]);
+                // 재고(출고예정) → 재고 열 + 위치v2
+                if(rRes.ok){
+                    const list=await rRes.json();
+                    const map=new Map();
+                    for(const x of list){
+                        const key=`${x.orderNumber}|${x.barcode}`;
+                        if(!map.has(key)) map.set(key,[]);
+                        map.get(key).push({location:x.location, qty:Number(x.qty)||0});
+                    }
+                    for(const r of allRows){
+                        const allocs=map.get(`${r.발주번호}|${r.상품바코드}`);
+                        if(allocs&&allocs.length){
+                            allocs.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
+                            r.위치v2=allocs;
+                            r.재고=allocs.reduce((s,a)=>s+a.qty,0);
+                            r.v2Saved=true;
+                        }
+                    }
                 }
-                for(const r of allRows){
-                    const allocs=map.get(`${r.발주번호}|${r.상품바코드}`);
-                    if(allocs&&allocs.length){
-                        allocs.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
-                        r.위치v2=allocs;
-                        r.재고=allocs.reduce((s,a)=>s+a.qty,0);
-                        r.v2Saved=true;
+                // 입고(출고예정) → 입고 열
+                if(iRes.ok){
+                    const ilist=await iRes.json();
+                    const imap=new Map();
+                    for(const x of ilist){
+                        const key=`${x.orderNumber}|${x.barcode}`;
+                        imap.set(key,(imap.get(key)||0)+(Number(x.qty)||0));
+                    }
+                    for(const r of allRows){
+                        const q=imap.get(`${r.발주번호}|${r.상품바코드}`);
+                        r.입고V2=(q&&q>0)?q:null;
                     }
                 }
             }catch(e){/* 저장분 불러오기 실패는 무시 */}
@@ -627,10 +645,10 @@
                             return esc(before)+'<b>'+esc(t)+'</b>'+esc(m[2])+esc(rest); } } }
                 return esc(s);
             };
-            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','입고1','입고2','위치','입고예정일'];
+            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','재고','입고','위치','입고예정일'];
             const body=rows.map((r,idx)=>{
                 const groupEnd=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
-                const cells=[esc(r.발주번호),esc(r.물류센터),esc(r.상품번호),esc(r.상품바코드),modelBold(r.상품명),esc(r.발주수량),esc(r.스캔수량),esc(r.입고1),esc(r.입고2),esc(r.위치),esc(r.입고예정일)];
+                const cells=[esc(r.발주번호),esc(r.물류센터),esc(r.상품번호),esc(r.상품바코드),modelBold(r.상품명),esc(r.발주수량),esc(r.스캔수량),esc(r.재고),esc(r.입고V2),esc(r.위치),esc(r.입고예정일)];
                 return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${v}</td>`).join('')}</tr>`;
             }).join('');
             const w=window.open('','_blank');
