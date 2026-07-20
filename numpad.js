@@ -39,13 +39,14 @@
     const disp = back.querySelector('#__npDisplay');
     const titleEl = back.querySelector('#__npTitle');
     const np = back.querySelector('.np');
-    let val = '', fresh = false, min = 1, onConfirm = null;
+    let val = '', fresh = false, min = 1, max = null, onConfirm = null;
     const upd = () => { disp.textContent = val || '0'; };
     function tap(d) {
       if (d === 'C') { val = ''; fresh = false; upd(); return; }
       if (d === 'back') { fresh = false; val = val.slice(0, -1); upd(); return; }
       if (fresh) { val = ''; fresh = false; }           // 첫 숫자 입력 → 기존값 초기화
       val = (val + d).replace(/^0+(?=\d)/, '').slice(0, 6);
+      if (max != null && parseInt(val, 10) > max) val = String(max); // 상한 초과 시 상한으로 고정
       upd();
     }
     back.querySelectorAll('.np-grid button').forEach(b => b.onclick = () => tap(b.dataset.d));
@@ -64,6 +65,7 @@
         val = (opts.value != null ? String(opts.value) : '');
         fresh = true;                                    // 기존값 표시 + 첫 숫자에 초기화
         min = (opts.min != null ? opts.min : 1);
+        max = (opts.max != null ? opts.max : null);
         onConfirm = opts.onConfirm || null;
         titleEl.innerHTML = opts.title || '수량 입력';
         upd();

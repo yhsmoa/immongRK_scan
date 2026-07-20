@@ -35,9 +35,9 @@
         /* ── 왼쪽 상단: 선택된 발주서 버튼들 (요약 배지 스타일) ── */
         .ord-box{background:#fff;border:1px solid #edeff3;border-radius:14px;padding:14px;margin-bottom:14px;}
         .ord-box .sec-label{font-size:13px;font-weight:600;color:#475569;margin-bottom:9px;}
-        .orders{display:flex;flex-wrap:wrap;gap:8px;}
+        .orders{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
         .order{position:relative;overflow:hidden;border:1px solid #e5e9f0;border-radius:9px;cursor:pointer;
-            background:#fff;transition:border-color .12s,box-shadow .12s;min-width:132px;
+            background:#fff;transition:border-color .12s,box-shadow .12s;min-width:0;
             box-shadow:2px 2px 5px rgba(15,23,42,.07);}
         .order:hover{border-color:#cbd5e1;}
         .order.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,70,229,.25),2px 2px 5px rgba(15,23,42,.09);}
@@ -49,20 +49,24 @@
         .o-qty b{color:#16a34a;}
 
         /* ── 왼쪽 하단: 현재 찾는 상품 카드 ── */
-        .cur-box{background:#fff;border:1px solid #edeff3;border-radius:14px;padding:16px;}
+        .cur-box{background:#fff;border:1px solid #edeff3;border-radius:14px;padding:16px;margin-bottom:14px;}
         .cur-label{font-size:13px;font-weight:600;color:#475569;margin-bottom:9px;}
         .cur-loc-row{display:flex;gap:8px;margin-bottom:10px;}
-        .cur-loc{flex:1;min-width:0;height:96px;border:2px solid #93c5fd;border-radius:12px;background:#DBEAFE;
+        .cur-loc{flex:1.1;min-width:0;height:96px;border-radius:12px;background:#DBEAFE;
             display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#2563eb;padding:0 8px;}
         .cur-loc .cl-cap{font-size:12px;font-weight:700;opacity:.75;}
         .cur-loc .cl-val{font-size:34px;font-weight:800;line-height:1.05;word-break:break-all;text-align:center;}
-        .cur-bc{flex:1.4;min-width:0;height:96px;border:2px solid #e5e9f0;border-radius:12px;background:#fff;
+        .cur-bc{flex:1.5;min-width:0;height:96px;border-radius:12px;background:#f8fafc;
             display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink);padding:0 8px;}
         .cur-bc .cl-cap{font-size:12px;font-weight:700;color:#94a3b8;}
         .cur-bc .cl-val{font-size:26px;font-weight:800;line-height:1.05;word-break:break-all;text-align:center;font-variant-numeric:tabular-nums;}
-        .cur-name{border:1px solid #eef2f7;border-radius:12px;background:#f8fafc;padding:12px 14px;margin-bottom:10px;
-            font-size:15px;font-weight:600;color:#334155;line-height:1.5;word-break:break-word;min-height:52px;}
-        .cur-name .cn-qty{float:right;font-size:18px;font-weight:800;color:#1e293b;margin-left:10px;font-variant-numeric:tabular-nums;}
+        .cur-qty{flex:.7;min-width:0;height:96px;border-radius:12px;background:#f8fafc;
+            display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink);padding:0 6px;}
+        .cur-qty .cl-cap{font-size:12px;font-weight:700;color:#94a3b8;}
+        .cur-qty .cl-val{font-size:34px;font-weight:800;line-height:1.05;text-align:center;font-variant-numeric:tabular-nums;}
+        .cur-name{border:1px solid #eef2f7;border-radius:12px;background:#f8fafc;padding:14px 16px;margin-bottom:10px;
+            font-size:21px;font-weight:700;color:#1e293b;line-height:1.45;word-break:break-word;min-height:60px;}
+        .cur-name .name-badge{font-size:19px;padding:1px 9px;}
         /* 준비 / 재고 입력 */
         .val-row{display:flex;gap:8px;margin-bottom:10px;}
         .val-cell{flex:1;height:88px;border:2px solid #e5e9f0;border-radius:12px;background:#fff;cursor:pointer;
@@ -121,13 +125,7 @@
             <div class="split">
                 <!-- 왼쪽 -->
                 <div class="left">
-                    <!-- 상단: 선택된 발주서 버튼들 -->
-                    <div class="ord-box">
-                        <div class="sec-label">발주서</div>
-                        <div class="orders" id="ordList"></div>
-                    </div>
-
-                    <!-- 하단: 지금 찾아야 하는 상품 -->
+                    <!-- 상단: 지금 찾아야 하는 상품 -->
                     <div class="cur-box">
                         <div class="cur-label">지금 찾을 상품</div>
                         <div class="cur-loc-row">
@@ -139,8 +137,12 @@
                                 <span class="cl-cap">바코드</span>
                                 <span class="cl-val" id="curBc">-</span>
                             </div>
+                            <div class="cur-qty">
+                                <span class="cl-cap">수량</span>
+                                <span class="cl-val" id="curQtyBig">-</span>
+                            </div>
                         </div>
-                        <div class="cur-name" id="curName"><span class="cn-qty" id="curQty"></span>발주서를 선택하세요.</div>
+                        <div class="cur-name" id="curName">발주서를 선택하세요.</div>
                         <div class="val-row">
                             <div class="val-cell" onclick="editVal('prep')">
                                 <span class="vc-cap">준비</span>
@@ -155,6 +157,12 @@
                             <button class="nav-btn" id="prevBtn" onclick="movePrev()">← 이전</button>
                             <button class="nav-btn next" id="nextBtn" onclick="moveNext()">다음 →</button>
                         </div>
+                    </div>
+
+                    <!-- 하단: 선택된 발주서 버튼들 -->
+                    <div class="ord-box">
+                        <div class="sec-label">발주서</div>
+                        <div class="orders" id="ordList"></div>
                     </div>
                 </div>
 
@@ -248,9 +256,8 @@
             const it=o&&o.items[curIdx];
             document.getElementById('curLoc').textContent=it?(it.위치||'-'):'-';
             document.getElementById('curBc').textContent=it?it.바코드:'-';
-            document.getElementById('curName').innerHTML=it
-                ? `<span class="cn-qty" id="curQty">${it.수량}</span>`+modelBadge(it.상품명)
-                : `<span class="cn-qty" id="curQty"></span>품목이 없습니다.`;
+            document.getElementById('curQtyBig').textContent=it?it.수량:'-';
+            document.getElementById('curName').innerHTML=it?modelBadge(it.상품명):'품목이 없습니다.';
             const vp=document.getElementById('valPrep'), vs=document.getElementById('valStock');
             vp.textContent=it&&it.준비!=null?it.준비:'-';
             vp.classList.toggle('empty',!(it&&it.준비!=null));
@@ -271,8 +278,11 @@
             if(!it){ toast('품목이 없습니다.'); return; }
             const cap=kind==='prep'?'준비':'재고';
             const cur=kind==='prep'?it.준비:it.재고;
-            NumPad.open({ title:`${cap} 수량 · <b>${esc(it.바코드)}</b>`, value:cur==null?0:cur, min:0,
-                onConfirm:(n)=>{ if(kind==='prep') it.준비=n; else it.재고=n; renderCur(); renderItems(); } });
+            // 준비는 수량(확정수량)을 초과할 수 없음. 재고는 상한 없음.
+            const opts={ title:`${cap} 수량 · <b>${esc(it.바코드)}</b>`, value:cur==null?0:cur, min:0,
+                onConfirm:(n)=>{ if(kind==='prep') it.준비=n; else it.재고=n; renderCur(); renderItems(); } };
+            if(kind==='prep') opts.max=Number(it.수량)||0;
+            NumPad.open(opts);
         }
 
         // ── 오른쪽 목록 ──
