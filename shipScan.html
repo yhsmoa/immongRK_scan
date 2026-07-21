@@ -57,6 +57,8 @@
         .size-btn{height:64px;border:1px solid #e2e8f0;background:#fff;border-radius:9px;font-size:15px;font-weight:700;color:#475569;cursor:pointer;} /* 높이 = 박스 선택 버튼과 통일 */
         .size-btn:hover{background:#f8faff;border-color:#c7d2fe;}
         .size-btn.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+        .size-btn:disabled{opacity:.4;cursor:default;background:#f8fafc;color:#94a3b8;}
+        .size-btn:disabled:hover{background:#f8fafc;border-color:#e2e8f0;}
 
         /* 오른쪽 */
         .right-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;}
@@ -163,11 +165,11 @@
                             <label class="scan-field" style="margin:0 0 7px;display:block;font-size:13px;font-weight:600;color:#475569;">② 박스</label>
                             <button class="box-btn empty" id="boxBtn" onclick="openBoxModal()">박스 번호 선택</button>
                             <div class="size-row" id="sizeRow">
-                                <button class="size-btn active" data-size="극소" onclick="selectSize('극소')">극소</button>
-                                <button class="size-btn" data-size="소" onclick="selectSize('소')">소</button>
-                                <button class="size-btn" data-size="중" onclick="selectSize('중')">중</button>
-                                <button class="size-btn" data-size="대" onclick="selectSize('대')">대</button>
-                                <button class="size-btn" data-size="대2" onclick="selectSize('대2')">대2</button>
+                                <button class="size-btn" data-size="극소" onclick="selectSize('극소')" disabled>극소</button>
+                                <button class="size-btn" data-size="소" onclick="selectSize('소')" disabled>소</button>
+                                <button class="size-btn" data-size="중" onclick="selectSize('중')" disabled>중</button>
+                                <button class="size-btn" data-size="대" onclick="selectSize('대')" disabled>대</button>
+                                <button class="size-btn" data-size="대2" onclick="selectSize('대2')" disabled>대2</button>
                             </div>
                         </div>
                         <div class="scan-field">
@@ -279,7 +281,7 @@
         let records=[];               // 기록 로그(표시용, 시간순)
         const boxSizeMap=new Map();   // boxNo -> size (세션/저장)
         let currentBoxNo=null;
-        let currentBoxSize='극소';
+        let currentBoxSize=null;   // null = 크기 미선택 (박스 선택 전/신규 박스)
         let lastScanBarcode=null;
         let dirty=false;              // 미저장 변경 여부
         let listSelBox=null;          // 목록 패널에서 선택한 박스
@@ -344,15 +346,18 @@
             let html='';
             for(let n=1;n<=20;n++){
                 const cls=(boxExists(n)?'exists ':'')+(currentBoxNo===n?'sel':'');
-                html+=`<div class="box-cell ${cls}" onclick="selectBox(${n})"><div class="emoji">📦</div><div class="type">${esc(boxSizeOf(n))}</div><div class="no">${n}</div></div>`;
+                // 미생성 박스는 크기 타입 표시 안 함 (사용자가 지정한 값이 아니므로)
+                const sz=boxExists(n)?(boxSizeOf(n)||''):'';
+                html+=`<div class="box-cell ${cls}" onclick="selectBox(${n})"><div class="emoji">📦</div><div class="type">${esc(sz)||'&nbsp;'}</div><div class="no">${n}</div></div>`;
             }
             document.getElementById('boxGrid').innerHTML=html;
         }
         function selectBox(no){
             currentBoxNo=no;
             const saved=savedBoxes.find(b=>b.boxNo===no);
-            if(saved){ currentBoxSize=saved.boxSize; } // 기존 박스 = 그 크기
+            if(saved){ currentBoxSize=saved.boxSize; }              // 기존 박스 = 그 크기
             else if(boxSizeMap.has(no)){ currentBoxSize=boxSizeMap.get(no); }
+            else { currentBoxSize=null; }                            // 신규 박스 = 크기 미선택
             setBoxBtn(); setSizeActive(); closeBoxModal();
             bcInput.focus();
         }
@@ -362,12 +367,19 @@
             else{ b.textContent='박스 번호 선택'; b.classList.add('empty'); }
         }
         function selectSize(size){
+            if(currentBoxNo==null){ toast('박스를 먼저 선택하세요.'); return; }
             currentBoxSize=size;
-            if(currentBoxNo!=null && !savedBoxes.some(b=>b.boxNo===currentBoxNo)) boxSizeMap.set(currentBoxNo,size);
+            if(!savedBoxes.some(b=>b.boxNo===currentBoxNo)) boxSizeMap.set(currentBoxNo,size);
             setSizeActive(); renderList();
+            bcInput.focus();   // 크기 선택/변경 → 바로 바코드 스캔으로
         }
+        // 박스 미선택이면 크기 버튼 비활성, 선택 크기만 active
         function setSizeActive(){
-            document.querySelectorAll('.size-btn').forEach(b=>b.classList.toggle('active', b.dataset.size===currentBoxSize));
+            const enabled=currentBoxNo!=null;
+            document.querySelectorAll('.size-btn').forEach(b=>{
+                b.disabled=!enabled;
+                b.classList.toggle('active', enabled && b.dataset.size===currentBoxSize);
+            });
         }
 
         // ── 바코드 스캔 ──
@@ -414,7 +426,7 @@
             if(!prod){ playWarningSound(); toast('발주서에 없는 바코드입니다.'); return; }
             if(prod.scannedQty >= prod.orderQty){ playWarningSound(); toast(`이미 확정수량(${prod.orderQty})만큼 스캔되었습니다.`); return; }
 
-            const size=savedBoxes.find(b=>b.boxNo===boxNo)?.boxSize || boxSizeMap.get(boxNo) || currentBoxSize;
+            const size=savedBoxes.find(b=>b.boxNo===boxNo)?.boxSize || boxSizeMap.get(boxNo) || currentBoxSize || '극소';
             if(!savedBoxes.some(b=>b.boxNo===boxNo)) boxSizeMap.set(boxNo,size);
 
             // 박스 아이템 증가 (같은 박스+바코드 합산)
@@ -619,7 +631,7 @@
         function onDone(){ resetPage(); }
         function resetPage(){
             currentOrder=''; products=[]; boxItems=[]; savedBoxes=[]; records=[]; boxSizeMap.clear();
-            currentBoxNo=null; currentBoxSize='극소'; lastScanBarcode=null; dirty=false; listSelBox=null; bcDetailBc=null;
+            currentBoxNo=null; currentBoxSize=null; lastScanBarcode=null; dirty=false; listSelBox=null; bcDetailBc=null;
             orderInput.value=''; orderInput.classList.remove('has-ord','locked'); orderInput.style.display='';
             document.getElementById('curOrder').textContent='-';
             document.getElementById('ordDisplay').style.display='none';

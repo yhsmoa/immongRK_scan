@@ -5,110 +5,125 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>출고준비</title>
     <style>
-        /* shipScan.html 스타일 복사 (독립 — 서로 영향 없음) */
+        /* 태블릿 사용성 개선안 반영 (독립 파일 — 다른 페이지와 서로 영향 없음) */
         :root{
-            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
-            --line:#eef2f7; --primary:#4f46e5; --primary-dark:#4338ca; --blue:#2563eb; --hover:#f8fafc;
+            --bg:#eef0f6; --card:#fff; --ink:#1e2233; --ink-soft:#5a6178; --muted:#a0a6bd;
+            --line:#e4e7f0; --primary:#4f46e5; --primary-dark:#4338ca; --hover:#f6f7fc;
         }
         *{box-sizing:border-box;}
-        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
-        .page{max-width:1720px;width:96%;margin:22px auto;}
-        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:20px 22px;}
-        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
-        .title-wrap{display:flex;align-items:baseline;gap:12px;}
-        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
-        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
-        .subtitle b{color:var(--primary);font-weight:600;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink);font-size:14px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:18px auto;}
+        .card{background:var(--card);border:1px solid #e4e7f0;border-radius:18px;box-shadow:0 2px 8px rgba(30,34,51,.05);padding:20px 22px;}
 
-        .btn{height:40px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
-        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
-        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);box-shadow:0 1px 2px rgba(79,70,229,.25);}
-        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
-        .btn:disabled{opacity:.5;cursor:default;background:#fff;border-color:#e2e8f0;color:#94a3b8;}
+        /* 헤더 + 진행률 */
+        .head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
+        .title{font-size:22px;font-weight:700;letter-spacing:-.5px;margin:0;}
+        .meta{font-size:14px;color:#7a8199;}
+        .meta strong{color:var(--primary);}
+        .spacer{flex:1;}
+        .prog{display:flex;align-items:center;gap:10px;}
+        .prog .lbl{font-size:14px;color:#7a8199;}
+        .prog .val{font-size:15px;font-weight:700;}
+        .prog .track{width:160px;height:8px;background:var(--line);border-radius:99px;overflow:hidden;}
+        .prog .fill{height:100%;background:var(--primary);border-radius:99px;transition:width .2s;}
 
-        /* 2분할 4:6 */
-        .split{display:flex;gap:16px;align-items:flex-start;}
-        .left{flex:4 1 0;min-width:0;}
-        .right{flex:6 1 0;min-width:0;}
-        @media (max-width:820px){ .split{flex-direction:column;} .left,.right{flex:none;width:100%;} }
+        /* 좌우 5:5 */
+        .split{display:flex;gap:18px;align-items:flex-start;}
+        .left{flex:1 1 0;min-width:0;}
+        .right{flex:1 1 0;min-width:0;}
+        @media (max-width:900px){ .split{flex-direction:column;} .left,.right{flex:none;width:100%;} }
 
-        /* ── 왼쪽 상단: 선택된 발주서 버튼들 (요약 배지 스타일) ── */
-        .ord-box{background:#fff;border:1px solid #edeff3;border-radius:14px;padding:14px;margin-bottom:14px;}
-        .ord-box .sec-label{font-size:13px;font-weight:600;color:#475569;margin-bottom:9px;}
+        .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px;}
+        .sec-head .h{font-size:15px;font-weight:600;color:#7a8199;}
+        .sec-head .sub{font-size:13px;color:var(--muted);}
+
+        /* 위치 대형 카드 */
+        .loc-card{background:var(--primary);border-radius:20px;padding:20px 26px;color:#fff;
+            box-shadow:0 12px 28px rgba(79,70,229,.28);margin-bottom:14px;}
+        .loc-card .lbl{font-size:15px;font-weight:600;opacity:.8;letter-spacing:2px;}
+        .loc-card .big{font-size:72px;font-weight:700;line-height:1.05;letter-spacing:1px;margin-top:4px;word-break:break-all;}
+
+        /* 상품 카드 — 바코드 배지 → 상품명 → 담아야 할 수량 */
+        .prod-card{background:#fff;border:1px solid #e4e7f0;border-radius:18px;padding:18px 22px;margin-bottom:14px;}
+        .prod-card .codes{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;}
+        .bc-badge{font-size:16px;font-weight:700;color:#4f46e5;font-variant-numeric:tabular-nums;white-space:nowrap;}
+        .prod-card .name{font-size:24px;font-weight:600;line-height:1.4;letter-spacing:-.3px;word-break:break-word;}
+        .need-row{display:flex;align-items:center;gap:10px;margin-top:14px;}
+        .need-row .k{font-size:14px;color:#7a8199;font-weight:600;}
+        .need-row .v{font-size:44px;font-weight:800;color:var(--primary);line-height:1;margin-left:auto;font-variant-numeric:tabular-nums;}
+
+        /* 준비 / 재고 입력 */
+        .inputs{display:flex;gap:14px;margin-bottom:12px;}
+        .inputbtn{flex:1;text-align:left;cursor:pointer;border:2px solid var(--line);background:#fff;
+            border-radius:18px;padding:16px 20px;font-family:inherit;transition:transform .08s,border-color .12s;}
+        .inputbtn:active{transform:scale(.98);}
+        .inputbtn .k{font-size:15px;font-weight:600;color:#7a8199;margin-bottom:4px;}
+        .inputbtn .num{font-size:42px;font-weight:700;line-height:1;color:#c4c8d6;font-variant-numeric:tabular-nums;}
+        .inputbtn.filled-prep{border-color:#86d5a3;background:#f0fdf4;}
+        .inputbtn.filled-prep .num{color:var(--ink);}
+        .inputbtn.filled-stock{border-color:#f0c98a;background:#fff7ed;}
+        .inputbtn.filled-stock .num{color:var(--ink);}
+
+        /* 이전 / 없음 / 다음 — 준비·재고 바로 아래 */
+        .nav-row{display:flex;gap:12px;}
+        .nav-btn{flex:1;height:64px;border-radius:16px;font-family:inherit;font-size:20px;font-weight:700;
+            cursor:pointer;border:2px solid var(--line);background:#fff;color:#5a6178;transition:transform .08s;}
+        .nav-btn:active{transform:scale(.98);}
+        .nav-btn:disabled{opacity:.4;cursor:default;}
+        .nav-btn.none{border-color:#f0c2c2;color:#d14343;}
+        .nav-btn.next{border-color:#c7d2fe;background:#eef0fe;color:var(--primary);}
+        .nav-btn.next:hover:not(:disabled){background:#e0e7ff;border-color:#a5b4fc;}
+        .nav-btn.next:disabled{box-shadow:none;}
+
+        /* 발주서 버튼 (4열) */
+        .ord-box{background:#fff;border:1px solid #e4e7f0;border-radius:18px;padding:14px;margin-top:14px;}
+        .ord-box .sec-label{font-size:13px;font-weight:600;color:#7a8199;margin-bottom:9px;}
         .orders{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-        .order{position:relative;overflow:hidden;border:1px solid #e5e9f0;border-radius:9px;cursor:pointer;
-            background:#fff;transition:border-color .12s,box-shadow .12s;min-width:0;
-            box-shadow:2px 2px 5px rgba(15,23,42,.07);}
-        .order:hover{border-color:#cbd5e1;}
-        .order.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,70,229,.25),2px 2px 5px rgba(15,23,42,.09);}
-        .o-fill{position:absolute;left:0;right:0;bottom:0;background:rgba(37,99,235,.14);z-index:0;}
-        .o-body{position:relative;z-index:1;padding:9px 13px;}
-        .o-no{font-size:13.5px;font-weight:700;color:#1e293b;white-space:nowrap;}
-        .o-center{font-size:11.5px;color:#475569;margin-top:2px;}
-        .o-qty{font-size:11.5px;color:#334155;margin-top:3px;font-variant-numeric:tabular-nums;}
+        .order{position:relative;overflow:hidden;border:1px solid #e4e7f0;border-radius:11px;cursor:pointer;
+            background:#fff;transition:border-color .12s,box-shadow .12s;min-width:0;box-shadow:2px 2px 5px rgba(30,34,51,.06);}
+        .order:hover{border-color:#c7d2fe;}
+        .order.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,70,229,.25);}
+        .o-fill{position:absolute;left:0;right:0;bottom:0;background:rgba(79,70,229,.12);z-index:0;}
+        .o-body{position:relative;z-index:1;padding:9px 12px;}
+        .o-no{font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;}
+        .o-center{font-size:11.5px;color:#7a8199;margin-top:2px;}
+        .o-qty{font-size:11.5px;color:#5a6178;margin-top:3px;font-variant-numeric:tabular-nums;}
         .o-qty b{color:#16a34a;}
 
-        /* ── 왼쪽 하단: 현재 찾는 상품 카드 ── */
-        .cur-box{background:#fff;border:1px solid #edeff3;border-radius:14px;padding:16px;margin-bottom:14px;}
-        .cur-label{font-size:13px;font-weight:600;color:#475569;margin-bottom:9px;}
-        .cur-loc-row{display:flex;gap:8px;margin-bottom:10px;}
-        .cur-loc{flex:1.1;min-width:0;height:96px;border-radius:12px;background:#DBEAFE;
-            display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#2563eb;padding:0 8px;}
-        .cur-loc .cl-cap{font-size:12px;font-weight:700;opacity:.75;}
-        .cur-loc .cl-val{font-size:34px;font-weight:800;line-height:1.05;word-break:break-all;text-align:center;}
-        .cur-bc{flex:1.5;min-width:0;height:96px;border-radius:12px;background:#f8fafc;
-            display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink);padding:0 8px;}
-        .cur-bc .cl-cap{font-size:12px;font-weight:700;color:#94a3b8;}
-        .cur-bc .cl-val{font-size:26px;font-weight:800;line-height:1.05;word-break:break-all;text-align:center;font-variant-numeric:tabular-nums;}
-        .cur-qty{flex:.7;min-width:0;height:96px;border-radius:12px;background:#f8fafc;
-            display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:var(--ink);padding:0 6px;}
-        .cur-qty .cl-cap{font-size:12px;font-weight:700;color:#94a3b8;}
-        .cur-qty .cl-val{font-size:34px;font-weight:800;line-height:1.05;text-align:center;font-variant-numeric:tabular-nums;}
-        .cur-name{border:1px solid #eef2f7;border-radius:12px;background:#f8fafc;padding:14px 16px;margin-bottom:10px;
-            font-size:21px;font-weight:700;color:#1e293b;line-height:1.45;word-break:break-word;min-height:60px;}
-        .cur-name .name-badge{font-size:19px;padding:1px 9px;}
-        /* 준비 / 재고 입력 */
-        .val-row{display:flex;gap:8px;margin-bottom:10px;}
-        .val-cell{flex:1;height:88px;border:2px solid #e5e9f0;border-radius:12px;background:#fff;cursor:pointer;
-            display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:border-color .12s,background .12s;}
-        .val-cell:hover{border-color:#c7d2fe;background:#f8faff;}
-        .val-cell .vc-cap{font-size:13px;font-weight:700;color:#64748b;}
-        .val-cell .vc-val{font-size:32px;font-weight:800;color:#1e293b;font-variant-numeric:tabular-nums;}
-        .val-cell .vc-val.empty{color:#cbd5e1;}
-        /* 이전/다음 */
-        .nav-row{display:flex;gap:8px;}
-        .nav-btn{flex:1;height:64px;border:1px solid #e2e8f0;background:#fff;border-radius:12px;
-            font-size:18px;font-weight:800;color:#334155;cursor:pointer;}
-        .nav-btn:hover{background:#f8faff;border-color:#c7d2fe;}
-        .nav-btn:disabled{opacity:.4;cursor:default;}
-        .nav-btn.next{background:var(--primary);color:#fff;border-color:var(--primary);}
-        .nav-btn.next:hover{background:var(--primary-dark);}
-        .nav-btn.none{background:#f1f5f9;color:#64748b;border-color:#e2e8f0;}
-        .nav-btn.none:hover{background:#e2e8f0;}
+        /* 오른쪽 목록 — 카드형 */
+        .side-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+        .side-head .h{font-size:15px;font-weight:600;color:#7a8199;}
+        .side-head .c{font-size:13px;color:var(--muted);}
+        .listwrap{background:#fff;border:1px solid #e4e7f0;border-radius:18px;padding:8px;
+            overflow-y:auto;max-height:calc(100vh - 210px);min-height:300px;}
+        .row{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;margin-bottom:4px;cursor:pointer;}
+        .row:hover{background:var(--hover);}
+        .row.cur{background:#f6f7fc;box-shadow:inset 0 0 0 2px #c7d2fe;}
+        .row .idx{width:26px;height:26px;flex:none;border-radius:8px;display:flex;align-items:center;justify-content:center;
+            font-size:14px;font-weight:700;background:#f0f1f6;color:var(--muted);}
+        .row.cur .idx{background:#eef0fe;color:var(--primary);}
+        .row .info{flex:1;min-width:0;}
+        /* 상단: 위치배지 · 바코드배지 · 수량 */
+        .row .top{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:5px;}
+        /* 위치=파란 배경+흰 글씨(좌측 위치카드와 동일 톤) · 바코드/수량=배지 없이 파란 글씨 · 폰트 크기 통일 */
+        .loc-badge{font-size:13.5px;font-weight:700;color:#fff;background:var(--primary);
+            padding:2px 9px;border-radius:7px;white-space:nowrap;}
+        .bc-badge-sm{font-size:13.5px;font-weight:700;color:#4f46e5;font-variant-numeric:tabular-nums;white-space:nowrap;}
+        .qty-badge{font-size:13.5px;font-weight:700;color:#F0492F;white-space:nowrap;font-variant-numeric:tabular-nums;}
+        .row .nm{font-size:13px;color:#5a6178;line-height:1.45;word-break:break-word;}
+        .row .vals{flex:none;text-align:right;display:flex;flex-direction:column;gap:3px;min-width:64px;}
+        .row .vals .vv{font-size:12.5px;color:#7a8199;font-variant-numeric:tabular-nums;}
+        .row .vals .vv b{font-size:14px;color:var(--ink);}
+        .row .vals .vv.empty b{color:#cbd5e1;font-weight:600;}
+        .empty-row{padding:40px 12px;text-align:center;color:var(--muted);font-size:14px;}
+        .listwrap::-webkit-scrollbar{width:10px;}
+        .listwrap::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .name-badge{display:inline-block;background:#eef2ff;color:#4f46e5;border:1px solid #e0e7ff;border-radius:6px;
+            padding:0 7px;font-weight:700;white-space:nowrap;}
 
-        /* 오른쪽 (shipScan과 동일) */
-        .right-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;}
-        .right-head .cnt{font-size:13px;color:var(--muted);}
-        .right-head .cnt b{color:var(--primary);font-weight:700;}
-        .table-scroll{overflow:auto;max-height:calc(100vh - 320px);min-height:240px;border:1px solid #edeff3;border-radius:12px;}
-        table{width:100%;border-collapse:collapse;min-width:480px;}
-        thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 12px;border-bottom:1px solid #dfe3ea;white-space:nowrap;}
-        thead th.ctr{text-align:center;}
-        tbody td{padding:11px 12px;border-bottom:1px solid #eef2f7;color:var(--ink-soft);font-size:13.5px;vertical-align:middle;}
-        tbody tr:last-child td{border-bottom:none;}
-        tbody tr:hover td{background:var(--hover);}
-        tbody tr.row-cur td{background:#eff6ff;}
-        .table-scroll thead th,.table-scroll tbody td{border:1px solid #e2e8f0;}
-        td.bc{white-space:nowrap;color:#475569;font-variant-numeric:tabular-nums;text-align:center;}
-        td.pname{white-space:normal;word-break:break-word;color:#334155;line-height:1.5;}
-        .name-badge{display:inline-block;background:#eef2ff;color:#4f46e5;border:1px solid #e0e7ff;border-radius:6px;padding:0 7px;font-weight:700;font-size:12.5px;white-space:nowrap;}
-        td.qty{text-align:center;font-variant-numeric:tabular-nums;font-weight:700;font-size:16px;color:#1e293b;}
-        td.ctr{text-align:center;}
-        .state-row td{text-align:center;padding:36px 12px;color:var(--muted);}
-        .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
-        .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
-
-        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10005;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e2233;color:#fff;
+            padding:13px 20px;border-radius:10px;font-size:14px;line-height:1.5;box-shadow:0 8px 24px rgba(30,34,51,.25);
+            opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10005;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
     </style>
 </head>
@@ -118,51 +133,59 @@
     <div class="page">
         <div class="card">
             <div class="head">
-                <div class="title-wrap">
-                    <h1 class="title">출고준비</h1>
-                    <span class="subtitle">발주서 <b id="ordCount">0</b>건 선택됨</span>
+                <h1 class="title">출고준비</h1>
+                <span class="meta">발주서 <strong id="ordCount">0</strong>건 선택됨</span>
+                <div class="spacer"></div>
+                <div class="prog">
+                    <span class="lbl">진행</span>
+                    <span class="val" id="progVal">0 / 0</span>
+                    <span class="track"><span class="fill" id="progFill" style="width:0%"></span></span>
                 </div>
             </div>
 
             <div class="split">
-                <!-- 왼쪽 -->
+                <!-- 왼쪽: 작업 영역 -->
                 <div class="left">
-                    <!-- 상단: 지금 찾아야 하는 상품 -->
-                    <div class="cur-box">
-                        <div class="cur-label">지금 찾을 상품</div>
-                        <div class="cur-loc-row">
-                            <div class="cur-loc">
-                                <span class="cl-cap">위치</span>
-                                <span class="cl-val" id="curLoc">-</span>
-                            </div>
-                            <div class="cur-bc">
-                                <span class="cl-cap">바코드</span>
-                                <span class="cl-val" id="curBc">-</span>
-                            </div>
-                            <div class="cur-qty">
-                                <span class="cl-cap">수량</span>
-                                <span class="cl-val" id="curQtyBig">-</span>
-                            </div>
-                        </div>
-                        <div class="cur-name" id="curName">발주서를 선택하세요.</div>
-                        <div class="val-row">
-                            <div class="val-cell" onclick="editVal('prep')">
-                                <span class="vc-cap">준비</span>
-                                <span class="vc-val empty" id="valPrep">-</span>
-                            </div>
-                            <div class="val-cell" onclick="editVal('stock')">
-                                <span class="vc-cap">재고</span>
-                                <span class="vc-val empty" id="valStock">-</span>
-                            </div>
-                        </div>
-                        <div class="nav-row">
-                            <button class="nav-btn" id="prevBtn" onclick="movePrev()">← 이전</button>
-                            <button class="nav-btn none" id="noneBtn" onclick="markNone()">없음</button>
-                            <button class="nav-btn next" id="nextBtn" onclick="moveNext()">다음 →</button>
+                    <div class="sec-head">
+                        <span class="h">지금 찾을 상품</span>
+                    </div>
+
+                    <!-- 위치 대형 카드 -->
+                    <div class="loc-card">
+                        <div class="lbl">위치</div>
+                        <div class="big" id="curLoc">-</div>
+                    </div>
+
+                    <!-- 상품 카드: 바코드 배지 → 상품명 → 담아야 할 수량 -->
+                    <div class="prod-card">
+                        <div class="codes"><span class="bc-badge" id="curBc">-</span></div>
+                        <div class="name" id="curName">발주서를 선택하세요.</div>
+                        <div class="need-row">
+                            <span class="k">담아야 할 수량</span>
+                            <span class="v" id="curQtyBig">-</span>
                         </div>
                     </div>
 
-                    <!-- 하단: 선택된 발주서 버튼들 -->
+                    <!-- 준비 / 재고 -->
+                    <div class="inputs">
+                        <button class="inputbtn" id="prepBtn" onclick="editVal('prep')">
+                            <div class="k">준비</div>
+                            <div class="num" id="valPrep">—</div>
+                        </button>
+                        <button class="inputbtn" id="stockBtn" onclick="editVal('stock')">
+                            <div class="k">재고</div>
+                            <div class="num" id="valStock">—</div>
+                        </button>
+                    </div>
+
+                    <!-- 이전 / 없음 / 다음 (준비·재고 바로 아래) -->
+                    <div class="nav-row">
+                        <button class="nav-btn" id="prevBtn" onclick="movePrev()">← 이전</button>
+                        <button class="nav-btn none" id="noneBtn" onclick="markNone()">없음</button>
+                        <button class="nav-btn next" id="nextBtn" onclick="moveNext()">다음 →</button>
+                    </div>
+
+                    <!-- 발주서 -->
                     <div class="ord-box">
                         <div class="sec-label">발주서</div>
                         <div class="orders" id="ordList"></div>
@@ -171,15 +194,12 @@
 
                 <!-- 오른쪽: 목록 -->
                 <div class="right">
-                    <div class="right-head">
-                        <div class="cnt">목록 · <b id="itemCount">0</b>품목</div>
+                    <div class="side-head">
+                        <span class="h">목록</span>
+                        <span class="c"><b id="itemCount">0</b>품목</span>
                     </div>
-                    <div class="table-scroll">
-                        <table>
-                            <colgroup><col style="width:80px"><col style="width:150px"><col><col style="width:84px"><col style="width:70px"><col style="width:70px"></colgroup>
-                            <thead><tr><th class="ctr">위치</th><th class="ctr">바코드</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">준비</th><th class="ctr">재고</th></tr></thead>
-                            <tbody id="itemBody"><tr class="state-row"><td colspan="6">발주서를 선택하세요.</td></tr></tbody>
-                        </table>
+                    <div class="listwrap" id="itemList">
+                        <div class="empty-row">발주서를 선택하세요.</div>
                     </div>
                 </div>
             </div>
@@ -253,23 +273,30 @@
             renderCur(); renderItems();
         }
 
-        // ── 현재 찾을 상품 카드 ──
+        // ── 현재 찾을 상품 ──
         function renderCur(){
             const o=activeOrder();
             const it=o&&o.items[curIdx];
+            const total=o?o.items.length:0;
             document.getElementById('curLoc').textContent=it?(it.위치||'-'):'-';
             document.getElementById('curBc').textContent=it?it.바코드:'-';
             document.getElementById('curQtyBig').textContent=it?it.수량:'-';
             document.getElementById('curName').innerHTML=it?modelBadge(it.상품명):'품목이 없습니다.';
+            // 진행률
+            document.getElementById('progVal').textContent=`${total?curIdx+1:0} / ${total}`;
+            document.getElementById('progFill').style.width=total?`${Math.round((curIdx+1)/total*100)}%`:'0%';
+            // 준비 / 재고
             const vp=document.getElementById('valPrep'), vs=document.getElementById('valStock');
-            vp.textContent=it&&it.준비!=null?it.준비:'-';
-            vp.classList.toggle('empty',!(it&&it.준비!=null));
-            vs.textContent=it&&it.재고!=null?it.재고:'-';
-            vs.classList.toggle('empty',!(it&&it.재고!=null));
+            const hasPrep=!!(it&&it.준비!=null), hasStock=!!(it&&it.재고!=null);
+            vp.textContent=hasPrep?it.준비:'—';
+            vs.textContent=hasStock?it.재고:'—';
+            document.getElementById('prepBtn').classList.toggle('filled-prep',hasPrep);
+            document.getElementById('stockBtn').classList.toggle('filled-stock',hasStock);
+            // 이동 버튼
             document.getElementById('prevBtn').disabled=!o||curIdx<=0;
-            document.getElementById('nextBtn').disabled=!o||!o.items.length||curIdx>=o.items.length-1;
-            // 목록 현재행 하이라이트 동기화
-            document.querySelectorAll('#itemBody tr').forEach((tr,i)=>tr.classList.toggle('row-cur',i===curIdx));
+            document.getElementById('nextBtn').disabled=!o||!total||curIdx>=total-1;
+            // 목록 현재행 하이라이트
+            document.querySelectorAll('#itemList .row').forEach((el,i)=>el.classList.toggle('cur',i===curIdx));
         }
 
         function movePrev(){ if(curIdx>0){ curIdx--; renderCur(); } }
@@ -282,7 +309,7 @@
             moveNext();
         }
 
-        // 준비/재고 입력 (공용 숫자패드)
+        // 준비/재고 입력 (공용 숫자패드 numpad.js)
         function editVal(kind){
             const o=activeOrder(); const it=o&&o.items[curIdx];
             if(!it){ toast('품목이 없습니다.'); return; }
@@ -295,23 +322,33 @@
             NumPad.open(opts);
         }
 
-        // ── 오른쪽 목록 ──
+        // ── 오른쪽 목록 (카드형) ──
         function renderItems(){
             const o=activeOrder();
-            const tb=document.getElementById('itemBody');
+            const el=document.getElementById('itemList');
             document.getElementById('itemCount').textContent=o?o.items.length:0;
             if(!o||!o.items.length){
-                tb.innerHTML=`<tr class="state-row"><td colspan="6">품목이 없습니다.</td></tr>`;
+                el.innerHTML=`<div class="empty-row">품목이 없습니다.</div>`;
                 return;
             }
-            tb.innerHTML=o.items.map((it,i)=>`<tr class="${i===curIdx?'row-cur':''}" onclick="curIdx=${i};renderCur();">
-                <td class="ctr">${esc(it.위치||'-')}</td>
-                <td class="bc">${esc(it.바코드)}</td>
-                <td class="pname">${modelBadge(it.상품명)}</td>
-                <td class="qty">${it.수량}</td>
-                <td class="ctr">${it.준비!=null?it.준비:'<span style="color:#cbd5e1">-</span>'}</td>
-                <td class="ctr">${it.재고!=null?it.재고:'<span style="color:#cbd5e1">-</span>'}</td>
-            </tr>`).join('');
+            el.innerHTML=o.items.map((it,i)=>{
+                const prep=it.준비!=null, stock=it.재고!=null;
+                return `<div class="row ${i===curIdx?'cur':''}" onclick="curIdx=${i};renderCur();">
+                    <div class="idx">${i+1}</div>
+                    <div class="info">
+                        <div class="top">
+                            <span class="loc-badge">${esc(it.위치||'-')}</span>
+                            <span class="bc-badge-sm">${esc(it.바코드)}</span>
+                            <span class="qty-badge">${it.수량}개</span>
+                        </div>
+                        <div class="nm">${modelBadge(it.상품명)}</div>
+                    </div>
+                    <div class="vals">
+                        <span class="vv ${prep?'':'empty'}">준비 <b>${prep?it.준비:'—'}</b></span>
+                        <span class="vv ${stock?'':'empty'}">재고 <b>${stock?it.재고:'—'}</b></span>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         let toastTimer;
