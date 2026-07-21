@@ -243,6 +243,12 @@
                         items.push({위치:p.위치||'-', 바코드:p.상품바코드, 상품명:p.상품이름, 수량:Number(p.확정수량)||0,
                             준비:null, 재고:null});
                     }
+                    // 작업 동선에 맞춰 위치 오름차순 정렬 (위치 없는 건 뒤로)
+                    items.sort((a,b)=>{
+                        const an=(a.위치||'-')==='-', bn=(b.위치||'-')==='-';
+                        if(an!==bn) return an?1:-1;
+                        return String(a.위치).localeCompare(String(b.위치),'ko',{numeric:true});
+                    });
                     return {발주번호:o.발주번호, 물류센터:o.물류센터||'', 발주수량:Number(o.발주수량)||0, 스캔수량:Number(o.스캔수량)||0, items};
                 });
                 document.getElementById('ordCount').textContent=orders.length;

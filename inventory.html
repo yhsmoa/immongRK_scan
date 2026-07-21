@@ -49,8 +49,7 @@
         thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:center;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 8px;border:1px solid #dfe3ea;white-space:nowrap;}
         tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;text-align:center;white-space:nowrap;vertical-align:middle;}
         tbody tr:hover td{background:var(--hover);}
-        .location-cell{cursor:pointer;color:var(--blue);}
-        .location-cell:hover{text-decoration:underline;}
+        .location-cell{cursor:default;color:var(--ink-soft);}
         .table-container::-webkit-scrollbar{width:10px;height:10px;}
         .table-container::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
         .table-container::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
@@ -662,6 +661,7 @@
 
         // 로케이션 셀 클릭 이벤트 처리
         function setupLocationCells() {
+            return; // 로케이션 개별 입력 비활성화 (클릭해도 입력폼이 뜨지 않음)
             const tbody = document.querySelector('#inventoryTable tbody');
             tbody.addEventListener('click', function(e) {
                 if (e.target.classList.contains('location-cell')) {
