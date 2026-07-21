@@ -312,21 +312,40 @@
             all.indeterminate=n>0&&n<vis.length;
         }
 
-        // 처리완료 (체크된 '대기' 행 → 재고 원장)
+        // 처리완료 (체크된 '대기' 행 중 위치가 있는 것만 처리 · 위치 없는 건 그대로 남김)
         async function doComplete(){
             const checked=rows.filter(r=>r.kind==='pending'&&r.checked);
             if(!checked.length){toast('처리할 남은상품(대기)을 체크해주세요.');return;}
-            const missing=checked.filter(r=>!r.selectedLoc);
-            if(missing.length){toast(`위치를 선택해주세요. (${missing.length}건 위치 미선택)`);return;}
-            const items=checked.map(r=>({shipment_item_id:r.itemId, barcode:r.바코드, location:r.selectedLoc, qty:r.qty}));
-            toast('처리 중…');
+            const ready=checked.filter(r=>r.selectedLoc);          // 위치 있음 → 처리
+            const skipped=checked.filter(r=>!r.selectedLoc);       // 위치 없음 → 남김
+            if(!ready.length){toast(`처리할 항목이 없습니다. (위치 미선택 ${skipped.length}건)`);return;}
+
+            const btn=document.querySelector('.btn.primary');
+            const orgText=btn?btn.textContent:'';
+            const setBusy=(txt)=>{ if(btn){ btn.disabled=true; btn.textContent=txt; } };
+            const clearBusy=()=>{ if(btn){ btn.disabled=false; btn.textContent=orgText; } };
+
+            // 100건씩 나눠 전송 — 진행률 표시 + 긴 요청 타임아웃 방지
+            const CHUNK=100;
+            let done=0;
+            setBusy(`처리 중… 0/${ready.length}`);
             try{
-                const res=await fetch('/api/inbound/stock-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
-                const data=await res.json();
-                if(!res.ok)throw new Error(data.error||'처리완료 실패');
-                toast(data.message||'처리완료');
+                for(let i=0;i<ready.length;i+=CHUNK){
+                    const part=ready.slice(i,i+CHUNK);
+                    const items=part.map(r=>({shipment_item_id:r.itemId, barcode:r.바코드, location:r.selectedLoc, qty:r.qty}));
+                    const res=await fetch('/api/inbound/stock-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+                    const data=await res.json().catch(()=>({}));
+                    if(!res.ok)throw new Error(data.error||'처리완료 실패');
+                    done+=part.length;
+                    setBusy(`처리 중… ${done}/${ready.length}`);
+                    toast(`처리 중… ${done}/${ready.length}건`);
+                }
+                toast(`처리완료 ${done}건${skipped.length?` · 위치 미선택 ${skipped.length}건은 남겨둠`:''}`);
                 await loadData();
-            }catch(e){toast('처리완료 실패: '+e.message);}
+            }catch(e){
+                toast(`처리완료 실패: ${e.message}${done?` (${done}건은 처리됨)`:''}`);
+                if(done) await loadData();
+            }finally{ clearBusy(); }
         }
 
         // 삭제 (체크된 '완료' 행 → 원장/재고 취소)

@@ -416,34 +416,72 @@ router.post('/api/inbound/stock-complete', async (req, res) => {
       if (!(parseInt(it.qty) > 0)) return res.status(400).json({ error: '수량이 올바르지 않은 항목이 있습니다.' });
     }
 
-    // 아이템 존재만 확인 (남은 수량 초과 검증은 위 사유로 일시 해제)
-    const items = await fetchAllItems();
-    const itemById = new Map(items.map(i => [i.id, i]));
+    // 아이템 존재 확인 — 요청된 id만 조회 (전체 로드 대신)
+    const reqIds = [...new Set(reqItems.map(i => i.shipment_item_id))];
+    const { data: items, error: eI } = await sb.from('rk_cn_shipment_items')
+      .select('id, shipment_id, barcode').in('id', reqIds);
+    if (eI) throw eI;
+    const itemById = new Map((items || []).map(i => [i.id, i]));
     for (const it of reqItems) {
       if (!itemById.get(it.shipment_item_id)) return res.status(400).json({ error: '아이템을 찾을 수 없습니다.' });
     }
 
+    // 1) 재고 원장 배치 insert + (바코드|위치)별 증분 합산
+    const ledgerRows = [];
+    const deltaByKey = new Map();   // `${barcode}|${location}` -> 합산 수량
     for (const it of reqItems) {
       const item = itemById.get(it.shipment_item_id);
-      const barcode = String(it.barcode || (item && item.barcode) || '').trim();
+      const barcode = String(it.barcode || item.barcode || '').trim();
       const location = String(it.location).trim();
       const qty = parseInt(it.qty);
-      // 재고 원장 기록
-      const { error: eL } = await sb.from('rk_cn_stock_arranges').insert({
-        shipment_id: item.shipment_id, shipment_item_id: it.shipment_item_id, barcode, location, qty,
-      });
-      if (eL) throw eL;
-      // rk_stocks 합산
-      const { data: ex } = await sb.from('rk_stocks').select('id, qty').eq('barcode', barcode).eq('location', location).limit(1);
-      if (ex && ex.length) {
-        const { error } = await sb.from('rk_stocks').update({ qty: (parseInt(ex[0].qty) || 0) + qty }).eq('id', ex[0].id);
-        if (error) throw error;
-      } else {
-        const { data: inv } = await sb.from('rk_inventories').select('sku_id, name').eq('barcode', barcode).limit(1);
-        const { error } = await sb.from('rk_stocks').insert({ barcode, location, qty, sku_id: inv && inv.length ? inv[0].sku_id : null, item_name: inv && inv.length ? inv[0].name : null });
-        if (error) throw error;
+      ledgerRows.push({ shipment_id: item.shipment_id, shipment_item_id: it.shipment_item_id, barcode, location, qty });
+      const k = `${barcode}|${location}`;
+      deltaByKey.set(k, (deltaByKey.get(k) || 0) + qty);
+    }
+    const BATCH = 500;
+    for (let i = 0; i < ledgerRows.length; i += BATCH) {
+      const { error } = await sb.from('rk_cn_stock_arranges').insert(ledgerRows.slice(i, i + BATCH));
+      if (error) throw error;
+    }
+
+    // 2) 기존 재고를 한 번에 조회 → 조합별로만 update/insert
+    const barcodes = [...new Set(ledgerRows.map(r => r.barcode))];
+    const existing = [];
+    for (let i = 0; i < barcodes.length; i += 200) {
+      const { data, error } = await sb.from('rk_stocks').select('id, barcode, location, qty').in('barcode', barcodes.slice(i, i + 200));
+      if (error) throw error;
+      existing.push(...(data || []));
+    }
+    const stockByKey = new Map(existing.map(s => [`${s.barcode}|${String(s.location || '').trim()}`, s]));
+
+    // 신규 행에 쓸 상품정보(sku/name)도 한 번에 조회
+    const newKeys = [...deltaByKey.keys()].filter(k => !stockByKey.has(k));
+    const invByBarcode = new Map();
+    if (newKeys.length) {
+      const newBcs = [...new Set(newKeys.map(k => k.split('|')[0]))];
+      for (let i = 0; i < newBcs.length; i += 200) {
+        const { data } = await sb.from('rk_inventories').select('barcode, sku_id, name').in('barcode', newBcs.slice(i, i + 200));
+        for (const v of (data || [])) if (!invByBarcode.has(v.barcode)) invByBarcode.set(v.barcode, v);
       }
     }
+
+    const insertStocks = [];
+    for (const [k, add] of deltaByKey) {
+      const cur = stockByKey.get(k);
+      if (cur) {
+        const { error } = await sb.from('rk_stocks').update({ qty: (parseInt(cur.qty) || 0) + add }).eq('id', cur.id);
+        if (error) throw error;
+      } else {
+        const [barcode, location] = k.split('|');
+        const inv = invByBarcode.get(barcode);
+        insertStocks.push({ barcode, location, qty: add, sku_id: inv ? inv.sku_id : null, item_name: inv ? inv.name : null });
+      }
+    }
+    for (let i = 0; i < insertStocks.length; i += BATCH) {
+      const { error } = await sb.from('rk_stocks').insert(insertStocks.slice(i, i + BATCH));
+      if (error) throw error;
+    }
+
     res.json({ message: `처리완료 (${reqItems.length}건)`, done: reqItems.length });
   } catch (e) {
     console.error('[rk] inbound/stock-complete:', e);

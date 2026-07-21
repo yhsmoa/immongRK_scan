@@ -127,6 +127,21 @@
         .btn-del-all{height:32px;padding:0 12px;border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
         .btn-del-all:hover:not(:disabled){background:#fef2f2;border-color:#fca5a5;}
         .btn-del-all:disabled{opacity:.45;cursor:default;}
+        /* 합치기 */
+        .btn-merge{height:32px;padding:0 12px;border:1px solid #c7d2fe;background:#fff;color:var(--primary);border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+        .btn-merge:hover:not(:disabled){background:#eef2ff;border-color:#a5b4fc;}
+        .btn-merge:disabled{opacity:.45;cursor:default;}
+        .btn-merge.on{background:var(--primary);color:#fff;border-color:var(--primary);}
+        .merge-picker{display:none;padding:10px 14px 12px;border-bottom:1px solid #eef2f7;background:#f8faff;}
+        .merge-picker.show{display:block;}
+        .mp-title{font-size:12.5px;font-weight:600;color:#475569;margin-bottom:8px;}
+        .mp-boxes{display:flex;flex-wrap:wrap;gap:8px;}
+        .mp-box{border:1px solid #c7d2fe;border-radius:10px;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 12px;min-width:62px;}
+        .mp-box:hover{background:#eef2ff;border-color:#818cf8;}
+        .mp-box .e{font-size:20px;line-height:1;}
+        .mp-box .t{font-size:11px;font-weight:700;color:#64748b;line-height:1;}
+        .mp-box .n{font-size:14px;font-weight:800;color:#1e293b;line-height:1;}
+        .mp-empty{font-size:12.5px;color:var(--muted);}
         .rec-body td.qedit{cursor:pointer;color:#2563eb;font-weight:800;}
         .rec-body td.qedit:hover{background:#eff6ff;}
         .del-emoji{border:none;background:transparent;cursor:pointer;font-size:16px;line-height:1;padding:3px 4px;border-radius:6px;}
@@ -237,7 +252,15 @@
         <div class="list-boxbtns" id="listBoxBtns"></div>
         <div class="detail-bar">
             <span class="detail-title" id="listDetailTitle">박스를 선택하세요.</span>
-            <button class="btn-del-all" id="delAllBtn" onclick="deleteBox()" disabled>전체삭제</button>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-merge" id="mergeBtn" onclick="toggleMergePicker()" disabled>합치기</button>
+                <button class="btn-del-all" id="delAllBtn" onclick="deleteBox()" disabled>전체삭제</button>
+            </div>
+        </div>
+        <!-- 합치기: 대상 박스 선택 (본인 박스 제외) -->
+        <div class="merge-picker" id="mergePicker">
+            <div class="mp-title" id="mpTitle"></div>
+            <div class="mp-boxes" id="mergeBoxes"></div>
         </div>
         <div class="rec-body">
             <table>
@@ -313,7 +336,8 @@
                 document.getElementById('curOrder').textContent=currentOrder;
                 // 입력폼 자리에 발주서(파랑) + 줄바꿈 물류센터 표시 (입력폼은 숨김)
                 document.getElementById('odNo').textContent=currentOrder;
-                document.getElementById('odCenter').textContent=data.center||'-';
+                // 입고예정일 + 공백 + 센터 (예: "20260724 경기광주1")
+                document.getElementById('odCenter').textContent=[data.arrivalDate,data.center].filter(Boolean).join(' ')||'-';
                 orderInput.value=currentOrder;
                 orderInput.style.display='none';
                 document.getElementById('ordDisplay').style.display='flex';
@@ -510,19 +534,80 @@
             const tb=document.getElementById('listBody');
             const title=document.getElementById('listDetailTitle');
             const setDelAll=on=>{ const b=document.getElementById('delAllBtn'); if(b) b.disabled=!on; };
-            setDelAll(false);
-            if(!currentOrder){ btns.innerHTML=''; document.getElementById('listSub').textContent=''; title.textContent='발주서를 조회하세요.'; tb.innerHTML=`<tr class="state-row"><td colspan="5">-</td></tr>`; return; }
+            const setMerge=on=>{ const b=document.getElementById('mergeBtn'); if(b) b.disabled=!on; };
+            setDelAll(false); setMerge(false);
+            if(!currentOrder){ btns.innerHTML=''; document.getElementById('listSub').textContent=''; title.textContent='발주서를 조회하세요.'; tb.innerHTML=`<tr class="state-row"><td colspan="5">-</td></tr>`; closeMergePicker(); return; }
             const nos=[...new Set([...savedBoxes.map(b=>b.boxNo), ...boxItems.map(i=>i.boxNo)])].sort((a,b)=>a-b);
             document.getElementById('listSub').textContent=nos.length?`${nos.length}박스`:'';
-            if(!nos.length){ btns.innerHTML='<div style="color:#94a3b8;font-size:13px;">아직 박스가 없습니다.</div>'; title.textContent=''; tb.innerHTML=`<tr class="state-row"><td colspan="5">박스가 없습니다.</td></tr>`; return; }
+            if(!nos.length){ btns.innerHTML='<div style="color:#94a3b8;font-size:13px;">아직 박스가 없습니다.</div>'; title.textContent=''; tb.innerHTML=`<tr class="state-row"><td colspan="5">박스가 없습니다.</td></tr>`; closeMergePicker(); return; }
             if(listSelBox==null || !nos.includes(listSelBox)) listSelBox=nos[0];
             setDelAll(true);
+            setMerge(nos.length>1);              // 합칠 다른 박스가 있어야 활성화
+            if(mergeOpen) renderMergePicker(nos); // 열려 있으면 대상 목록 갱신
             btns.innerHTML=nos.map(no=>`<div class="lbx ${no===listSelBox?'sel':''}" onclick="selectListBox(${no})"><div class="e">📦</div><div class="t">${esc(boxSizeOf(no))}</div><div class="n">${no}</div></div>`).join('');
             title.textContent=`📦 박스 ${listSelBox} · ${boxSizeOf(listSelBox)}`;
             const items=boxItems.filter(i=>i.boxNo===listSelBox);
             tb.innerHTML=items.length?items.map(rowDetailHtml).join(''):`<tr class="state-row"><td colspan="5">이 박스에 담긴 상품이 없습니다.</td></tr>`;
         }
-        function selectListBox(no){ listSelBox=no; renderList(); }
+        function selectListBox(no){ listSelBox=no; closeMergePicker(); renderList(); }
+
+        // ── 박스 합치기 (선택 박스 → 대상 박스로 상품 이동, 선택 박스는 삭제) ──
+        let mergeOpen=false;
+        function boxNosAll(){ return [...new Set([...savedBoxes.map(b=>b.boxNo), ...boxItems.map(i=>i.boxNo)])].sort((a,b)=>a-b); }
+        function closeMergePicker(){
+            mergeOpen=false;
+            const p=document.getElementById('mergePicker'), b=document.getElementById('mergeBtn');
+            if(p) p.classList.remove('show');
+            if(b) b.classList.remove('on');
+        }
+        function toggleMergePicker(){
+            if(listSelBox==null){ toast('합칠 박스를 선택하세요.'); return; }
+            if(mergeOpen){ closeMergePicker(); return; }
+            mergeOpen=true;
+            document.getElementById('mergePicker').classList.add('show');
+            document.getElementById('mergeBtn').classList.add('on');
+            renderMergePicker(boxNosAll());
+        }
+        function renderMergePicker(nos){
+            document.getElementById('mpTitle').textContent=`박스 ${listSelBox} 의 상품을 옮길 대상 박스를 선택하세요.`;
+            const targets=nos.filter(n=>n!==listSelBox);   // 본인 박스 제외
+            const el=document.getElementById('mergeBoxes');
+            el.innerHTML=targets.length
+                ? targets.map(no=>`<div class="mp-box" onclick="mergeInto(${no})"><div class="e">📦</div><div class="t">${esc(boxSizeOf(no)||'')}</div><div class="n">${no}</div></div>`).join('')
+                : '<span class="mp-empty">합칠 다른 박스가 없습니다.</span>';
+        }
+        async function mergeInto(targetNo){
+            const from=listSelBox;
+            if(from==null || targetNo===from) return;
+            if(!confirm(`박스 ${from} → 박스 ${targetNo} 로 합치시겠습니까?\n박스 ${from}의 상품이 모두 박스 ${targetNo}로 이동하고, 박스 ${from}은 삭제됩니다.`)) return;
+
+            // 저장된 박스면 서버에서 먼저 삭제 (실패 시 중단)
+            if(savedBoxes.some(b=>b.boxNo===from)){
+                try{
+                    const res=await fetch('/api/ship-scan/delete-box',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:currentOrder, boxNo:from})});
+                    if(!res.ok){ const d=await res.json().catch(()=>({})); throw new Error(d.error||'박스 삭제 실패'); }
+                }catch(e){ toast('합치기 실패: '+e.message); return; }
+            }
+            // 상품 이동 (같은 바코드는 합산)
+            const moving=boxItems.filter(i=>i.boxNo===from);
+            let movedQty=0;
+            for(const it of moving){
+                const exist=boxItemFor(targetNo,it.barcode);
+                if(exist) exist.qty+=it.qty;
+                else boxItems.push({boxNo:targetNo, barcode:it.barcode, productName:it.productName, qty:it.qty});
+                movedQty+=it.qty;
+            }
+            boxItems=boxItems.filter(i=>i.boxNo!==from);
+            records.forEach(r=>{ if(r.boxNo===from) r.boxNo=targetNo; });
+            savedBoxes=savedBoxes.filter(b=>b.boxNo!==from);
+            boxSizeMap.delete(from);
+            if(currentBoxNo===from){ currentBoxNo=targetNo; setBoxBtn(); setSizeActive(); }
+            listSelBox=targetNo;
+            dirty=true;                 // 이동 결과는 [저장] 필요
+            closeMergePicker();
+            recomputeScanned(); renderAll();
+            toast(`박스 ${from} → ${targetNo} 합치기 완료 (${movedQty}개) · [저장] 눌러 반영하세요.`);
+        }
 
         // 전체삭제 — 선택 박스 + 담긴 상품 모두 삭제 (DB 즉시 반영, 다른 미저장분은 보존)
         async function deleteBox(){

@@ -59,6 +59,7 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
       valid: true,
       orderNumber,
       center: (order && order.물류센터) || '',
+      arrivalDate: (order && order.입고예정일) || '',
       products,
       boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at })),
       items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty })),

@@ -279,10 +279,18 @@
             if(activeTab==='shipping' && batchFilter!=='all'){
                 rowsAll=rowsAll.filter(r=>String(r.회차)===String(batchFilter));
             }
-            const rows=terms.length===0?rowsAll:rowsAll.filter(r=>{
+            let rows=terms.length===0?rowsAll:rowsAll.filter(r=>{
                 const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.출고번호].map(v=>String(v||'').toLowerCase());
                 return terms.some(t=>hay.some(h=>h.includes(t)));
             });
+            // 정렬: 회차 > 출고예정일 > 센터 > 발주서번호(출고번호)  ※ 위치는 이 화면에 데이터 없음
+            const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
+            rows=rows.slice().sort((a,b)=>
+                (Number(a.회차)||0)-(Number(b.회차)||0)
+                || cmp(a.출고예정일,b.출고예정일)
+                || cmp(a.센터,b.센터)
+                || cmp(a.출고번호,b.출고번호)
+            );
             const mb=maxBatch();
             const nBatches=new Set(shippingRows.map(r=>r.회차).filter(v=>v!=null)).size;
             const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
