@@ -49,7 +49,6 @@
         thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:center;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 8px;border:1px solid #dfe3ea;white-space:nowrap;}
         tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;text-align:center;white-space:nowrap;vertical-align:middle;}
         tbody tr:hover td{background:var(--hover);}
-        .location-cell{cursor:default;color:var(--ink-soft);}
         .table-container::-webkit-scrollbar{width:10px;height:10px;}
         .table-container::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
         .table-container::-webkit-scrollbar-thumb:hover{background:#c2ccd9;}
@@ -166,8 +165,7 @@
         }
         .location-input:focus { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
         /* 모달 내 저장 버튼 (rocket 인디고) */
-        #locationInputContainer .location-save-btn,
-        #singleLocationInputContainer .location-save-btn {
+        #locationInputContainer .location-save-btn {
             width: 100%;
             height: 42px;
             margin-top: 14px;
@@ -179,8 +177,7 @@
             font-weight: 600;
             cursor: pointer;
         }
-        #locationInputContainer .location-save-btn:hover,
-        #singleLocationInputContainer .location-save-btn:hover {
+        #locationInputContainer .location-save-btn:hover {
             background: #4338ca;
         }
         #locationInputContainer .location-save-btn:disabled { opacity: .6; cursor: default; }
@@ -334,14 +331,12 @@
                     <span class="subtitle">전체 <b id="rowCount">0</b>개 · <span id="selCount">0</span>개 선택</span>
                 </div>
                 <div class="actions upload-section">
-                    <button id="upload2Btn" class="upload-btn" onclick="document.getElementById('fileInput2').click()">엑셀업로드2</button>
                     <button id="registerBtn" class="upload-btn" onclick="openRegisterModal()">직접 등록</button>
                     <button id="locationSaveBtn" class="upload-btn" onclick="saveSelectedLocations()">위치저장</button>
                     <button id="uploadBtn" class="upload-btn primary" onclick="document.getElementById('fileInput').click()">엑셀 업로드</button>
                     <button id="discontinueBtn" class="discontinue-btn" onclick="generateDiscontinueDoc()">단종</button>
                     <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
                     <input type="file" id="fileInput" style="display: none" accept=".xlsx,.xls">
-                    <input type="file" id="fileInput2" style="display: none" accept=".xlsx,.xls">
                 </div>
             </div>
 
@@ -378,7 +373,6 @@
                             <th>바코드</th>
                             <th>발주가능상태</th>
                             <th>재고</th>
-                            <th>로케이션</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -397,13 +391,6 @@
         <button class="location-save-btn" onclick="saveLocation()">저장</button>
     </div>
 
-    <!-- 개별 로케이션 수정 UI -->
-    <div class="overlay" id="singleLocationOverlay"></div>
-    <div class="location-input-container" id="singleLocationInputContainer">
-        <input type="text" class="location-input" id="singleLocationInput" placeholder="로케이션 입력">
-        <button class="location-save-btn" onclick="saveSingleLocation()">저장</button>
-    </div>
-    
     <!-- 로딩 인디케이터 -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner"></div>
@@ -483,10 +470,7 @@
         function setupEventListeners() {
             // 엑셀 파일 업로드 처리
             document.getElementById('fileInput').addEventListener('change', handleFileUpload);
-            
-            // 엑셀업로드2 파일 처리
-            document.getElementById('fileInput2').addEventListener('change', handleLocation2FileUpload);
-            
+
             // 전체 선택 체크박스 기능
             document.getElementById('selectAll').addEventListener('change', function() {
                 const checkboxes = document.querySelectorAll('.item-checkbox');
@@ -496,18 +480,14 @@
                 updateInvSel();
             });
 
-            // 로케이션 셀 클릭 (이벤트 위임, 1회 등록)
-            setupLocationCells();
-
             // 체크박스 선택 시 카운트 갱신 (이벤트 위임)
             document.querySelector('#inventoryTable tbody').addEventListener('change', function(e) {
                 if (e.target.classList.contains('item-checkbox')) updateInvSel();
             });
 
-            // 오버레이 클릭 시 입력 UI 닫기
+            // 오버레이 클릭 시 위치저장 입력 UI 닫기
             document.getElementById('locationOverlay').addEventListener('click', closeLocationInput);
-            document.getElementById('singleLocationOverlay').addEventListener('click', closeSingleLocationInput);
-            
+
             // 윈도우 리사이즈 시 버튼 크기 재조정
             window.addEventListener('resize', function() {
                 // 딜레이를 두고 호출하여 너무 빈번한 실행 방지
@@ -620,7 +600,6 @@
                     <td class="${isMobile ? 'mobile-wrap' : ''}">${barcode}</td>
                     <td>${item.orderStatus}</td>
                     <td>${item.quantity}</td>
-                    <td class="location-cell">${item.location}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -678,30 +657,6 @@
         }
 
         // 로케이션 셀 클릭 이벤트 처리
-        function setupLocationCells() {
-            return; // 로케이션 개별 입력 비활성화 (클릭해도 입력폼이 뜨지 않음)
-            const tbody = document.querySelector('#inventoryTable tbody');
-            tbody.addEventListener('click', function(e) {
-                if (e.target.classList.contains('location-cell')) {
-                    const row = e.target.closest('tr');
-                    const skuId = row.querySelector('td:nth-child(2)').textContent;
-                    const currentLocation = e.target.textContent;
-                    
-                    document.getElementById('singleLocationInput').value = currentLocation;
-                    document.getElementById('singleLocationInput').dataset.skuId = skuId;
-                    document.getElementById('singleLocationInput').dataset.cell = e.target;
-                    
-                    document.getElementById('singleLocationOverlay').classList.add('active');
-                    document.getElementById('singleLocationInputContainer').classList.add('active');
-                    
-                    // 입력 필드에 포커스하고 전체 선택
-                    const input = document.getElementById('singleLocationInput');
-                    input.focus();
-                    input.select();
-                }
-            });
-        }
-
         // 선택된 항목들의 로케이션 저장
         function saveSelectedLocations() {
             const checkedBoxes = document.querySelectorAll('.item-checkbox:checked');
@@ -773,50 +728,6 @@
             document.getElementById('locationInput').dataset.selectedItems = '';
         }
 
-        // 개별 로케이션 저장
-        function saveSingleLocation() {
-            const input = document.getElementById('singleLocationInput');
-            const location = input.value.trim();
-            const skuId = input.dataset.skuId;
-            const cell = input.dataset.cell;
-            
-            if (!location) {
-                alert('로케이션을 입력해주세요.');
-                return;
-            }
-
-            fetch('/api/inventory/update-location', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    skuId: skuId, 
-                    location: location 
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    cell.textContent = location;
-                }
-                closeSingleLocationInput();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                closeSingleLocationInput();
-            });
-        }
-
-        // 개별 로케이션 입력 UI 닫기
-        function closeSingleLocationInput() {
-            document.getElementById('singleLocationOverlay').classList.remove('active');
-            document.getElementById('singleLocationInputContainer').classList.remove('active');
-            document.getElementById('singleLocationInput').value = '';
-            document.getElementById('singleLocationInput').dataset.skuId = '';
-            document.getElementById('singleLocationInput').dataset.cell = '';
-        }
-
         // 검색 처리 함수
         function handleSearch(event) {
             event.preventDefault();
@@ -846,116 +757,35 @@
         // 파일 업로드 처리
         function handleFileUpload(e) {
             const file = e.target.files[0];
-            if (file) {
-                const formData = new FormData();
-                formData.append('file', file);
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('file', file);
 
-                fetch('/api/inventory/upload', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert(data.message || '파일이 성공적으로 업로드되었습니다.');
-                        // 테이블 새로고침
+            // 진행 로딩 모달 표시 (대량 업로드는 서버 처리에 시간이 걸림)
+            const ov = document.getElementById('loadingOverlay');
+            const tx = document.getElementById('loadingText');
+            if (tx) tx.textContent = `엑셀 업로드 중… (${file.name})\n대량 데이터는 수십 초 걸릴 수 있습니다.`;
+            if (ov) ov.classList.add('active');
+
+            fetch('/api/inventory/upload', { method: 'POST', body: formData })
+                .then(response => response.json().then(d => ({ ok: response.ok, d })))
+                .then(({ ok, d }) => {
+                    if (ov) ov.classList.remove('active');
+                    if (ok && d.success) {
+                        alert(d.message || '파일이 성공적으로 업로드되었습니다.');
                         loadInventoryData();
                     } else {
-                        alert('파일 업로드 중 오류가 발생했습니다.');
+                        alert('파일 업로드 실패: ' + (d.error || '알 수 없는 오류'));
                     }
                 })
                 .catch(error => {
+                    if (ov) ov.classList.remove('active');
                     console.error('Error:', error);
-                    alert('파일 업로드 중 오류가 발생했습니다.');
-                });
-            }
+                    alert('파일 업로드 중 오류가 발생했습니다: ' + error.message);
+                })
+                .finally(() => { e.target.value = ''; });
         }
 
-        // 엑셀업로드2 파일 처리
-        function handleLocation2FileUpload(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            // 로딩 인디케이터 표시
-            const loadingOverlay = document.getElementById('loadingOverlay');
-            const loadingText = document.getElementById('loadingText');
-            loadingOverlay.classList.add('active');
-            loadingText.textContent = '엑셀 파일 읽는 중...';
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                loadingText.textContent = '엑셀 데이터 처리 중...';
-                
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-    
-                    // 첫 번째 시트 사용
-                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: ['barcode', 'location'] });
-    
-                    // 헤더행 제거 (있는 경우)
-                    if (jsonData.length > 0 && typeof jsonData[0].barcode === 'string' && 
-                        (jsonData[0].barcode.toLowerCase() === 'barcode' || 
-                         jsonData[0].barcode.toLowerCase() === '바코드')) {
-                        jsonData.shift();
-                    }
-                    
-                    loadingText.textContent = `총 ${jsonData.length}개 데이터 처리 중...`;
-                    console.log(`총 ${jsonData.length}개 데이터 처리 중...`);
-    
-                    // 서버에 데이터 전송
-                    fetch('/api/inventory/upload-locations', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ items: jsonData })
-                    })
-                    .then(response => {
-                        if (!response.ok) {
-                            throw new Error(`서버 오류: ${response.status}`);
-                        }
-                        return response.json();
-                    })
-                    .then(data => {
-                        loadingOverlay.classList.remove('active');
-                        if (data.success) {
-                            alert(`${data.updated}개의 위치 정보가 업데이트되었습니다.`);
-                            // 테이블 새로고침
-                            loadInventoryData();
-                        } else {
-                            alert('위치 정보 업데이트 중 오류가 발생했습니다.');
-                        }
-                        // 파일 입력 초기화
-                        document.getElementById('fileInput2').value = '';
-                    })
-                    .catch(error => {
-                        loadingOverlay.classList.remove('active');
-                        console.error('Error:', error);
-                        alert('위치 정보 업데이트 중 오류가 발생했습니다: ' + error.message);
-                        // 파일 입력 초기화
-                        document.getElementById('fileInput2').value = '';
-                    });
-                } catch (error) {
-                    loadingOverlay.classList.remove('active');
-                    console.error('Error:', error);
-                    alert('엑셀 파일 처리 중 오류가 발생했습니다: ' + error.message);
-                    // 파일 입력 초기화
-                    document.getElementById('fileInput2').value = '';
-                }
-            };
-            
-            reader.onerror = function() {
-                loadingOverlay.classList.remove('active');
-                alert('파일 읽기 중 오류가 발생했습니다.');
-                // 파일 입력 초기화
-                document.getElementById('fileInput2').value = '';
-            };
-            
-            reader.readAsArrayBuffer(file);
-        }
-        
         // 직접 등록 모달 관련 함수들
         function openRegisterModal() {
             document.getElementById('registerOverlay').classList.add('active');

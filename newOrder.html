@@ -654,8 +654,14 @@
             let rows=selectedRows().length?selectedRows():viewRows;
             if(!rows.length){toast('인쇄할 행이 없습니다.');return;}
             // 정렬: 입고예정일 > 물류센터 > 발주번호 > 위치
+            // '위치' 버튼 계산 결과가 있으면 그 대표 위치(화면 표시 첫 위치)로 정렬 (재고 0·NULL 회색 위치도 포함)
+            const sortLoc=(r)=>{
+                if(r.stockLocs && r.stockLocs.length && !r.v2Saved) return r.stockLocs[0].location; // 계산(미저장) 첫 위치
+                if(r.위치v2 && r.위치v2.length) return r.위치v2[0].location;                        // 저장된 배정 첫 위치
+                return r.위치;
+            };
             const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
-            rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.물류센터,b.물류센터)||cmp(a.발주번호,b.발주번호)||cmp(a.위치,b.위치));
+            rows=rows.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.물류센터,b.물류센터)||cmp(a.발주번호,b.발주번호)||cmp(sortLoc(a),sortLoc(b)));
             // 인쇄용: 첫 콤마 앞 마지막 단어가 영어+숫자(모델코드)면 배지 처리
             const modelBold=(name)=>{
                 const s=String(name==null?'':name); const ci=s.indexOf(',');

@@ -24,6 +24,8 @@
         .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
         .btn.danger:hover{color:#dc2626;border-color:#fecaca;background:#fef2f2;}
+        .btn:disabled{opacity:.45;background:#f1f5f9;color:#94a3b8;border-color:#e2e8f0;cursor:not-allowed;text-decoration:line-through;}
+        .btn:disabled:hover{background:#f1f5f9;border-color:#e2e8f0;color:#94a3b8;}
 
         .search{position:relative;margin:0 auto 16px;width:66.67%;}
         .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
@@ -82,7 +84,7 @@
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M5 12l7-7 7 7"/></svg>
                         Excel 업로드
                     </button>
-                    <button class="btn danger" onclick="deleteShipment()">삭제</button>
+                    <button class="btn danger" onclick="deleteShipment()" disabled title="삭제 기능은 현재 비활성화되어 있습니다">삭제</button>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="onFilePicked(this)">
                 </div>
             </div>

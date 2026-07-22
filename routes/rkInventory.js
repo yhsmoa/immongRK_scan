@@ -61,23 +61,33 @@ router.post('/api/inventory/upload', upload.single('file'), async (req, res) => 
     const data = xlsx.utils.sheet_to_json(worksheet, { header: 'A' });
     const dataRows = data.slice(1);
 
-    // 기존 SKU → id 매핑
-    const existing = await fetchAll(() => sb.from('rk_inventories').select('id, sku_id'));
-    const existingMap = new Map();
-    for (const x of existing) if (x.sku_id != null && x.sku_id !== '') existingMap.set(String(x.sku_id), x.id);
+    // 기존 SKU/바코드 → id 매핑 (바코드도 unique 제약이 있어 함께 매칭)
+    const existing = await fetchAll(() => sb.from('rk_inventories').select('id, sku_id, barcode'));
+    const bySku = new Map();
+    const byBarcode = new Map();
+    for (const x of existing) {
+      if (x.sku_id != null && x.sku_id !== '') bySku.set(String(x.sku_id), x.id);
+      if (x.barcode != null && x.barcode !== '') byBarcode.set(String(x.barcode), x.id);
+    }
 
     const now = new Date().toISOString();
-    const seen = new Set(); // 같은 파일 내 중복 SKU 방지 (첫 행 우선)
+    const seenSku = new Set();      // 파일 내 중복 SKU 방지 (첫 행 우선)
+    const seenBarcode = new Set();  // 파일 내 중복 바코드 방지
     const toInsert = [];
     const toUpdate = [];
     for (const row of dataRows) {
       const skuId = row['A'] != null ? String(row['A']).trim() : '';
-      if (!skuId || seen.has(skuId)) continue;
-      seen.add(skuId);
-      const fields = { name: row['C'] || '', barcode: row['D'] || '', order_status: row['E'] || '' };
-      if (existingMap.has(skuId)) {
-        toUpdate.push({ id: existingMap.get(skuId), fields });
+      if (!skuId || seenSku.has(skuId)) continue;
+      seenSku.add(skuId);
+      const barcode = row['D'] != null ? String(row['D']).trim() : '';
+      const fields = { name: row['C'] || '', barcode, order_status: row['E'] || '' };
+      // 기존 매칭: SKU 우선, 없으면 바코드
+      const existId = bySku.has(skuId) ? bySku.get(skuId) : (barcode ? byBarcode.get(barcode) : undefined);
+      if (existId != null) {
+        toUpdate.push({ id: existId, fields });
       } else {
+        if (barcode && seenBarcode.has(barcode)) continue; // 파일 내 바코드 중복 skip
+        if (barcode) seenBarcode.add(barcode);
         toInsert.push({
           mongo_id: `inv_${skuId}_${Date.now()}_${toInsert.length}`,
           sku_id: skuId, ...fields, quantity: '-', location: '-', last_update: now,
@@ -85,26 +95,32 @@ router.post('/api/inventory/upload', upload.single('file'), async (req, res) => 
       }
     }
 
-    // 신규 삽입 (배치)
+    // 신규 삽입 (배치 → 실패 시 해당 배치만 개별 삽입, 중복은 skip)
+    let added = 0, skipped = 0;
     const BATCH = 1000;
     for (let i = 0; i < toInsert.length; i += BATCH) {
-      const { error } = await sb.from('rk_inventories').insert(toInsert.slice(i, i + BATCH));
-      if (error) throw error;
+      const chunk = toInsert.slice(i, i + BATCH);
+      const { error } = await sb.from('rk_inventories').insert(chunk);
+      if (!error) { added += chunk.length; continue; }
+      // 배치 실패(주로 중복 제약) → 한 건씩 재시도
+      for (const row of chunk) {
+        const { error: e1 } = await sb.from('rk_inventories').insert(row);
+        if (e1) { skipped++; } else { added++; }
+      }
     }
 
-    // 기존 갱신 (수량/위치는 건드리지 않음)
+    // 기존 갱신 (수량/위치는 건드리지 않음). 중복 등 오류는 개별 skip.
     let updated = 0;
     for (const u of toUpdate) {
       const { error } = await sb.from('rk_inventories')
         .update({ ...u.fields, last_update: now }).eq('id', u.id);
-      if (error) throw error;
-      updated++;
+      if (error) { skipped++; } else { updated++; }
     }
 
     res.json({
       success: true,
-      message: `재고 데이터 업로드 완료 (신규 ${toInsert.length}건, 갱신 ${updated}건)`,
-      added: toInsert.length, updated,
+      message: `재고 데이터 업로드 완료 (신규 ${added}건, 갱신 ${updated}건${skipped ? `, 건너뜀 ${skipped}건` : ''})`,
+      added, updated, skipped,
     });
   } catch (e) {
     console.error('[rk] inventory/upload:', e);
