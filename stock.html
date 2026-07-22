@@ -94,6 +94,7 @@
                     <span class="subtitle">전체 <b id="rowCount">0</b>개</span>
                 </div>
                 <div class="actions">
+                    <button class="btn" id="locSaveBtn" onclick="saveSelectedLoc()">위치저장</button>
                     <button class="btn" onclick="location.href='/stockScan'">재고스캔</button>
                     <div class="xlsx-drop">
                         <button class="btn primary">
@@ -268,6 +269,28 @@
                 toast(`${data.deleted ?? ids.length}건 삭제되었습니다.`);
                 await loadData();
             }catch(e){ updateDelBtn(); toast('삭제 실패: '+e.message); }
+        }
+
+        // ── 위치 일괄 저장 (체크된 행의 위치를 지정값으로 변경) ──
+        async function saveSelectedLoc(){
+            const ids=[...document.querySelectorAll('.rowchk')].filter(c=>c.checked).map(c=>c.dataset.id);
+            if(!ids.length){ toast('위치를 저장할 항목을 체크하세요.'); return; }
+            const input=prompt(`선택한 ${ids.length}개 항목의 위치를 입력하세요.`);
+            if(input==null) return;
+            const location=input.trim();
+            if(!location){ toast('위치를 입력하세요.'); return; }
+            const btn=document.getElementById('locSaveBtn'); const org=btn?btn.textContent:'';
+            if(btn){ btn.disabled=true; btn.textContent='저장 중…'; }
+            try{
+                const res=await fetch('/api/stocks/batch-update-location',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids, location})});
+                const data=await res.json().catch(()=>({}));
+                if(!res.ok) throw new Error(data.error||'저장 실패');
+                const idSet=new Set(ids.map(String));
+                for(const r of allRows){ if(idSet.has(String(r.id))) r.위치=location; }
+                applySearch();
+                toast(`위치 저장 완료 (${data.updated??ids.length}건)`);
+            }catch(e){ toast('위치 저장 실패: '+e.message); }
+            finally{ if(btn){ btn.disabled=false; btn.textContent=org; } }
         }
 
         // ── 위치 인라인 수정 (셀 클릭 편집) ──

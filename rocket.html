@@ -82,6 +82,7 @@
         .scan-orange{background:#ffedd5;color:#ea580c;}
         .dash{color:#cbd5e1;}
         .loc-disc{color:#e11d48;font-weight:600;}
+        .loc-stock{color:#111827;font-weight:600;}   /* 준비(재고) 배정 위치 */
         th.chk,td.chk{width:42px;text-align:center;padding-left:0;padding-right:0;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
@@ -205,6 +206,10 @@
         }
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         const locCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':(String(v).trim()==='단종'?'<span class="loc-disc">단종</span>':esc(v));
+        // 위치 열: 준비(재고 출고예정) 배정 위치가 있으면 그 위치-수량 표시, 없으면 발주서 원본 위치
+        const stockLocCell=r=>(r.재고위치&&r.재고위치.length)
+            ? '<span class="loc-stock">'+r.재고위치.map(a=>esc(a.location+'-'+a.qty)).join('<br>')+'</span>'
+            : locCell(r.위치);
         function fmtCreatedAt(ts){
             if(!ts) return '-';
             const d=new Date(ts); if(isNaN(d.getTime())) return '-';
@@ -225,16 +230,18 @@
                 const orders=await res.json();
                 // 스캔수량: rk_ship_box_items 합계(발주번호+바코드, 박스 무관)로 대체
                 const scanMap=scRes.ok?await scRes.json():{};
-                // 발주번호|바코드 → {재고합, 입고합} (source: 재고→재고열, 입고→입고V2열)
+                // 발주번호|바코드 → {재고합, 입고합, 재고위치[]} (source: 재고→재고열+위치, 입고→입고V2열)
                 const slMap=new Map();
                 if(slRes.ok){
                     for(const s of await slRes.json()){
                         const k=`${s.orderNumber}|${s.barcode}`;
-                        if(!slMap.has(k)) slMap.set(k,{재고:0,입고:0});
+                        if(!slMap.has(k)) slMap.set(k,{재고:0,입고:0,재고위치:[]});
                         const m=slMap.get(k);
-                        if(s.source==='재고') m.재고+=Number(s.qty)||0;
+                        if(s.source==='재고'){ m.재고+=Number(s.qty)||0; if(s.location) m.재고위치.push({location:s.location, qty:Number(s.qty)||0}); }
                         else if(s.source==='입고') m.입고+=Number(s.qty)||0;
                     }
+                    // 위치 오름차순 정렬
+                    for(const m of slMap.values()) m.재고위치.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
                 }
                 allRows=[];
                 for(const o of orders){
@@ -244,6 +251,7 @@
                             상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
                             발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:scanMap[`${o.발주번호}|${p.상품바코드}`]||0,
                             재고:(sl&&sl.재고>0)?sl.재고:null,입고V2:(sl&&sl.입고>0)?sl.입고:null,
+                            재고위치:(sl&&sl.재고위치&&sl.재고위치.length)?sl.재고위치:null,
                             입고1:p.입고1,위치:p.위치,created_at:o.created_at});
                     }
                 }
@@ -277,7 +285,7 @@
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${dashCell(r.재고)}</td>
-                        <td class="ctr">${dashCell(r.입고V2)}</td><td>${locCell(r.위치)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                        <td class="ctr">${dashCell(r.입고V2)}</td><td>${stockLocCell(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }

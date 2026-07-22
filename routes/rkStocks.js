@@ -327,4 +327,20 @@ router.post('/api/stocks/batch-update-qty', async (req, res) => {
   }
 });
 
+// 위치 일괄 저장 (선택 항목의 location 을 지정값으로 변경)
+router.post('/api/stocks/batch-update-location', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map((v) => parseInt(v, 10)).filter(Number.isFinite);
+    const location = String(req.body.location == null ? '' : req.body.location).trim();
+    if (!ids.length) return res.status(400).json({ error: '대상 항목이 없습니다.' });
+    if (!location) return res.status(400).json({ error: '위치가 입력되지 않았습니다.' });
+    const { data, error } = await sb.from('rk_stocks').update({ location }).in('id', ids).select('id');
+    if (error) throw error;
+    res.json({ ok: true, updated: data ? data.length : 0 });
+  } catch (e) {
+    console.error('[rk] stocks/batch-update-location:', e);
+    res.status(500).json({ error: '위치 저장 실패: ' + e.message });
+  }
+});
+
 module.exports = router;
