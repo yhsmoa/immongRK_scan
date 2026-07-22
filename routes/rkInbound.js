@@ -254,15 +254,38 @@ router.post('/api/inbound/prepare', async (req, res) => {
     if (orderNumbers && orderNumbers.length) orders = orders.filter(o => orderNumbers.includes(o.발주번호));
 
     const barcodesInItems = new Set(items.map(i => i.barcode).filter(Boolean));
+
+    // 스캔수량 = 출고스캔(rk_ship_box_items)의 발주번호+바코드별 합 (scanned_qty 미사용)
+    const shipScanByOrderBc = new Map(); // `${order_number}|${barcode}` -> 스캔합
+    {
+      const bcs = [...barcodesInItems];
+      for (let i = 0; i < bcs.length; i += 200) {
+        const batch = bcs.slice(i, i + 200);
+        let from = 0; const PAGE = 1000;
+        while (true) {
+          const { data, error } = await sb.from('rk_ship_box_items').select('order_number, barcode, qty').in('barcode', batch).range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (!data || !data.length) break;
+          for (const r of data) {
+            if (!r.order_number || !r.barcode) continue;
+            const k = `${r.order_number}|${r.barcode}`;
+            shipScanByOrderBc.set(k, (shipScanByOrderBc.get(k) || 0) + (parseInt(r.qty) || 0));
+          }
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+      }
+    }
+
     const orderProductMap = new Map(); // barcode -> [{order, availableQuantity}]
     for (const order of orders) {
       for (const p of (order.상품정보 || [])) {
         if (!p.상품바코드 || p.박스정보) continue;
         if (!barcodesInItems.has(p.상품바코드)) continue;
-        const 스캔 = parseInt(p.스캔수량) || 0;
+        const 스캔 = shipScanByOrderBc.get(`${order.발주번호}|${p.상품바코드}`) || 0;
         const consumed = consumedMap.has(p.상품바코드) && consumedMap.get(p.상품바코드).has(order.발주번호)
           ? consumedMap.get(p.상품바코드).get(order.발주번호) : 0;
-        // 가용 = 확정 - 스캔 - (이미 배정된 전량). 입고1/입고2 미차감.
+        // 가용 = 확정 - 출고스캔 - (이미 배정된 전량). 입고1/입고2 미차감.
         const avail = (parseInt(p.확정수량) || 0) - 스캔 - consumed;
         if (avail > 0) {
           if (!orderProductMap.has(p.상품바코드)) orderProductMap.set(p.상품바코드, []);
