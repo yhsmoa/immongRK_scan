@@ -12,6 +12,20 @@ const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 const sb = S.supabase;
 
+// 상품명에서 모델코드 추출 (상품명 배지 기준):
+// 콤마 있으면 첫 콤마 앞에서, 없으면 전체에서 — 영어+숫자 조합 단어를 뒤에서부터 탐색
+function extractModelCode(name) {
+  const s = String(name == null ? '' : name);
+  const ci = s.indexOf(',');
+  const target = ci > 0 ? s.slice(0, ci) : s;
+  const words = target.trim().split(/\s+/).filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const t = words[i];
+    if (/^[A-Za-z0-9]+$/.test(t) && /[A-Za-z]/.test(t) && /\d/.test(t)) return t;
+  }
+  return null;
+}
+
 function toKorean(r) {
   return {
     id: r.id,
@@ -528,6 +542,95 @@ router.delete('/api/inbound/delete/:shipmentCode', async (req, res) => {
   } catch (e) {
     console.error('[rk] inbound/delete:', e);
     res.status(500).json({ error: '삭제 중 오류가 발생했습니다.' });
+  }
+});
+
+// 바코드 업데이트: 입고 상품명 → 모델코드 추출 → rk_inventories 상품명 '포함' 검색 → 바코드 매칭
+// body: { items:[{id, productName}] }  → { matched:[{id, barcode, code}], unmatched }
+router.post('/api/inbound/match-barcodes', async (req, res) => {
+  try {
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length) return res.json({ matched: [], unmatched: 0 });
+
+    // 상품마스터 전체 로드 (name, barcode)
+    const inv = [];
+    let from = 0; const size = 1000;
+    while (true) {
+      const { data, error } = await sb.from('rk_inventories').select('name, barcode').range(from, from + size - 1);
+      if (error) throw error;
+      inv.push(...(data || []));
+      if (!data || data.length < size) break;
+      from += size;
+    }
+    const invValid = inv.filter((x) => x.barcode);
+
+    // 모델코드 인덱스: 상품마스터 상품명의 모델코드(대문자) → 후보들
+    const idx = new Map();
+    for (const x of invValid) {
+      const c = extractModelCode(x.name);
+      if (!c) continue;
+      const k = c.toUpperCase();
+      if (!idx.has(k)) idx.set(k, []);
+      idx.get(k).push({ name: String(x.name || ''), barcode: x.barcode });
+    }
+
+    const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, '').toLowerCase();
+    const pickBest = (cands, productName) => {
+      const pn = String(productName || '').trim();
+      const npn = norm(pn);
+      let m = cands.find((c) => c.name.trim() === pn); if (m) return m.barcode;      // 정확 일치
+      m = cands.find((c) => norm(c.name) === npn); if (m) return m.barcode;           // 공백무시 일치
+      m = cands.find((c) => norm(c.name).includes(npn) || npn.includes(norm(c.name))); if (m) return m.barcode; // 포함
+      return cands[0].barcode;                                                         // 그 외 첫 후보
+    };
+
+    const matched = [];
+    let unmatched = 0;
+    for (const it of items) {
+      const code = extractModelCode(it.productName);
+      if (!code) { unmatched++; continue; }
+      const cu = code.toUpperCase();
+      let cands = idx.get(cu);
+      // 인덱스에 없으면 '포함' 검색 fallback (상품명 문자열에 코드가 들어있는 것)
+      if (!cands || !cands.length) {
+        cands = invValid.filter((x) => String(x.name || '').toUpperCase().includes(cu))
+          .map((x) => ({ name: String(x.name || ''), barcode: x.barcode }));
+      }
+      if (!cands.length) { unmatched++; continue; }
+      const barcode = pickBest(cands, it.productName);
+      if (barcode) matched.push({ id: it.id, barcode, code }); else unmatched++;
+    }
+    res.json({ matched, unmatched });
+  } catch (e) {
+    console.error('[rk] inbound/match-barcodes:', e);
+    res.status(500).json({ error: '바코드 매칭 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// 입고 아이템 배치 저장 (바코드 업데이트 등). body: { items:[{id, barcode?, note?}] }
+router.post('/api/inbound/batch-update-items', async (req, res) => {
+  try {
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!items.length) return res.json({ updated: 0 });
+    let updated = 0, skipped = 0;
+    const CONC = 40;
+    for (let i = 0; i < items.length; i += CONC) {
+      const chunk = items.slice(i, i + CONC);
+      const results = await Promise.all(chunk.map((it) => {
+        const patch = {};
+        if (it.barcode !== undefined) patch.barcode = it.barcode;
+        if (it.note !== undefined) patch.note = it.note;
+        if (!it.id || !Object.keys(patch).length) return Promise.resolve('skip');
+        return sb.from('rk_cn_shipment_items').update(patch).eq('id', it.id)
+          .then((r) => (r.error ? 'err' : 'ok')).catch(() => 'err');
+      }));
+      updated += results.filter((x) => x === 'ok').length;
+      skipped += results.filter((x) => x === 'err').length;
+    }
+    res.json({ updated, skipped });
+  } catch (e) {
+    console.error('[rk] inbound/batch-update-items:', e);
+    res.status(500).json({ error: '저장 중 오류가 발생했습니다: ' + e.message });
   }
 });
 

@@ -50,6 +50,9 @@
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         td.code{font-weight:600;color:#1e293b;}
         td.note[contenteditable="true"]{cursor:text;}
+        td.cell-dirty{background:#fef3c7;}
+        th.chk,td.chk{width:40px;text-align:center;padding-left:0;padding-right:0;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;}
         td.note[contenteditable="true"]:focus{outline:2px solid var(--primary);outline-offset:-2px;background:#fff;white-space:normal;}
         .dash{color:#cbd5e1;}
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
@@ -80,10 +83,12 @@
                     <span class="subtitle">전체 <b id="rowCount">0</b>건</span>
                 </div>
                 <div class="actions">
+                    <button class="btn" id="matchBtn" onclick="updateBarcodes()">바코드 업데이트</button>
                     <button class="btn primary" onclick="document.getElementById('fileInput').click()">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V6M5 12l7-7 7 7"/></svg>
                         Excel 업로드
                     </button>
+                    <button class="btn" id="saveBtn" onclick="saveChanges()" disabled>저장</button>
                     <button class="btn danger" onclick="deleteShipment()" disabled title="삭제 기능은 현재 비활성화되어 있습니다">삭제</button>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="onFilePicked(this)">
                 </div>
@@ -103,14 +108,15 @@
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:120px"><col style="width:120px"><col style="width:120px"><col><col style="width:80px"><col style="width:150px"><col style="width:200px">
+                        <col style="width:40px"><col style="width:120px"><col style="width:120px"><col style="width:120px"><col><col style="width:80px"><col style="width:150px"><col style="width:200px">
                     </colgroup>
                     <thead>
                         <tr>
+                            <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>비고</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="7">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="8">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -160,7 +166,7 @@
                 populateYear();
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="7">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
             }
         }
 
@@ -205,19 +211,23 @@
         function render(){
             const tb=document.getElementById('tbody');
             if(viewRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="7">표시할 입고리스트가 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="8">표시할 입고리스트가 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
             }else{
-                tb.innerHTML=viewRows.map(r=>`<tr data-id="${r.id}">
+                tb.innerHTML=viewRows.map(r=>{
+                    const d=dirty.has(r.id)?' cell-dirty':'';
+                    return `<tr data-id="${r.id}">
+                    <td class="chk"><input type="checkbox" class="rowchk" data-id="${r.id}" ${sel.has(r.id)?'checked':''} onchange="toggleRow(${r.id},this.checked)"></td>
                     <td class="code">${esc(r.출고코드)}</td>
                     <td>${esc(r.박스명)}</td>
                     <td>${esc(r.중국번호)}</td>
                     <td class="pname">${modelBadge(r.상품명)}</td>
                     <td class="ctr">${dashCell(r.수량)}</td>
-                    <td>${esc(r.바코드)}</td>
-                    <td class="note" contenteditable="true" data-orig="${esc(r.비고||'')}" onblur="saveNote(this,${r.id})">${esc(r.비고||'')}</td>
-                </tr>`).join('');
+                    <td class="${d}">${esc(r.바코드)}</td>
+                    <td class="note${d}" contenteditable="true" data-orig="${esc(r.비고||'')}" onblur="saveNote(this,${r.id})">${esc(r.비고||'')}</td>
+                </tr>`;}).join('');
             }
             document.getElementById('rowCount').textContent=viewRows.length;
+            syncCheckAll();
         }
 
         function applySearch(){
@@ -263,6 +273,60 @@
             pendingFile=null;
         }
         document.getElementById('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmUpload();if(e.key==='Escape')closeCodeModal();});
+
+        // ── 선택(체크박스) ──
+        const sel=new Set();                 // 선택된 행 id
+        function toggleRow(id,ch){ if(ch) sel.add(id); else sel.delete(id); syncCheckAll(); }
+        function toggleAll(el){
+            viewRows.forEach(r=>{ if(el.checked) sel.add(r.id); else sel.delete(r.id); });
+            document.querySelectorAll('.rowchk').forEach(c=>c.checked=el.checked);
+        }
+        function syncCheckAll(){
+            const all=document.getElementById('checkAll'); if(!all) return;
+            const n=viewRows.filter(r=>sel.has(r.id)).length;
+            all.checked=viewRows.length>0&&n===viewRows.length;
+            all.indeterminate=n>0&&n<viewRows.length;
+        }
+
+        // ── 바코드 업데이트 / 저장 ──
+        const dirty=new Set();               // 미저장 변경 행 id
+        function updateSaveBtn(){ const b=document.getElementById('saveBtn'); if(b) b.disabled=dirty.size===0; }
+
+        async function updateBarcodes(){
+            // 체크된 행 중 상품명 있는 것만 → 서버 매칭
+            const targets=viewRows.filter(r=>sel.has(r.id)&&r.상품명);
+            if(!targets.length){ toast('바코드를 찾을 행을 체크하세요.'); return; }
+            const btn=document.getElementById('matchBtn'); const org=btn.textContent;
+            btn.disabled=true; btn.textContent='매칭 중…';
+            try{
+                const res=await fetch('/api/inbound/match-barcodes',{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({items:targets.map(r=>({id:r.id, productName:r.상품명}))})});
+                const data=await res.json();
+                if(!res.ok) throw new Error(data.error||'매칭 실패');
+                const map=new Map((data.matched||[]).map(m=>[m.id,m.barcode]));
+                let n=0;
+                for(const r of allRows){
+                    if(map.has(r.id)){ r.바코드=map.get(r.id); r.비고='바코드 업데이트'; dirty.add(r.id); n++; }
+                }
+                applySearch(); updateSaveBtn();
+                toast(`바코드 매칭 ${n}건 · 미매칭 ${data.unmatched||0}건 · [저장]을 눌러 반영하세요.`);
+            }catch(e){ toast('바코드 업데이트 실패: '+e.message); }
+            finally{ btn.disabled=false; btn.textContent=org; updateSaveBtn(); }
+        }
+
+        async function saveChanges(){
+            if(!dirty.size){ toast('저장할 변경이 없습니다.'); return; }
+            const items=[...dirty].map(id=>{ const r=allRows.find(x=>x.id===id); return r?{id, barcode:r.바코드, note:r.비고||''}:null; }).filter(Boolean);
+            const btn=document.getElementById('saveBtn'); const org=btn.textContent;
+            btn.disabled=true; btn.textContent='저장 중…';
+            try{
+                const res=await fetch('/api/inbound/batch-update-items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+                const data=await res.json();
+                if(!res.ok) throw new Error(data.error||'저장 실패');
+                dirty.clear(); applySearch(); updateSaveBtn();
+                toast(`저장 완료 (${data.updated??items.length}건${data.skipped?` · 실패 ${data.skipped}`:''})`);
+            }catch(e){ btn.textContent=org; btn.disabled=false; toast('저장 실패: '+e.message); }
+        }
 
         // ── 비고 저장 (blur 시) ──
         async function saveNote(cell,id){
