@@ -858,7 +858,7 @@
                     <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
                     <td class="input-cell" data-row="${idx}">${savedInputs.get(item.상품바코드) || ''}</td>
                     <td class="yiwu-cell" data-barcode="${item.상품바코드}">${item.yiwuTotalQty ? Number(item.yiwuTotalQty).toLocaleString() : ''}</td>
-                    <td></td>
+                    <td>${item.재고 == null ? '' : Number(item.재고).toLocaleString()}</td>
                     <td>${formatRounded(item.cForecast)}</td>
                     <td>${formatRounded(item.cForecast2W)}</td>
                     <td class="ds-cell col-week" data-barcode="${item.상품바코드}">${item.w78 ? Number(item.w78).toLocaleString() : ''}</td>

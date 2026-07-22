@@ -3104,6 +3104,23 @@ app.get('/api/shortage', async (req, res) => {
             });
         });
 
+        // 2.5단계: 출고스캔(rk_ship_box_items, shipScan) 바코드별 합 → 스캔수량에 포함
+        const shipScanMap = new Map();
+        const bcAll = [...barcodeMap.keys()].filter(Boolean);
+        for (let i = 0; i < bcAll.length; i += 200) {
+            const batch = bcAll.slice(i, i + 200);
+            let from = 0; const PAGE = 1000;
+            while (true) {
+                const { data, error } = await supabase.from('rk_ship_box_items').select('barcode, qty').in('barcode', batch).range(from, from + PAGE - 1);
+                if (error) { console.error('rk_ship_box_items 조회 오류:', error); break; }
+                if (!data || data.length === 0) break;
+                data.forEach(r => { if (r.barcode) shipScanMap.set(r.barcode, (shipScanMap.get(r.barcode) || 0) + (parseInt(r.qty) || 0)); });
+                if (data.length < PAGE) break;
+                from += PAGE;
+            }
+        }
+        barcodeMap.forEach(item => { item.총스캔수량 += (shipScanMap.get(item.상품바코드) || 0); });
+
         // 3단계: 부족수량 계산 + SKU 수집 (부족수량 > 0만)
         const shortageList = [];
         const skuSet = new Set();
@@ -3198,6 +3215,45 @@ app.get('/api/shortage', async (req, res) => {
         }
         shortageList.forEach(item => {
             item.yiwuTotalQty = yiwuMap.get(item.상품바코드) || 0;
+        });
+
+        // 5.6단계: 재고 = rk_stocks 바코드별 합(qty NULL이면 미집계) − 재고 출고계획(rk_shipping_list source=재고 출고예정)
+        //   전부 NULL/데이터없음 → 비움(null), 그 외 max(0, 재고합 − 예약합)
+        const stockMap = new Map();     // barcode → { sum, has }
+        const stockResMap = new Map();  // barcode → 재고예약 합
+        const stkBcs = shortageList.map(i => i.상품바코드).filter(Boolean);
+        for (let i = 0; i < stkBcs.length; i += 200) {
+            const batch = stkBcs.slice(i, i + 200);
+            let from = 0; const PAGE = 1000;
+            while (true) {
+                const { data, error } = await supabase.from('rk_stocks').select('barcode, qty').in('barcode', batch).range(from, from + PAGE - 1);
+                if (error) { console.error('rk_stocks 조회 오류:', error); break; }
+                if (!data || data.length === 0) break;
+                data.forEach(r => {
+                    if (!r.barcode) return;
+                    const cur = stockMap.get(r.barcode) || { sum: 0, has: false };
+                    if (r.qty != null) { cur.sum += (parseInt(r.qty) || 0); cur.has = true; }
+                    stockMap.set(r.barcode, cur);
+                });
+                if (data.length < PAGE) break;
+                from += PAGE;
+            }
+        }
+        for (let i = 0; i < stkBcs.length; i += 200) {
+            const batch = stkBcs.slice(i, i + 200);
+            let from = 0; const PAGE = 1000;
+            while (true) {
+                const { data, error } = await supabase.from('rk_shipping_list').select('barcode, qty').eq('source', '재고').eq('status', '출고예정').in('barcode', batch).range(from, from + PAGE - 1);
+                if (error) { console.error('rk_shipping_list(재고예약) 조회 오류:', error); break; }
+                if (!data || data.length === 0) break;
+                data.forEach(r => { if (r.barcode) stockResMap.set(r.barcode, (stockResMap.get(r.barcode) || 0) + (parseInt(r.qty) || 0)); });
+                if (data.length < PAGE) break;
+                from += PAGE;
+            }
+        }
+        shortageList.forEach(item => {
+            const s = stockMap.get(item.상품바코드);
+            item.재고 = (!s || !s.has) ? null : Math.max(0, s.sum - (stockResMap.get(item.상품바코드) || 0));
         });
 
         // 6단계: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
