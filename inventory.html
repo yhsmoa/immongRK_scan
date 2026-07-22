@@ -391,10 +391,16 @@
         <button class="location-save-btn" onclick="saveLocation()">저장</button>
     </div>
 
-    <!-- 로딩 인디케이터 -->
+    <!-- 로딩 인디케이터 (진행률 바 포함) -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner"></div>
         <div class="loading-text" id="loadingText">엑셀 업로드 중...</div>
+        <div id="uploadProgWrap" style="display:none;width:280px;margin-top:12px;">
+            <div style="height:10px;background:#e5e7eb;border-radius:6px;overflow:hidden;">
+                <div id="uploadProgBar" style="height:100%;width:0%;background:#4f46e5;border-radius:6px;transition:width .2s;"></div>
+            </div>
+            <div id="uploadProgText" style="font-size:12px;color:#64748b;margin-top:6px;text-align:center;"></div>
+        </div>
     </div>
 
     <!-- 직접 등록 모달 -->
@@ -754,36 +760,74 @@
             });
         }
 
-        // 파일 업로드 처리
-        function handleFileUpload(e) {
+        // 파일 업로드 처리 (클라이언트에서 파싱 → 2000건씩 청크 전송, 진행률 표시)
+        async function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
-            const formData = new FormData();
-            formData.append('file', file);
-
-            // 진행 로딩 모달 표시 (대량 업로드는 서버 처리에 시간이 걸림)
             const ov = document.getElementById('loadingOverlay');
             const tx = document.getElementById('loadingText');
-            if (tx) tx.textContent = `엑셀 업로드 중… (${file.name})\n대량 데이터는 수십 초 걸릴 수 있습니다.`;
+            const wrap = document.getElementById('uploadProgWrap');
+            const bar = document.getElementById('uploadProgBar');
+            const ptx = document.getElementById('uploadProgText');
+            const setBar = (done, total) => {
+                const pct = total ? Math.round(done / total * 100) : 0;
+                bar.style.width = pct + '%';
+                ptx.textContent = `${done.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`;
+            };
+
+            if (tx) tx.textContent = '엑셀 파일 읽는 중…';
+            if (wrap) wrap.style.display = 'none';
             if (ov) ov.classList.add('active');
 
-            fetch('/api/inventory/upload', { method: 'POST', body: formData })
-                .then(response => response.json().then(d => ({ ok: response.ok, d })))
-                .then(({ ok, d }) => {
-                    if (ov) ov.classList.remove('active');
-                    if (ok && d.success) {
-                        alert(d.message || '파일이 성공적으로 업로드되었습니다.');
-                        loadInventoryData();
-                    } else {
-                        alert('파일 업로드 실패: ' + (d.error || '알 수 없는 오류'));
-                    }
-                })
-                .catch(error => {
-                    if (ov) ov.classList.remove('active');
-                    console.error('Error:', error);
-                    alert('파일 업로드 중 오류가 발생했습니다: ' + error.message);
-                })
-                .finally(() => { e.target.value = ''; });
+            try {
+                // 1) 클라이언트 파싱 (A=SKU, C=상품명, D=바코드, E=발주가능상태, 첫 행 헤더)
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const raw = XLSX.utils.sheet_to_json(ws, { header: 'A' });
+                const rows = raw.slice(1).map(r => ({
+                    skuId: r.A != null ? String(r.A).trim() : '',
+                    name: r.C != null ? String(r.C) : '',
+                    barcode: r.D != null ? String(r.D).trim() : '',
+                    orderStatus: r.E != null ? String(r.E) : '',
+                })).filter(r => r.skuId);
+
+                const total = rows.length;
+                if (!total) { if (ov) ov.classList.remove('active'); alert('업로드할 데이터가 없습니다.'); return; }
+
+                // 2) 2000건씩 청크 전송 + 진행률
+                const CHUNK = 2000;
+                const agg = { added: 0, updated: 0, unchanged: 0, skipped: 0 };
+                let done = 0;
+                if (tx) tx.textContent = `업로드 중… (${file.name})`;
+                if (wrap) { wrap.style.display = 'block'; setBar(0, total); }
+
+                for (let i = 0; i < total; i += CHUNK) {
+                    const part = rows.slice(i, i + CHUNK);
+                    const res = await fetch('/api/inventory/upload-chunk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rows: part }),
+                    });
+                    const d = await res.json();
+                    if (!res.ok) throw new Error(d.error || '업로드 실패');
+                    agg.added += d.added || 0; agg.updated += d.updated || 0;
+                    agg.unchanged += d.unchanged || 0; agg.skipped += d.skipped || 0;
+                    done += part.length;
+                    setBar(done, total);
+                }
+
+                if (ov) ov.classList.remove('active');
+                alert(`업로드 완료 (총 ${total.toLocaleString()}건)\n신규 ${agg.added} · 갱신 ${agg.updated} · 변경없음 ${agg.unchanged}${agg.skipped ? ` · 건너뜀 ${agg.skipped}` : ''}`);
+                loadInventoryData();
+            } catch (error) {
+                if (ov) ov.classList.remove('active');
+                console.error('Error:', error);
+                alert('파일 업로드 중 오류가 발생했습니다: ' + error.message);
+            } finally {
+                e.target.value = '';
+                if (wrap) wrap.style.display = 'none';
+            }
         }
 
         // 직접 등록 모달 관련 함수들
