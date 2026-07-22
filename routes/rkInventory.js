@@ -233,4 +233,51 @@ router.post('/api/inventory/register', async (req, res) => {
   }
 });
 
+// 상품관리 → rk_stocks 위치 저장 (배치). 수량은 NULL로 저장.
+// 같은 (바코드+위치)가 이미 있으면 건너뜀. body: { location, items:[{barcode, skuId, itemName}] }
+router.post('/api/inventory/save-stock-location', async (req, res) => {
+  try {
+    const location = String(req.body.location || '').trim();
+    const items = Array.isArray(req.body.items) ? req.body.items : [];
+    if (!location) return res.status(400).json({ error: '위치가 입력되지 않았습니다.' });
+    // 바코드 정리(중복 제거)
+    const byBarcode = new Map();
+    for (const it of items) {
+      const bc = String(it.barcode || '').trim();
+      if (!bc) continue;
+      if (!byBarcode.has(bc)) byBarcode.set(bc, { barcode: bc, skuId: it.skuId || null, itemName: it.itemName || null });
+    }
+    const barcodes = [...byBarcode.keys()];
+    if (!barcodes.length) return res.status(400).json({ error: '바코드가 있는 항목이 없습니다.' });
+
+    // 이미 (바코드+위치)로 존재하는 것 조회 (배치)
+    const existSet = new Set();
+    for (let i = 0; i < barcodes.length; i += 200) {
+      const { data, error } = await sb.from('rk_stocks')
+        .select('barcode').eq('location', location).in('barcode', barcodes.slice(i, i + 200));
+      if (error) throw error;
+      for (const r of (data || [])) existSet.add(r.barcode);
+    }
+
+    // 없는 것만 insert (qty = NULL)
+    const rows = [];
+    for (const bc of barcodes) {
+      if (existSet.has(bc)) continue;
+      const m = byBarcode.get(bc);
+      rows.push({ barcode: bc, location, qty: null, sku_id: m.skuId || null, item_name: m.itemName || null });
+    }
+    let saved = 0;
+    const BATCH = 500;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const { error } = await sb.from('rk_stocks').insert(rows.slice(i, i + BATCH));
+      if (error) throw error;
+      saved += rows.slice(i, i + BATCH).length;
+    }
+    res.json({ ok: true, saved, skipped: barcodes.length - saved });
+  } catch (e) {
+    console.error('[rk] inventory/save-stock-location:', e);
+    res.status(500).json({ error: '위치 저장 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
 module.exports = router;

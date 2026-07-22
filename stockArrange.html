@@ -46,6 +46,17 @@
         td.loc-text{font-weight:600;color:#1e293b;}
         th.chk,td.chk{text-align:center;padding-left:0;padding-right:0;}
         th.done-col,td.done-col{text-align:center;}
+        /* 탭 (inboundArrange 스타일) */
+        .tabs{display:flex;gap:6px;margin-bottom:8px;}
+        .tab{height:34px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+        .tab:hover{background:var(--hover);}
+        .tab.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .tab .cnt{font-size:11.5px;opacity:.85;}
+        /* 처리 열 이모지: 흑백(미처리, 클릭가능) / 색상(처리완료) */
+        .done-ico{font-size:19px;line-height:1;display:inline-block;}
+        .done-ico.off{filter:grayscale(1);opacity:.4;cursor:pointer;transition:opacity .12s,transform .12s;}
+        .done-ico.off:hover{opacity:.85;transform:scale(1.2);}
+        .done-ico.on{cursor:default;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
         td.qty-edit{cursor:text;}
         td.qty-edit:focus{outline:none;background:#fff;}
@@ -118,6 +129,11 @@
             <div class="search">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
                 <input id="searchInput" type="text" placeholder="출고코드 · 박스명 · 중국번호 · 상품명 · 바코드 · 위치 검색 후 Enter" onkeydown="if(event.key==='Enter')render()">
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" id="tab-pending" onclick="switchTab('pending')">처리중 <span class="cnt" id="cnt-pending">0</span></button>
+                <button class="tab" id="tab-done" onclick="switchTab('done')">처리완료 <span class="cnt" id="cnt-done">0</span></button>
             </div>
 
             <div class="table-scroll">
@@ -195,10 +211,19 @@
             }
         }
 
+        let activeTab='pending';   // 'pending' | 'done'
+        function switchTab(t){
+            activeTab=t;
+            document.getElementById('tab-pending').classList.toggle('active',t==='pending');
+            document.getElementById('tab-done').classList.toggle('active',t==='done');
+            render();
+        }
         function filtered(){
+            // 탭 필터: 처리중=pending(방금 처리한 justDone 포함), 처리완료=done
+            let base=rows.filter(r=> activeTab==='pending' ? r.kind==='pending' : r.kind==='done');
             const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
-            if(!terms.length) return rows;
-            return rows.filter(r=>{
+            if(!terms.length) return base;
+            return base.filter(r=>{
                 const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.위치,...(r.위치후보||[])].map(v=>String(v||'').toLowerCase());
                 return terms.some(t=>hay.some(h=>h.includes(t)));
             });
@@ -233,21 +258,29 @@
                             <td class="chk"><input type="checkbox" ${r.checked?'checked':''} onchange="toggleRow('${r.key}',this.checked)"></td>
                             <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
                             <td class="pname">${modelBadge(r.상품명)}</td><td class="ctr">${dashCell(r.qty)}</td><td>${esc(r.바코드)}</td>
-                            <td class="loc-text">${dashCell(r.위치)}</td><td class="ctr done-col">✅</td>
+                            <td class="loc-text">${dashCell(r.위치)}</td><td class="ctr done-col"><span class="done-ico on">✅</span></td>
                         </tr>`;
                     }
-                    return `<tr>
-                        <td class="chk"><input type="checkbox" ${r.checked?'checked':''} onchange="toggleRow('${r.key}',this.checked)"></td>
+                    // pending: 방금 처리(justDone)면 색상 이모지, 아니면 흑백(클릭 시 그 행 처리완료)
+                    const doneCell=r.justDone
+                        ? '<span class="done-ico on">✅</span>'
+                        : `<span class="done-ico off" title="이 상품 처리완료" onclick="completeOne('${r.key}')">✅</span>`;
+                    return `<tr${r.justDone?' class="done"':''}>
+                        <td class="chk"><input type="checkbox" ${r.checked?'checked':''} ${r.justDone?'disabled':''} onchange="toggleRow('${r.key}',this.checked)"></td>
                         <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
                         <td class="pname">${modelBadge(r.상품명)}</td>
                         <td class="ctr qty-edit" contenteditable="true" data-orig="${esc(r.qty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" onblur="saveQty('${r.key}',this)">${esc(r.qty)}</td>
                         <td>${esc(r.바코드)}</td>
-                        <td class="loc-cell">${locCell(r)}</td><td class="ctr done-col"></td>
+                        <td class="loc-cell">${locCell(r)}</td><td class="ctr done-col">${doneCell}</td>
                     </tr>`;
                 }).join('');
             }
-            document.getElementById('pendCount').textContent=rows.filter(r=>r.kind==='pending').length;
-            document.getElementById('doneCount').textContent=rows.filter(r=>r.kind==='done').length;
+            const nPending=rows.filter(r=>r.kind==='pending').length;
+            const nDone=rows.filter(r=>r.kind==='done').length;
+            document.getElementById('pendCount').textContent=nPending;
+            document.getElementById('doneCount').textContent=nDone;
+            document.getElementById('cnt-pending').textContent=nPending;
+            document.getElementById('cnt-done').textContent=nDone;
             updateSel();
             const addingRow=rows.find(r=>r.adding);
             if(addingRow){ const inp=document.querySelector('.loc-input'); if(inp)inp.focus(); }
@@ -312,9 +345,38 @@
             all.indeterminate=n>0&&n<vis.length;
         }
 
-        // 처리완료 (체크된 '대기' 행 중 위치가 있는 것만 처리 · 위치 없는 건 그대로 남김)
+        // 처리완료 서버 전송 (공통) — 성공한 행은 justDone 표시(탭 이동은 새로고침 시)
+        async function completeRows(ready){
+            const CHUNK=100;
+            let done=0;
+            for(let i=0;i<ready.length;i+=CHUNK){
+                const part=ready.slice(i,i+CHUNK);
+                const items=part.map(r=>({shipment_item_id:r.itemId, barcode:r.바코드, location:r.selectedLoc, qty:r.qty, productName:r.상품명}));
+                const res=await fetch('/api/inbound/stock-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+                const data=await res.json().catch(()=>({}));
+                if(!res.ok)throw new Error(data.error||'처리완료 실패');
+                part.forEach(r=>{ r.justDone=true; r.checked=false; });   // 처리중 탭에 남되 색상 이모지
+                done+=part.length;
+                if(ready.length>CHUNK){ toast(`처리 중… ${done}/${ready.length}건`); }
+            }
+            return done;
+        }
+
+        // 셀(흑백 이모지) 클릭 → 그 행 하나 바로 처리완료
+        async function completeOne(key){
+            const r=rowByKey(key);
+            if(!r||r.kind!=='pending'||r.justDone) return;
+            if(!r.selectedLoc){ toast('위치를 먼저 선택해주세요.'); return; }
+            try{
+                await completeRows([r]);
+                render();
+                toast('처리완료 (새로고침하면 완료 탭으로 이동)');
+            }catch(e){ toast('처리완료 실패: '+e.message); }
+        }
+
+        // 처리완료 버튼 (체크된 '대기' 행 중 위치가 있는 것만 처리 · 위치 없는 건 그대로 남김)
         async function doComplete(){
-            const checked=rows.filter(r=>r.kind==='pending'&&r.checked);
+            const checked=rows.filter(r=>r.kind==='pending'&&r.checked&&!r.justDone);
             if(!checked.length){toast('처리할 남은상품(대기)을 체크해주세요.');return;}
             const ready=checked.filter(r=>r.selectedLoc);          // 위치 있음 → 처리
             const skipped=checked.filter(r=>!r.selectedLoc);       // 위치 없음 → 남김
@@ -322,30 +384,16 @@
 
             const btn=document.querySelector('.btn.primary');
             const orgText=btn?btn.textContent:'';
-            const setBusy=(txt)=>{ if(btn){ btn.disabled=true; btn.textContent=txt; } };
-            const clearBusy=()=>{ if(btn){ btn.disabled=false; btn.textContent=orgText; } };
-
-            // 100건씩 나눠 전송 — 진행률 표시 + 긴 요청 타임아웃 방지
-            const CHUNK=100;
+            if(btn){ btn.disabled=true; btn.textContent=`처리 중… 0/${ready.length}`; }
             let done=0;
-            setBusy(`처리 중… 0/${ready.length}`);
             try{
-                for(let i=0;i<ready.length;i+=CHUNK){
-                    const part=ready.slice(i,i+CHUNK);
-                    const items=part.map(r=>({shipment_item_id:r.itemId, barcode:r.바코드, location:r.selectedLoc, qty:r.qty}));
-                    const res=await fetch('/api/inbound/stock-complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
-                    const data=await res.json().catch(()=>({}));
-                    if(!res.ok)throw new Error(data.error||'처리완료 실패');
-                    done+=part.length;
-                    setBusy(`처리 중… ${done}/${ready.length}`);
-                    toast(`처리 중… ${done}/${ready.length}건`);
-                }
-                toast(`처리완료 ${done}건${skipped.length?` · 위치 미선택 ${skipped.length}건은 남겨둠`:''}`);
-                await loadData();
+                done=await completeRows(ready);
+                render();
+                toast(`처리완료 ${done}건${skipped.length?` · 위치 미선택 ${skipped.length}건은 남겨둠`:''} (새로고침하면 완료 탭으로 이동)`);
             }catch(e){
+                render();
                 toast(`처리완료 실패: ${e.message}${done?` (${done}건은 처리됨)`:''}`);
-                if(done) await loadData();
-            }finally{ clearBusy(); }
+            }finally{ if(btn){ btn.disabled=false; btn.textContent=orgText; } }
         }
 
         // 삭제 (체크된 '완료' 행 → 원장/재고 취소)

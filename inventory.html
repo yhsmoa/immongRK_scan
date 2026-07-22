@@ -140,34 +140,50 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: white;
-            padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: #fff;
+            padding: 22px 22px 18px;
+            border-radius: 14px;
+            box-shadow: 0 20px 50px rgba(15,23,42,.3);
             z-index: 1000;
-            width: 300px;
+            width: 380px;
+            max-width: 92vw;
+            font-family: "Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;
         }
-        .location-input-container.active {
-            display: block;
-        }
+        .location-input-container.active { display: block; }
+        .loc-modal-title { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+        .loc-modal-desc { font-size: 13px; color: #64748b; line-height: 1.5; margin-bottom: 14px; }
+        .loc-modal-desc b { color: #4f46e5; }
+        .loc-modal-note { color: #94a3b8; }
         .location-input {
             width: 100%;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-bottom: 10px;
+            height: 42px;
+            padding: 0 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 9px;
+            font-size: 14px;
+            outline: none;
+            margin-bottom: 0;
         }
-        /* 모달 내 저장 버튼 스타일 - 다른 버튼과 구분 */
-        #locationInputContainer .location-save-btn, 
+        .location-input:focus { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+        /* 모달 내 저장 버튼 (rocket 인디고) */
+        #locationInputContainer .location-save-btn,
         #singleLocationInputContainer .location-save-btn {
             width: 100%;
-            margin-top: 10px;
-            background-color: #4CAF50;
+            height: 42px;
+            margin-top: 14px;
+            border: none;
+            border-radius: 9px;
+            background: #4f46e5;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
         }
-        #locationInputContainer .location-save-btn:hover, 
+        #locationInputContainer .location-save-btn:hover,
         #singleLocationInputContainer .location-save-btn:hover {
-            background-color: #45a049;
+            background: #4338ca;
         }
+        #locationInputContainer .location-save-btn:disabled { opacity: .6; cursor: default; }
         .overlay {
             display: none;
             position: fixed;
@@ -372,10 +388,12 @@
         </div>
     </div>
 
-    <!-- 로케이션 입력 UI -->
-    <div class="overlay" id="locationOverlay"></div>
+    <!-- 로케이션 입력 UI (선택 항목 → rk_stocks 위치 저장) -->
+    <div class="overlay" id="locationOverlay" onclick="closeLocationInput()"></div>
     <div class="location-input-container" id="locationInputContainer">
-        <input type="text" class="location-input" id="locationInput" placeholder="로케이션 입력">
+        <div class="loc-modal-title">위치 저장</div>
+        <div class="loc-modal-desc">선택한 <b id="locSaveCount">0</b>개 상품을 재고(rk_stocks)에 이 위치로 저장합니다. <span class="loc-modal-note">수량은 비워둡니다.</span></div>
+        <input type="text" class="location-input" id="locationInput" placeholder="위치 입력 (예: 105B53)">
         <button class="location-save-btn" onclick="saveLocation()">저장</button>
     </div>
 
@@ -693,16 +711,21 @@
                 return;
             }
 
+            // rk_stocks 저장용: 바코드/SKU/상품명 수집 (locationCell 참조는 제거 — rk_stocks에 저장하므로 화면 로케이션 열은 무관)
             const selectedItems = Array.from(checkedBoxes).map(checkbox => {
                 const row = checkbox.closest('tr');
                 return {
-                    skuId: row.querySelector('td:nth-child(2)').textContent,
-                    locationCell: row.querySelector('.location-cell')
+                    skuId: row.querySelector('td:nth-child(2)').textContent.trim(),
+                    itemName: row.querySelector('td:nth-child(3)').textContent.trim(),
+                    barcode: row.querySelector('td:nth-child(4)').textContent.trim()
                 };
-            });
+            }).filter(it => it.barcode);
+
+            if (selectedItems.length === 0) { alert('바코드가 있는 항목을 선택해주세요.'); return; }
 
             document.getElementById('locationInput').value = '';
             document.getElementById('locationInput').dataset.selectedItems = JSON.stringify(selectedItems);
+            document.getElementById('locSaveCount').textContent = selectedItems.length;
             document.getElementById('locationOverlay').classList.add('active');
             document.getElementById('locationInputContainer').classList.add('active');
             
@@ -712,58 +735,34 @@
             input.select();
         }
 
-        // 로케이션 저장
-        function saveLocation() {
+        // 로케이션 저장 → rk_stocks 에 위치 저장(배치, 수량 NULL)
+        async function saveLocation() {
             const input = document.getElementById('locationInput');
             const location = input.value.trim();
-            
-            if (!location) {
-                alert('로케이션을 입력해주세요.');
-                return;
-            }
+
+            if (!location) { alert('로케이션을 입력해주세요.'); return; }
 
             const selectedItems = JSON.parse(input.dataset.selectedItems || '[]');
-            
-            if (selectedItems.length === 0) {
-                alert('저장할 항목이 선택되지 않았습니다.');
-                return;
-            }
+            if (selectedItems.length === 0) { alert('저장할 항목이 선택되지 않았습니다.'); return; }
 
-            let successCount = 0;
-            let failCount = 0;
-
-            selectedItems.forEach(item => {
-                fetch('/api/inventory/update-location', {
+            const btn = document.querySelector('#locationInputContainer .location-save-btn');
+            const org = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = '저장 중…'; }
+            try {
+                const res = await fetch('/api/inventory/save-stock-location', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ 
-                        skuId: item.skuId, 
-                        location: location 
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        successCount++;
-                        item.locationCell.textContent = location;
-                    } else {
-                        failCount++;
-                    }
-
-                    if (successCount + failCount === selectedItems.length) {
-                        closeLocationInput();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    failCount++;
-                    if (successCount + failCount === selectedItems.length) {
-                        closeLocationInput();
-                    }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ location, items: selectedItems })
                 });
-            });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || '저장 실패');
+                closeLocationInput();
+                alert(`위치 저장 완료 (재고에 ${data.saved}건 추가${data.skipped ? ` · 이미 있던 ${data.skipped}건 건너뜀` : ''})`);
+            } catch (e) {
+                alert('위치 저장 실패: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = org; }
+            }
         }
 
         // 로케이션 입력 UI 닫기

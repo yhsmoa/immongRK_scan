@@ -429,6 +429,7 @@ router.post('/api/inbound/stock-complete', async (req, res) => {
     // 1) 재고 원장 배치 insert + (바코드|위치)별 증분 합산
     const ledgerRows = [];
     const deltaByKey = new Map();   // `${barcode}|${location}` -> 합산 수량
+    const nameByBarcode = new Map(); // 바코드 → 요청 상품명(재고정리 화면값, inventories 미조회 시 fallback)
     for (const it of reqItems) {
       const item = itemById.get(it.shipment_item_id);
       const barcode = String(it.barcode || item.barcode || '').trim();
@@ -437,6 +438,8 @@ router.post('/api/inbound/stock-complete', async (req, res) => {
       ledgerRows.push({ shipment_id: item.shipment_id, shipment_item_id: it.shipment_item_id, barcode, location, qty });
       const k = `${barcode}|${location}`;
       deltaByKey.set(k, (deltaByKey.get(k) || 0) + qty);
+      const pn = String(it.productName || '').trim();
+      if (pn && !nameByBarcode.has(barcode)) nameByBarcode.set(barcode, pn);
     }
     const BATCH = 500;
     for (let i = 0; i < ledgerRows.length; i += BATCH) {
@@ -474,7 +477,9 @@ router.post('/api/inbound/stock-complete', async (req, res) => {
       } else {
         const [barcode, location] = k.split('|');
         const inv = invByBarcode.get(barcode);
-        insertStocks.push({ barcode, location, qty: add, sku_id: inv ? inv.sku_id : null, item_name: inv ? inv.name : null });
+        // 상품마스터(rk_inventories)에 없으면 재고정리 화면의 상품명을 그대로 사용
+        const itemName = (inv && inv.name) ? inv.name : (nameByBarcode.get(barcode) || null);
+        insertStocks.push({ barcode, location, qty: add, sku_id: inv ? inv.sku_id : null, item_name: itemName });
       }
     }
     for (let i = 0; i < insertStocks.length; i += BATCH) {
