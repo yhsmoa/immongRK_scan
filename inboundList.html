@@ -89,7 +89,7 @@
                         Excel 업로드
                     </button>
                     <button class="btn" id="saveBtn" onclick="saveChanges()" disabled>저장</button>
-                    <button class="btn danger" onclick="deleteShipment()" disabled title="삭제 기능은 현재 비활성화되어 있습니다">삭제</button>
+                    <button class="btn danger" onclick="deleteShipment()">삭제</button>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="onFilePicked(this)">
                 </div>
             </div>
@@ -131,6 +131,19 @@
             <div class="modal-btns">
                 <button class="btn" onclick="closeCodeModal()">취소</button>
                 <button class="btn primary" onclick="confirmUpload()">업로드</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 삭제 패스워드 모달 -->
+    <div class="modal-back" id="pwModal">
+        <div class="modal">
+            <h3>삭제 확인</h3>
+            <p>출고코드 '<b id="pwCode"></b>' 의 입고리스트를 삭제합니다.<br>관련 출고배정·재고정리 데이터도 함께 삭제됩니다. 패스워드를 입력하세요.</p>
+            <input id="pwInput" type="password" placeholder="패스워드">
+            <div class="modal-btns">
+                <button class="btn" onclick="closePwModal()">취소</button>
+                <button class="btn danger" onclick="confirmDelete()">삭제</button>
             </div>
         </div>
     </div>
@@ -194,11 +207,22 @@
         function onCodeChange(){ applySearch(); }
         function selectedCode(){ return document.getElementById('codeSel').value; }
 
-        // 선택한 출고코드 전체 삭제 (잘못 업로드한 파일 정리용)
-        async function deleteShipment(){
+        // 선택한 출고코드 전체 삭제 — 패스워드 확인 모달
+        const DELETE_PW='초대박1!';
+        function deleteShipment(){
             const code=selectedCode();
             if(!code){toast('삭제할 출고코드를 선택하세요.');return;}
-            if(!confirm(`출고코드 '${code}' 의 입고리스트 데이터를 삭제하시겠습니까?`))return;
+            document.getElementById('pwCode').textContent=code;
+            document.getElementById('pwInput').value='';
+            document.getElementById('pwModal').classList.add('show');
+            setTimeout(()=>document.getElementById('pwInput').focus(),50);
+        }
+        function closePwModal(){ document.getElementById('pwModal').classList.remove('show'); }
+        async function confirmDelete(){
+            const code=selectedCode();
+            if(!code){ closePwModal(); toast('삭제할 출고코드를 선택하세요.'); return; }
+            if(document.getElementById('pwInput').value!==DELETE_PW){ toast('패스워드가 올바르지 않습니다.'); return; }
+            closePwModal();
             try{
                 const res=await fetch('/api/inbound/delete/'+encodeURIComponent(code),{method:'DELETE'});
                 const data=await res.json();
@@ -207,6 +231,7 @@
                 await loadData();
             }catch(e){toast('삭제 실패: '+e.message);}
         }
+        document.getElementById('pwInput').addEventListener('keydown',e=>{if(e.key==='Enter')confirmDelete();if(e.key==='Escape')closePwModal();});
 
         function render(){
             const tb=document.getElementById('tbody');
