@@ -82,11 +82,6 @@ app.get('/shortage', (req, res) => {
   res.sendFile(path.join(__dirname, 'shortage.html'));
 });
 
-// ✅ 판매데이터 페이지 라우트 추가
-app.get('/salesdata', (req, res) => {
-  res.sendFile(path.join(__dirname, 'salesdata.html'));
-});
-
 app.get('/header', (req, res) => {
     res.sendFile(path.join(__dirname, 'header.html'));
 });

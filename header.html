@@ -15,6 +15,8 @@
         text-decoration:none;color:#78736F;transition:background .15s,color .15s;display:inline-block;}
     .site-menu a.m-link:hover{background:#F3F1EE;color:#1C1B1A;}
     .site-menu a.m-link.active{color:#F0492F;background:#FDEBE6;}
+    .site-menu a.m-link.disabled{color:#cbd5e1;pointer-events:none;cursor:default;}
+    .site-menu a.m-link.disabled:hover{background:transparent;color:#cbd5e1;}
     .m-item{position:relative;}
     .m-item::after{content:"";position:absolute;top:100%;left:0;right:0;height:8px;} /* hover 브릿지 */
     .m-dropdown{display:none;position:absolute;top:100%;left:0;margin-top:6px;min-width:150px;background:#fff;
@@ -39,12 +41,12 @@
                     <a href="/rocket">전체 발주서</a>
                 </div>
             </div>
-            <a href="/scan" class="m-link" data-path="/scan">바코드 스캔</a>
+            <a href="/scan" class="m-link disabled" data-path="/scan" title="비활성화됨">바코드 스캔</a>
             <a href="/shipScan" class="m-link" data-path="/shipScan">출고스캔</a>
             <a href="/shipment" class="m-link" data-path="/shipment">쉽먼트</a>
             <a href="/importChina" class="m-link" data-path="/importChina">중국입고</a>
             <div class="m-item" data-path="/inboundList,/inboundArrange,/stockArrange">
-                <a href="/inboundList" class="m-link">CN입고</a>
+                <a href="/inboundList" class="m-link disabled" title="비활성화됨">CN입고</a>
                 <div class="m-dropdown">
                     <a href="/inboundList">입고리스트</a>
                     <a href="/inboundArrange">입고정리</a>
@@ -60,7 +62,6 @@
                 </div>
             </div>
             <a href="/warehouse" class="m-link" data-path="/warehouse">쿠팡 물류센터</a>
-            <a href="/salesdata" class="m-link" data-path="/salesdata">판매데이터</a>
             <a href="/shortage" class="m-link" data-path="/shortage">상품부족</a>
         </div>
     </nav>

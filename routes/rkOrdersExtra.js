@@ -154,6 +154,26 @@ router.post('/api/orders/export', async (req, res) => {
     const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
     const orders = all.filter((o) => !has || orderNumbers.includes(o.발주번호));
 
+    // 확정수량 = 출고스캔(rk_ship_box_items)의 발주번호+바코드별 합 (scanned_qty 미사용, rocket 화면 스캔열과 동일)
+    const shipScanMap = new Map();
+    const orderNos = [...new Set(orders.map((o) => o.발주번호).filter(Boolean))];
+    for (let i = 0; i < orderNos.length; i += 200) {
+      const batch = orderNos.slice(i, i + 200);
+      let from = 0; const PAGE = 1000;
+      while (true) {
+        const { data, error } = await S.supabase.from('rk_ship_box_items').select('order_number, barcode, qty').in('order_number', batch).range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || !data.length) break;
+        for (const r of data) {
+          if (!r.order_number || !r.barcode) continue;
+          const k = `${r.order_number}|${r.barcode}`;
+          shipScanMap.set(k, (shipScanMap.get(k) || 0) + (parseInt(r.qty) || 0));
+        }
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+    }
+
     const dropdownOptions = [
       '제조사 생산중단 혹은 공급사 취급중단 - 제품 리뉴얼/모델 변경', '제조사 생산중단 혹은 공급사 취급중단 - 시장 단종',
       '제조사 생산중단 혹은 공급사 취급중단 - 사업자변경', '협력사 재고부족 - 수요예측 오류',
@@ -171,7 +191,7 @@ router.post('/api/orders/export', async (req, res) => {
         exportData.push({
           발주번호: order.발주번호, 물류센터: order.물류센터, 입고유형: product.입고유형 || '', 발주상태: product.발주상태 || '',
           상품번호: product.상품번호, 상품바코드: product.상품바코드, 상품이름: product.상품이름,
-          발주수량: product.발주수량, 확정수량: product.스캔수량 || 0,
+          발주수량: product.발주수량, 확정수량: shipScanMap.get(`${order.발주번호}|${product.상품바코드}`) || 0,
           '유통(소비)기한': product['유통(소비)기한'] || '', 제조일자: product.제조일자 || '', 생산년도: product.생산년도 || '',
           납품부족사유: product.납품부족사유 || '', 회송담당자: product.회송담당자 || '', '회송담당자 연락처': product['회송담당자 연락처'] || '',
           회송지주소: product.회송지주소 || '', 매입가: product.매입가 || 0, 공급가: product.공급가 || 0, 부가세: product.부가세 || 0,
