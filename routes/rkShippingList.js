@@ -129,7 +129,7 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
         }
       }
       const allocatedTotal = allocations.reduce((s, a) => s + a.qty, 0);
-      results.push({ orderNumber, barcode, orderQty, alreadyReserved, allocated: allocatedTotal, allocations,
+      results.push({ orderNumber, barcode, orderQty, alreadyReserved, shipScanned, allocated: allocatedTotal, allocations,
         stockLocs: stockLocsByBarcode.get(barcode) || [] });
       if (save) {
         for (const a of allocations) {

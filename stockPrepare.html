@@ -297,29 +297,15 @@
             toast('재고 배정 계산 중…');
             try{
                 // 저장분(재고/입고 출고예정) 표시용 로드
-                const [rRes,iRes]=await Promise.all([
-                    fetch('/api/shipping-list?source=재고&status=출고예정'),
-                    fetch('/api/shipping-list?source=입고&status=출고예정')
-                ]);
-                if(rRes.ok){
-                    const list=await rRes.json();
-                    const map=new Map();
-                    for(const x of list){ const k=`${x.orderNumber}|${x.barcode}`; if(!map.has(k))map.set(k,[]); map.get(k).push({location:x.location,qty:Number(x.qty)||0}); }
-                    for(const r of newRows){
-                        const allocs=map.get(`${r.발주번호}|${r.상품바코드}`);
-                        if(allocs&&allocs.length){
-                            allocs.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
-                            r.위치v2=allocs; r.재고=allocs.reduce((s,a)=>s+a.qty,0); r.v2Saved=true;
-                        }
-                    }
-                }
+                // 입고(출고예정)만 표시용 로드. 재고 예약(재고-기존)분은 백엔드 needed 계산에서 이미 차감되므로 여기선 안 씀
+                const iRes=await fetch('/api/shipping-list?source=입고&status=출고예정');
                 if(iRes.ok){
                     const ilist=await iRes.json();
                     const imap=new Map();
                     for(const x of ilist){ const k=`${x.orderNumber}|${x.barcode}`; imap.set(k,(imap.get(k)||0)+(Number(x.qty)||0)); }
                     for(const r of newRows){ const q=imap.get(`${r.발주번호}|${r.상품바코드}`); r.입고V2=(q&&q>0)?q:null; }
                 }
-                // 배정 계산 (save=false)
+                // 배정 계산 (save=false) — needed = 발주 − 예약(재고+입고 출고예정) − 출고스캔
                 const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:v2Payload(newRows),save:false,excludeShipScan:true})});
                 const data=await res.json();
                 if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
@@ -327,15 +313,15 @@
                 for(const r of newRows){
                     if(!r.상품바코드) continue;
                     const out=data.results[i++];
-                    if(!out||r.v2Saved) continue;
-                    r.재고=out.allocated; r.위치v2=out.allocations; r.stockLocs=out.stockLocs||[];
+                    if(!out) continue;
+                    if(out.shipScanned!=null) r.스캔수량=out.shipScanned;   // 실제 출고스캔(rk_ship_box_items)
+                    r.재고=out.allocated; r.위치v2=out.allocations; r.stockLocs=out.stockLocs||[]; r.v2Saved=false;
                 }
                 const total=data.results.reduce((s,r)=>s+r.allocated,0);
-                const cntAlloc=data.results.filter(r=>r.allocated>0).length;
-                // 신규발주서와 다르게: 재고에서 나갈 수 있는(배정된) 상품만 표시
+                // 신규 탭 = 새로 나갈 수 있는(신규 배정) 상품만. 이미 예약된(재고-기존) 건은 배정 0이라 제외되고 기존 탭에만 있음
                 newRows=newRows.filter(r=>r.위치v2&&r.위치v2.length>0);
                 switchTab('new');
-                toast(newRows.length?`위치 조회: 나갈 수 있는 ${newRows.length}행 (신규 ${cntAlloc}행·총 ${total}개)`:'나갈 수 있는 상품이 없습니다.');
+                toast(newRows.length?`위치 조회: 새로 나갈 수 있는 ${newRows.length}행 · 총 ${total}개`:'새로 나갈 수 있는 상품이 없습니다. (재고 부족 또는 이미 전부 준비됨)');
             }catch(e){toast('위치 조회 실패: '+e.message);}
         }
 
@@ -366,29 +352,18 @@
         }
 
         // ── 렌더 ──
-        // v2 위치/재고 셀 (newOrder 와 동일 규칙)
+        // 재고준비: 재고 열 = 출고될 개수(배정량), 위치 열 = 배정된 위치만 (전체 재고 미표시)
         function v2LocHtml(r){
-            if(r.stockLocs && r.stockLocs.length && !r.v2Saved){
-                const allocMap=new Map((r.위치v2||[]).map(a=>[a.location,a.qty]));
-                return r.stockLocs.map(sl=>{
-                    const a=allocMap.get(sl.location);
-                    return a>0 ? `<span class="loc-v2">${esc(sl.location+'-'+a)}</span>`
-                               : `<span class="loc-none">${esc(sl.location)}</span>`;
-                }).join('<br>');
-            }
-            if(!r.위치v2) return '<span class="dash">-</span>';
             const allocs=r.위치v2;
-            if(!allocs.length) return '<span class="dash">-</span>';
+            if(!allocs||!allocs.length) return '<span class="dash">-</span>';
             const cls=r.v2Saved?'loc-v2s':'loc-v2';
             if(allocs.length===1) return `<span class="${cls}">${esc(allocs[0].location)}</span>`;
             return `<span class="${cls}">${allocs.map(a=>esc(a.location+'-'+a.qty)).join('<br>')}</span>`;
         }
         function stockQtyHtml(r){
-            if(r.stockLocs && r.stockLocs.length && !r.v2Saved){
-                return r.stockLocs.map(sl=> sl.qty==null ? '&nbsp;' : String(sl.qty)).join('<br>');
-            }
-            if(r.위치v2) return (Number(r.재고)||0)>0 ? `<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${Number(r.재고)}</span>` : '<span class="dash">-</span>';
-            return dashCell(r.재고);
+            const n=Number(r.재고)||0;   // out.allocated = 실제 출고될 개수
+            if(n>0) return `<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${n}</span>`;
+            return '<span class="dash">-</span>';
         }
         function modelBold(name){
             const s=String(name==null?'':name); const ci=s.indexOf(',');
