@@ -333,11 +333,13 @@
                 <div class="actions upload-section">
                     <button id="registerBtn" class="upload-btn" onclick="openRegisterModal()">직접 등록</button>
                     <button id="locationSaveBtn" class="upload-btn" onclick="saveSelectedLocations()">위치저장</button>
-                    <button id="consoleUploadBtn" class="upload-btn" onclick="openConsoleModal()">콘솔 업로드</button>
+                    <button id="consoleCopyBtn" class="upload-btn" onclick="copyConsoleScript()">콘솔 복사</button>
+                    <button id="consoleUploadBtn" class="upload-btn" onclick="document.getElementById('consoleFileInput').click()">콘솔 업로드</button>
                     <button id="uploadBtn" class="upload-btn primary" onclick="document.getElementById('fileInput').click()">엑셀 업로드</button>
                     <button id="discontinueBtn" class="discontinue-btn" onclick="generateDiscontinueDoc()">단종</button>
                     <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
                     <input type="file" id="fileInput" style="display: none" accept=".xlsx,.xls">
+                    <input type="file" id="consoleFileInput" style="display: none" accept=".xlsx,.xls,.csv">
                 </div>
             </div>
 
@@ -446,24 +448,6 @@
         </div>
     </div>
 
-    <!-- 콘솔 업로드 모달 -->
-    <div class="overlay" id="consoleOverlay"></div>
-    <div class="register-modal" id="consoleModal">
-        <div class="register-modal-header">
-            <h3>콘솔 업로드</h3>
-            <div class="register-modal-buttons">
-                <button class="register-btn close-btn" onclick="closeConsoleModal()">닫기</button>
-                <button class="register-btn save-btn" onclick="submitConsoleData()">저장</button>
-            </div>
-        </div>
-        <div class="register-modal-body">
-            <div class="register-form-group">
-                <label for="consoleInput">콘솔 데이터</label>
-                <textarea id="consoleInput" class="register-input" rows="14" placeholder="콘솔 데이터를 붙여넣으세요" style="resize:vertical;font-family:monospace;"></textarea>
-            </div>
-        </div>
-    </div>
-
     <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
@@ -495,6 +479,7 @@
         function setupEventListeners() {
             // 엑셀 파일 업로드 처리
             document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+            document.getElementById('consoleFileInput').addEventListener('change', handleConsoleUpload);
 
             // 전체 선택 체크박스 기능
             document.getElementById('selectAll').addEventListener('change', function() {
@@ -849,22 +834,152 @@
             }
         }
 
-        // 콘솔 업로드 모달 (입력폼) — 입력 처리 로직은 추후 구현
-        function openConsoleModal() {
-            document.getElementById('consoleOverlay').classList.add('active');
-            document.getElementById('consoleModal').classList.add('active');
-            const t = document.getElementById('consoleInput');
-            if (t) { t.value = ''; t.focus(); }
+        // ── 콘솔 복사: 현재 최대 SKU를 기준으로 추출 스크립트 생성 → 클립보드 복사 ──
+        async function copyConsoleScript() {
+            try {
+                const res = await fetch('/api/inventory/max-sku');
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || '최대 SKU 조회 실패');
+                const maxSku = parseInt(d.maxSku, 10) || 0;
+                const script = buildConsoleScript(maxSku);
+                let copied = false;
+                try { await navigator.clipboard.writeText(script); copied = true; } catch (_) {}
+                if (!copied) {
+                    const ta = document.createElement('textarea');
+                    ta.value = script; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                    document.body.appendChild(ta); ta.select();
+                    try { copied = document.execCommand('copy'); } catch (_) {}
+                    ta.remove();
+                }
+                if (copied) alert('콘솔 스크립트를 복사했습니다. (기준 SKU: ' + maxSku + ')\n추출할 페이지의 개발자도구(F12) → 콘솔에 붙여넣어 실행하세요.\n마지막 페이지에서 실행하면 이전 페이지로 이동하며 기준 SKU까지 추출 후 엑셀이 다운로드됩니다.');
+                else prompt('아래 스크립트를 복사해 콘솔에 붙여넣으세요 (기준 SKU: ' + maxSku + '):', script);
+            } catch (e) {
+                console.error(e);
+                alert('콘솔 스크립트 생성 실패: ' + e.message);
+            }
         }
-        function closeConsoleModal() {
-            document.getElementById('consoleOverlay').classList.remove('active');
-            document.getElementById('consoleModal').classList.remove('active');
+
+        function buildConsoleScript(maxSku) {
+            return `/* 쿠팡 콘솔 상품 추출 → 엑셀 다운로드 (기준 SKU: ${maxSku}) */
+(async () => {
+  const MAX_SKU = ${maxSku};
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const skuNum = s => { const n = parseInt(String(s).replace(/[^0-9]/g, ''), 10); return Number.isFinite(n) ? n : null; };
+  function scrapePage() {
+    const out = [];
+    document.querySelectorAll('table tbody tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      if (cells.length < 6) return;
+      const bcCell = cells[4];
+      const bcDiv = bcCell && bcCell.querySelector('div');
+      const barcode = bcDiv ? bcDiv.textContent.trim().split('\\n')[0] : (bcCell ? bcCell.textContent.trim() : '');
+      out.push({
+        imageUrl: (cells[0] && cells[0].querySelector('img')) ? cells[0].querySelector('img').src : '',
+        productNo: cells[2] ? cells[2].textContent.trim() : '',
+        productName: cells[3] ? cells[3].textContent.trim() : '',
+        barcode: barcode,
+        orderStatus: cells[5] ? cells[5].textContent.trim() : '',
+        bm: cells[6] ? cells[6].textContent.trim() : '',
+        orderPerson: cells[7] ? cells[7].textContent.trim() : ''
+      });
+    });
+    return out;
+  }
+  function firstRowKey() { const r = document.querySelector('table tbody tr'); return r ? r.innerText.slice(0, 80) : ''; }
+  function findPrevBtn() {
+    const cand = [...document.querySelectorAll('button, a, li')];
+    return cand.find(el => {
+      const t = (el.textContent || '').trim();
+      const al = (el.getAttribute('aria-label') || '').toLowerCase();
+      return /prev|previous|이전/.test(al) || t === '이전' || t === '‹' || t === '◀' || t === '<' || /^prev$/i.test(t);
+    });
+  }
+  async function waitChange(prev, timeout) {
+    timeout = timeout || 12000;
+    const t0 = Date.now();
+    while (Date.now() - t0 < timeout) { await sleep(250); if (firstRowKey() !== prev) return true; }
+    return false;
+  }
+  const acc = new Map();
+  let pages = 0;
+  while (true) {
+    const rows = scrapePage();
+    pages++;
+    let boundary = false;
+    for (const r of rows) {
+      const sk = skuNum(r.productNo);
+      if (MAX_SKU > 0 && sk != null && sk <= MAX_SKU) { boundary = true; continue; }
+      if (r.productNo) acc.set(r.productNo, r);
+    }
+    console.log('[추출] page ' + pages + ': ' + rows.length + '행, 신규 누적 ' + acc.size + (boundary ? ' (기준 SKU 도달)' : ''));
+    if (boundary) break;
+    const prev = findPrevBtn();
+    if (!prev) { console.log('이전 페이지 버튼을 찾지 못했습니다. 수동으로 이전 페이지 이동 후 다시 실행하거나, 마지막이면 무시하세요.'); break; }
+    const key = firstRowKey();
+    prev.click();
+    const ok = await waitChange(key);
+    if (!ok) { console.log('페이지 전환을 감지하지 못해 종료합니다.'); break; }
+    await sleep(500);
+  }
+  const data = [...acc.values()];
+  console.log('총 신규 ' + data.length + '건 추출. 엑셀 생성 중…');
+  const header = ['SKU ID', '상품명', '바코드', '발주가능상태', '담당BM', '발주담당자', '이미지URL'];
+  const aoa = [header].concat(data.map(d => [d.productNo, d.productName, d.barcode, d.orderStatus, d.bm, d.orderPerson, d.imageUrl]));
+  function dl(blob, name) { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u); }
+  function toCSV() { const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; return '\\ufeff' + aoa.map(r => r.map(esc).join(',')).join('\\r\\n'); }
+  try {
+    if (!window.XLSX) { await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+    const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, '콘솔추출'); XLSX.writeFile(wb, 'console_inventory.xlsx');
+    console.log('엑셀(xlsx) 다운로드 완료: console_inventory.xlsx');
+  } catch (e) {
+    console.warn('xlsx 생성 실패 → CSV로 대체', e);
+    dl(new Blob([toCSV()], { type: 'text/csv;charset=utf-8;' }), 'console_inventory.csv');
+    console.log('CSV 다운로드 완료: console_inventory.csv');
+  }
+})();`;
         }
-        function submitConsoleData() {
-            const raw = document.getElementById('consoleInput').value.trim();
-            if (!raw) { alert('콘솔 데이터를 입력해주세요.'); return; }
-            // TODO: 입력 형식 파싱 → 추가 로직은 추후 구현
-            alert('콘솔 데이터를 받았습니다. (추가 처리 로직은 추후 구현 예정)');
+
+        // ── 콘솔 업로드: 다운로드한 콘솔 엑셀/CSV 파일 → supabase upsert (이미지 URL 포함) ──
+        async function handleConsoleUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const ov = document.getElementById('loadingOverlay');
+            const tx = document.getElementById('loadingText');
+            const wrap = document.getElementById('uploadProgWrap');
+            if (tx) tx.textContent = '콘솔 파일 읽는 중…';
+            if (wrap) wrap.style.display = 'none';
+            if (ov) ov.classList.add('active');
+            try {
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const raw = XLSX.utils.sheet_to_json(ws, { defval: '' }); // 첫 행을 헤더로
+                const pick = (o, keys) => { for (const k of keys) { if (o[k] != null && String(o[k]).trim() !== '') return String(o[k]).trim(); } return ''; };
+                const rows = raw.map(o => ({
+                    skuId: pick(o, ['SKU ID', 'SKU', 'sku', 'skuId', '상품번호']),
+                    name: pick(o, ['상품명', '상품이름', 'name']),
+                    barcode: pick(o, ['바코드', 'barcode']),
+                    orderStatus: pick(o, ['발주가능상태', '발주상태', 'orderStatus']),
+                    img: pick(o, ['이미지URL', '이미지 URL', 'imageUrl', 'img']),
+                })).filter(r => r.skuId || r.barcode);
+                if (!rows.length) { if (ov) ov.classList.remove('active'); alert('업로드할 데이터가 없습니다.'); return; }
+                if (tx) tx.textContent = '콘솔 업로드 중… (' + file.name + ')';
+                const res = await fetch('/api/inventory/upload-console', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rows }),
+                });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || '업로드 실패');
+                if (ov) ov.classList.remove('active');
+                alert('콘솔 업로드 완료 (총 ' + rows.length.toLocaleString() + '건)\n신규 ' + (d.added || 0) + ' · 갱신 ' + (d.updated || 0) + ' · 변경없음 ' + (d.unchanged || 0) + (d.skipped ? ' · 건너뜀 ' + d.skipped : ''));
+                loadInventoryData();
+            } catch (error) {
+                if (ov) ov.classList.remove('active');
+                console.error('Error:', error);
+                alert('콘솔 업로드 중 오류가 발생했습니다: ' + error.message);
+            } finally {
+                e.target.value = '';
+            }
         }
 
         // 직접 등록 모달 관련 함수들
@@ -1002,7 +1117,6 @@
         // 오버레이 클릭시 모달 닫기
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('registerOverlay').addEventListener('click', closeRegisterModal);
-            document.getElementById('consoleOverlay').addEventListener('click', closeConsoleModal);
         });
     </script>
 </body>

@@ -401,4 +401,123 @@ router.post('/api/inventory/save-stock-location', async (req, res) => {
   }
 });
 
+// 현재 재고의 최대 SKU ID(숫자 기준) — 콘솔 추출 스크립트의 중단 기준
+router.get('/api/inventory/max-sku', async (req, res) => {
+  try {
+    const rows = await fetchAll(() => sb.from('rk_inventories').select('sku_id'));
+    let max = 0;
+    for (const r of rows) {
+      const n = parseInt(r.sku_id, 10);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    res.json({ maxSku: max });
+  } catch (e) {
+    console.error('[rk] inventory/max-sku:', e);
+    res.status(500).json({ error: '최대 SKU 조회 중 오류가 발생했습니다.' });
+  }
+});
+
+// 콘솔 추출 데이터 업로드 (웹-콘솔로 뽑은 엑셀). 엑셀보다 정보는 적지만 이미지 URL 포함.
+// body: { rows:[{skuId, name, barcode, orderStatus, img}] } → 있는 값만 upsert (기존 값 미보존 덮어쓰기 방지: 빈 값은 갱신 안 함)
+router.post('/api/inventory/upload-console', async (req, res) => {
+  try {
+    const rowsIn = Array.isArray(req.body.rows) ? req.body.rows : [];
+    const now = new Date().toISOString();
+    // 정리 + 파일 내 SKU 중복 제거(첫 행 우선)
+    const items = [];
+    const seenSku = new Set();
+    for (const r of rowsIn) {
+      const skuId = String(r.skuId == null ? '' : r.skuId).trim();
+      const barcode = String(r.barcode == null ? '' : r.barcode).trim();
+      if (!skuId && !barcode) continue;
+      if (skuId) { if (seenSku.has(skuId)) continue; seenSku.add(skuId); }
+      items.push({
+        skuId,
+        name: String(r.name == null ? '' : r.name).trim(),
+        barcode,
+        orderStatus: String(r.orderStatus == null ? '' : r.orderStatus).trim(),
+        img: String(r.img == null ? '' : r.img).trim(),
+      });
+    }
+    if (!items.length) return res.json({ added: 0, updated: 0, unchanged: 0, skipped: 0 });
+
+    // 기존 매칭 조회 (SKU·바코드 in)
+    const skus = items.map((i) => i.skuId).filter(Boolean);
+    const bcs = items.map((i) => i.barcode).filter(Boolean);
+    const existing = [];
+    for (let i = 0; i < skus.length; i += 200) {
+      const { data, error } = await sb.from('rk_inventories').select('id, sku_id, barcode, name, order_status, img').in('sku_id', skus.slice(i, i + 200));
+      if (error) throw error;
+      existing.push(...(data || []));
+    }
+    for (let i = 0; i < bcs.length; i += 200) {
+      const { data, error } = await sb.from('rk_inventories').select('id, sku_id, barcode, name, order_status, img').in('barcode', bcs.slice(i, i + 200));
+      if (error) throw error;
+      existing.push(...(data || []));
+    }
+    const bySku = new Map();
+    const byBarcode = new Map();
+    for (const x of existing) {
+      if (x.sku_id != null && x.sku_id !== '') bySku.set(String(x.sku_id), x);
+      if (x.barcode != null && x.barcode !== '') byBarcode.set(String(x.barcode), x);
+    }
+
+    const toInsert = [];
+    const toUpdate = [];
+    const seenBarcode = new Set();
+    let unchanged = 0, skipped = 0;
+    for (const it of items) {
+      const cur = (it.skuId && bySku.get(it.skuId)) || (it.barcode && byBarcode.get(it.barcode)) || null;
+      if (cur) {
+        // 있는 값만 갱신 (빈 값으로 기존 정보 덮어쓰기 방지)
+        const patch = {};
+        if (it.name && it.name !== (cur.name || '')) patch.name = it.name;
+        if (it.barcode && it.barcode !== (cur.barcode || '')) patch.barcode = it.barcode;
+        if (it.orderStatus && it.orderStatus !== (cur.order_status || '')) patch.order_status = it.orderStatus;
+        if (it.img && it.img !== (cur.img || '')) patch.img = it.img;
+        if (!Object.keys(patch).length) { unchanged++; continue; }
+        toUpdate.push({ id: cur.id, fields: patch });
+      } else {
+        if (it.barcode && seenBarcode.has(it.barcode)) { skipped++; continue; }
+        if (it.barcode) seenBarcode.add(it.barcode);
+        toInsert.push({
+          mongo_id: `invconsole_${it.skuId || it.barcode}_${Date.now()}_${toInsert.length}`,
+          sku_id: it.skuId || null, name: it.name, barcode: it.barcode, order_status: it.orderStatus,
+          img: it.img || null, quantity: '-', location: '-', last_update: now,
+        });
+      }
+    }
+
+    // 신규 삽입 (배치 → 실패 시 개별 재시도)
+    let added = 0;
+    const BATCH = 1000;
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const chunk = toInsert.slice(i, i + BATCH);
+      const { error } = await sb.from('rk_inventories').insert(chunk);
+      if (!error) { added += chunk.length; continue; }
+      for (const row of chunk) {
+        const { error: e1 } = await sb.from('rk_inventories').insert(row);
+        if (e1) skipped++; else added++;
+      }
+    }
+    // 갱신 (병렬)
+    let updated = 0;
+    const CONC = 40;
+    for (let i = 0; i < toUpdate.length; i += CONC) {
+      const chunk = toUpdate.slice(i, i + CONC);
+      const results = await Promise.all(chunk.map((u) =>
+        sb.from('rk_inventories').update({ ...u.fields, last_update: now }).eq('id', u.id)
+          .then((r) => (r.error ? 'err' : 'ok')).catch(() => 'err')
+      ));
+      updated += results.filter((x) => x === 'ok').length;
+      skipped += results.filter((x) => x === 'err').length;
+    }
+
+    res.json({ added, updated, unchanged, skipped });
+  } catch (e) {
+    console.error('[rk] inventory/upload-console:', e);
+    res.status(500).json({ error: '콘솔 업로드 오류: ' + e.message });
+  }
+});
+
 module.exports = router;
