@@ -3184,16 +3184,20 @@ app.get('/api/shortage', async (req, res) => {
                 const sku = barcodeToSku.get(barcode) || '';
                 if (sku) skuSet.add(sku);
                 const existing = barcodeMap.get(barcode);
+                // Ord/Scan/Fail 은 발주서 기준 실제값 (발주서에 없는 바코드는 0)
+                const 총발주수량 = existing ? (existing.총발주수량 || 0) : 0;
+                const 총스캔수량 = existing ? (existing.총스캔수량 || 0) : 0;
+                const 부족수량 = 총발주수량 - 총스캔수량;
                 shortageList.push({
                     상품바코드: barcode,
                     상품번호: existing ? existing.상품번호 : '',
                     상품이름: (existing && existing.상품이름) ? existing.상품이름 : (nameByBc.get(barcode) || ''),
-                    총발주수량: 0,
-                    총스캔수량: 0,
-                    발주번호목록: [],
-                    물류센터목록: [],
-                    부족수량: 0,
-                    부족률: 0,
+                    총발주수량,
+                    총스캔수량,
+                    발주번호목록: existing ? existing.발주번호목록 : [],
+                    물류센터목록: existing ? existing.물류센터목록 : [],
+                    부족수량,
+                    부족률: 총발주수량 > 0 ? Math.round((부족수량 / 총발주수량) * 100 * 10) / 10 : 0,
                     skuId: sku,
                 });
             }
