@@ -559,12 +559,12 @@
     <div id="header-container"></div>
     <div class="container">
         <div class="content">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-                <h1 style="margin:0;">상품부족 현황</h1>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn btn-copy" onclick="handleCopy()">이우 주문</button>
-                    <button class="btn btn-copy" onclick="handleCopyWeihai()">위해 주문</button>
-                </div>
+            <h1>상품부족 현황</h1>
+
+            <!-- ===== 이우/위해 주문 (입력폼 바로 위, 우측 정렬 = 상품부족 현황 맞은편) ===== -->
+            <div style="display:flex; justify-content:flex-end; gap:8px; align-items:center; margin-bottom:8px;">
+                <button class="btn btn-copy" onclick="handleCopy()">이우 주문</button>
+                <button class="btn btn-copy" onclick="handleCopyWeihai()">위해 주문</button>
             </div>
 
             <!-- ===== 검색 ===== -->
