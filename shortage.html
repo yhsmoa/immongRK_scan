@@ -292,6 +292,18 @@
         /* ========== 입고 셀 클릭 커서 ========== */
         td.yiwu-cell { cursor: pointer; }
 
+        /* ========== img 열 / 이미지 미리보기 ========== */
+        th.col-img { width: 34px; }
+        td.img-cell { text-align: center; }
+        .img-emoji { cursor: pointer; font-size: 16px; }
+        #imgPreview {
+            position: fixed; display: none; z-index: 10000;
+            border: 1px solid #cbd5e1; background: #fff;
+            box-shadow: 0 6px 20px rgba(0,0,0,.22); padding: 4px; border-radius: 8px;
+            pointer-events: none;
+        }
+        #imgPreview img { width: 400px; height: 400px; object-fit: contain; display: block; background: #f8fafc; }
+
         /* ========== 입고 팝업 (tooltip-style, 마우스 위치) ========== */
         .yiwu-popup {
             display: none;
@@ -517,6 +529,9 @@
         <div id="yiwuPopupContent"></div>
     </div>
 
+    <!-- ===== 이미지 미리보기 (img 셀 hover) ===== -->
+    <div id="imgPreview"><img alt="상품 이미지"></div>
+
     <!-- ===== 업로드 진행 모달 ===== -->
     <div class="upload-modal-overlay" id="uploadModal">
         <div class="upload-modal">
@@ -544,7 +559,13 @@
     <div id="header-container"></div>
     <div class="container">
         <div class="content">
-            <h1>상품부족 현황</h1>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <h1 style="margin:0;">상품부족 현황</h1>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn btn-copy" onclick="handleCopy()">이우 주문</button>
+                    <button class="btn btn-copy" onclick="handleCopyWeihai()">위해 주문</button>
+                </div>
+            </div>
 
             <!-- ===== 검색 ===== -->
             <div class="search-area">
@@ -575,9 +596,6 @@
                     <span class="btn-separator"></span>
                     <button class="btn btn-input-list" onclick="openInputPanel()">입력목록</button>
                     <button class="btn btn-save" onclick="handleSave()">저장</button>
-                    <span class="btn-separator"></span>
-                    <button class="btn btn-copy" onclick="handleCopy()">이우 주문</button>
-                    <button class="btn btn-copy" onclick="handleCopyWeihai()">위해 주문</button>
                 </div>
             </div>
 
@@ -603,6 +621,7 @@
                         <thead>
                             <tr>
                                 <th class="col-no" data-sort="index">No.</th>
+                                <th class="col-img">img</th>
                                 <th data-sort="skuId">SKU <span class="sort-icon">▲▼</span></th>
                                 <th data-sort="상품바코드">상품바코드 <span class="sort-icon">▲▼</span></th>
                                 <th data-sort="상품이름">상품이름 <span class="sort-icon">▲▼</span></th>
@@ -614,7 +633,7 @@
                                 <th>주문</th>
                                 <th>재고</th>
                                 <th>C 예상</th>
-                                <th>C 예상/2W</th>
+                                <th>C 예상<br>2W</th>
                                 <th class="col-week">-7-8W</th>
                                 <th class="col-week">-5-6W</th>
                                 <th class="col-week">-3-4W</th>
@@ -676,6 +695,8 @@
                 updateModeUI();
                 restoreFromCache();   // 캐시가 있으면 그대로 렌더 (fetch 안 함)
             } catch (e) { /* 무시 */ }
+
+            setupImgPreview();
         });
 
         /* ========== 임시저장 데이터 로드 ========== */
@@ -956,6 +977,7 @@
 
                 return `<tr class="${isGroupFirst ? 'group-first' : ''}" data-idx="${idx}">
                     <td class="col-no">${idx + 1}</td>
+                    <td class="img-cell">${item.img ? `<span class="img-emoji" data-img="${String(item.img).replace(/"/g, '&quot;')}">🖼️</span>` : ''}</td>
                     <td>${item.skuId || ''}</td>
                     <td>${item.상품바코드}</td>
                     <td class="name-cell" title="${item.상품이름}">${item.상품이름}</td>
@@ -984,6 +1006,37 @@
 
         /* ========== C예상 소수점 연하게 포맷 ========== */
         /* C예상 계열: 소수점 없이 반올림 정수로 표시 */
+        /* ========== img 셀 hover 미리보기 (마우스 오른쪽 400x400) ========== */
+        function setupImgPreview() {
+            const box = document.getElementById('imgPreview');
+            if (!box) return;
+            const imgEl = box.querySelector('img');
+            const OFFSET = 20, SIZE = 410; // 미리보기 폭(패딩 포함) 근사값
+            function place(e) {
+                let left = e.clientX + OFFSET;                       // 마우스 오른쪽
+                if (left + SIZE > window.innerWidth) left = e.clientX - OFFSET - SIZE; // 넘치면 왼쪽
+                let top = e.clientY - SIZE / 2;
+                top = Math.max(8, Math.min(top, window.innerHeight - SIZE - 8));
+                box.style.left = left + 'px';
+                box.style.top = top + 'px';
+            }
+            document.addEventListener('mouseover', (e) => {
+                const el = e.target.closest('.img-emoji');
+                if (!el) return;
+                const url = el.getAttribute('data-img');
+                if (!url) return;
+                imgEl.src = url;
+                box.style.display = 'block';
+                place(e);
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (box.style.display === 'block' && e.target.closest('.img-emoji')) place(e);
+            });
+            document.addEventListener('mouseout', (e) => {
+                if (e.target.closest('.img-emoji')) { box.style.display = 'none'; imgEl.removeAttribute('src'); }
+            });
+        }
+
         function formatRounded(val) {
             if (!val) return '';
             const num = Number(val);

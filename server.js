@@ -3015,7 +3015,7 @@ app.get('/api/shortage', async (req, res) => {
                 let from = 0;
                 while (true) {
                     const { data, error } = await rkShared.supabase
-                        .from('rk_inventories').select('barcode, sku_id').range(from, from + 999);
+                        .from('rk_inventories').select('barcode, sku_id, img').range(from, from + 999);
                     if (error) throw error;
                     all.push(...data);
                     if (data.length < 1000) break;
@@ -3024,13 +3024,18 @@ app.get('/api/shortage', async (req, res) => {
                 return all;
             })(),
         ]);
-        const inventoryItems = invRows.map((r) => ({ barcode: r.barcode, skuId: r.sku_id }));
+        const inventoryItems = invRows.map((r) => ({ barcode: r.barcode, skuId: r.sku_id, img: r.img }));
 
         // barcode → skuId 매핑
         const barcodeToSku = new Map();
+        // barcode → 이미지 URL 매핑 (rk_inventories.img)
+        const barcodeToImg = new Map();
         inventoryItems.forEach(item => {
             if (item.barcode && item.skuId) {
                 barcodeToSku.set(item.barcode, item.skuId);
+            }
+            if (item.barcode && item.img) {
+                barcodeToImg.set(item.barcode, item.img);
             }
         });
 
@@ -3346,6 +3351,7 @@ app.get('/api/shortage', async (req, res) => {
         }
         shortageList.forEach(item => {
             item.remainQty = remainMap.get(item.상품바코드) || 0;
+            item.img = barcodeToImg.get(item.상품바코드) || '';
         });
 
         // 6단계: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
