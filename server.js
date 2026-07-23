@@ -3251,40 +3251,39 @@ app.get('/api/shortage', async (req, res) => {
             item.재고 = (!s || !s.has) ? null : Math.max(0, s.sum - (stockResMap.get(item.상품바코드) || 0));
         });
 
-        // 5.7단계: 입고 = 최근 업로드된 입고리스트(rk_cn_shipments) 2건의 아이템 수량 바코드별 합
-        //   헤드테이블 created_at DESC 상위 2건 → 해당 아이템(rk_cn_shipment_items) quantity 합산
-        const inboundMap = new Map(); // barcode → 수량 합
+        // 5.7단계: 잔여 = 재고정리(stockArrange) '처리중'(pending) 남은수량 바코드별 합
+        //   pending 남은 = 아이템수량(quantity) − 출고(rk_cn_shipping ship_qty) − 재고원장(rk_cn_stock_arranges qty)
+        //   출고코드가 남아있는(아직 처리 안 된) 데이터만 집계됨
+        const remainMap = new Map(); // barcode → 잔여 합
         try {
-            const { data: recentShipments, error: eShip } = await supabase
-                .from('rk_cn_shipments')
-                .select('id')
-                .order('created_at', { ascending: false })
-                .limit(2);
-            if (eShip) throw eShip;
-            const shipIds = (recentShipments || []).map(s => s.id);
-            if (shipIds.length) {
-                let from = 0; const PAGE = 1000;
+            const pageAll = async (table, cols) => {
+                const out = []; let from = 0; const PAGE = 1000;
                 while (true) {
-                    const { data, error } = await supabase
-                        .from('rk_cn_shipment_items')
-                        .select('barcode, quantity')
-                        .in('shipment_id', shipIds)
-                        .range(from, from + PAGE - 1);
-                    if (error) { console.error('rk_cn_shipment_items(입고) 조회 오류:', error); break; }
+                    const { data, error } = await supabase.from(table).select(cols).range(from, from + PAGE - 1);
+                    if (error) throw error;
                     if (!data || data.length === 0) break;
-                    data.forEach(r => {
-                        if (!r.barcode) return;
-                        inboundMap.set(r.barcode, (inboundMap.get(r.barcode) || 0) + (parseInt(r.quantity) || 0));
-                    });
+                    out.push(...data);
                     if (data.length < PAGE) break;
                     from += PAGE;
                 }
+                return out;
+            };
+            const items = await pageAll('rk_cn_shipment_items', 'id, barcode, quantity');
+            const shipping = await pageAll('rk_cn_shipping', 'shipment_item_id, ship_qty');
+            const arranges = await pageAll('rk_cn_stock_arranges', 'shipment_item_id, qty');
+            const shipByItem = new Map();
+            for (const a of shipping) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
+            const arrByItem = new Map();
+            for (const a of arranges) arrByItem.set(a.shipment_item_id, (arrByItem.get(a.shipment_item_id) || 0) + (a.qty || 0));
+            for (const it of items) {
+                const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(it.id) || 0) - (arrByItem.get(it.id) || 0);
+                if (remaining > 0 && it.barcode) remainMap.set(it.barcode, (remainMap.get(it.barcode) || 0) + remaining);
             }
-        } catch (inbErr) {
-            console.error('입고리스트 수량 조회 실패 (무시):', inbErr);
+        } catch (remErr) {
+            console.error('재고정리 잔여수량 조회 실패 (무시):', remErr);
         }
         shortageList.forEach(item => {
-            item.inboundQty = inboundMap.get(item.상품바코드) || 0;
+            item.remainQty = remainMap.get(item.상품바코드) || 0;
         });
 
         // 6단계: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
