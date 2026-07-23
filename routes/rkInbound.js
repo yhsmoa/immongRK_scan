@@ -365,7 +365,7 @@ router.post('/api/inbound/prepare', async (req, res) => {
   }
 });
 
-// 바코드 → 위치 후보 목록: rk_stocks(기존 재고 위치) ∪ rk_inventories(상품관리 위치)
+// 바코드 → 위치 후보 목록: rk_stocks(재고 위치)만 참조
 async function locationCandidatesByBarcode(barcodes) {
   const map = new Map(); // barcode -> Set(location)
   if (!barcodes.length) return map;
@@ -382,9 +382,6 @@ async function locationCandidatesByBarcode(barcodes) {
     const { data: st, error: e1 } = await sb.from('rk_stocks').select('barcode, location').in('barcode', chunk);
     if (e1) throw e1;
     for (const x of (st || [])) add(x.barcode, x.location);
-    const { data: iv, error: e2 } = await sb.from('rk_inventories').select('barcode, location').in('barcode', chunk);
-    if (e2) throw e2;
-    for (const x of (iv || [])) add(x.barcode, x.location);
   }
   const out = new Map();
   for (const [bc, set] of map) out.set(bc, [...set]);

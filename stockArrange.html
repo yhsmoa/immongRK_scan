@@ -203,7 +203,7 @@
                 (data.pending||[]).forEach(p=>rows.push({
                     kind:'pending', key:'p'+p.itemId, itemId:p.itemId, 출고코드:p.출고코드, 박스명:p.박스명, 중국번호:p.중국번호,
                     상품명:p.상품명, 바코드:p.바코드, qty:p.남은, 위치후보:(p.위치후보||[]).slice(),
-                    selectedLoc:(p.위치후보&&p.위치후보.length)?p.위치후보[0]:null, adding:false, checked:false
+                    selectedLoc:(p.위치후보&&p.위치후보.length===1)?p.위치후보[0]:null, adding:false, checked:false
                 }));
                 render();
             }catch(e){
