@@ -3135,6 +3135,65 @@ app.get('/api/shortage', async (req, res) => {
             }
         });
 
+        // 3.5단계: 입고재고(pending) 모드 — shortageList 를 stockArrange 처리중 바코드로 교체
+        //   기간/부족 필터 무시. 주문·재고·예상·주간 열은 이후 공용 보강 단계에서 바코드 기준으로 채워짐
+        const viewMode = (req.query.mode || '').trim();
+        let pendingRemainMap = null;   // barcode → 잔여합 (아래 잔여 단계에서 재사용)
+        if (viewMode === 'pending') {
+            const pageAll = async (table, cols) => {
+                const out = []; let from = 0; const PAGE = 1000;
+                while (true) {
+                    const { data, error } = await supabase.from(table).select(cols).range(from, from + PAGE - 1);
+                    if (error) throw error;
+                    if (!data || data.length === 0) break;
+                    out.push(...data);
+                    if (data.length < PAGE) break;
+                    from += PAGE;
+                }
+                return out;
+            };
+            pendingRemainMap = new Map();
+            const nameByBc = new Map();
+            try {
+                const pItems = await pageAll('rk_cn_shipment_items', 'id, barcode, quantity, product_name');
+                const pShip = await pageAll('rk_cn_shipping', 'shipment_item_id, ship_qty');
+                const pArr = await pageAll('rk_cn_stock_arranges', 'shipment_item_id, qty');
+                const shipByItem = new Map();
+                for (const a of pShip) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
+                const arrByItem = new Map();
+                for (const a of pArr) arrByItem.set(a.shipment_item_id, (arrByItem.get(a.shipment_item_id) || 0) + (a.qty || 0));
+                for (const it of pItems) {
+                    const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(it.id) || 0) - (arrByItem.get(it.id) || 0);
+                    if (remaining > 0 && it.barcode) {
+                        pendingRemainMap.set(it.barcode, (pendingRemainMap.get(it.barcode) || 0) + remaining);
+                        if (!nameByBc.has(it.barcode) && it.product_name) nameByBc.set(it.barcode, it.product_name);
+                    }
+                }
+            } catch (pErr) {
+                console.error('입고재고(pending) 집계 실패:', pErr);
+            }
+            // shortageList 를 pending 바코드로 재구성 (Ord/Scan/Fail 은 0 — 주문 열부터 보강)
+            shortageList.length = 0;
+            skuSet.clear();
+            for (const [barcode] of pendingRemainMap) {
+                const sku = barcodeToSku.get(barcode) || '';
+                if (sku) skuSet.add(sku);
+                const existing = barcodeMap.get(barcode);
+                shortageList.push({
+                    상품바코드: barcode,
+                    상품번호: existing ? existing.상품번호 : '',
+                    상품이름: (existing && existing.상품이름) ? existing.상품이름 : (nameByBc.get(barcode) || ''),
+                    총발주수량: 0,
+                    총스캔수량: 0,
+                    발주번호목록: [],
+                    물류센터목록: [],
+                    부족수량: 0,
+                    부족률: 0,
+                    skuId: sku,
+                });
+            }
+        }
+
         // 4단계: 필요한 SKU만 Supabase에서 forecast 조회 (수백건만 조회)
         const forecastMap = new Map();
         const skuArray = [...skuSet];
@@ -3254,33 +3313,36 @@ app.get('/api/shortage', async (req, res) => {
         // 5.7단계: 잔여 = 재고정리(stockArrange) '처리중'(pending) 남은수량 바코드별 합
         //   pending 남은 = 아이템수량(quantity) − 출고(rk_cn_shipping ship_qty) − 재고원장(rk_cn_stock_arranges qty)
         //   출고코드가 남아있는(아직 처리 안 된) 데이터만 집계됨
-        const remainMap = new Map(); // barcode → 잔여 합
-        try {
-            const pageAll = async (table, cols) => {
-                const out = []; let from = 0; const PAGE = 1000;
-                while (true) {
-                    const { data, error } = await supabase.from(table).select(cols).range(from, from + PAGE - 1);
-                    if (error) throw error;
-                    if (!data || data.length === 0) break;
-                    out.push(...data);
-                    if (data.length < PAGE) break;
-                    from += PAGE;
+        let remainMap = pendingRemainMap;   // pending 모드는 3.5단계에서 이미 계산됨 → 재사용
+        if (!remainMap) {
+            remainMap = new Map(); // barcode → 잔여 합
+            try {
+                const pageAll = async (table, cols) => {
+                    const out = []; let from = 0; const PAGE = 1000;
+                    while (true) {
+                        const { data, error } = await supabase.from(table).select(cols).range(from, from + PAGE - 1);
+                        if (error) throw error;
+                        if (!data || data.length === 0) break;
+                        out.push(...data);
+                        if (data.length < PAGE) break;
+                        from += PAGE;
+                    }
+                    return out;
+                };
+                const items = await pageAll('rk_cn_shipment_items', 'id, barcode, quantity');
+                const shipping = await pageAll('rk_cn_shipping', 'shipment_item_id, ship_qty');
+                const arranges = await pageAll('rk_cn_stock_arranges', 'shipment_item_id, qty');
+                const shipByItem = new Map();
+                for (const a of shipping) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
+                const arrByItem = new Map();
+                for (const a of arranges) arrByItem.set(a.shipment_item_id, (arrByItem.get(a.shipment_item_id) || 0) + (a.qty || 0));
+                for (const it of items) {
+                    const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(it.id) || 0) - (arrByItem.get(it.id) || 0);
+                    if (remaining > 0 && it.barcode) remainMap.set(it.barcode, (remainMap.get(it.barcode) || 0) + remaining);
                 }
-                return out;
-            };
-            const items = await pageAll('rk_cn_shipment_items', 'id, barcode, quantity');
-            const shipping = await pageAll('rk_cn_shipping', 'shipment_item_id, ship_qty');
-            const arranges = await pageAll('rk_cn_stock_arranges', 'shipment_item_id, qty');
-            const shipByItem = new Map();
-            for (const a of shipping) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
-            const arrByItem = new Map();
-            for (const a of arranges) arrByItem.set(a.shipment_item_id, (arrByItem.get(a.shipment_item_id) || 0) + (a.qty || 0));
-            for (const it of items) {
-                const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(it.id) || 0) - (arrByItem.get(it.id) || 0);
-                if (remaining > 0 && it.barcode) remainMap.set(it.barcode, (remainMap.get(it.barcode) || 0) + remaining);
+            } catch (remErr) {
+                console.error('재고정리 잔여수량 조회 실패 (무시):', remErr);
             }
-        } catch (remErr) {
-            console.error('재고정리 잔여수량 조회 실패 (무시):', remErr);
         }
         shortageList.forEach(item => {
             item.remainQty = remainMap.get(item.상품바코드) || 0;
