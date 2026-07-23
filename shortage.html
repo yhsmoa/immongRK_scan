@@ -257,6 +257,14 @@
             outline: none;
         }
 
+        /* ========== 열별 배경색 / 구분선 ========== */
+        .col-remain { background: #e0f2fe; }   /* 잔여 = 하늘색 */
+        .col-order  { background: #ffedd5; }   /* 주문 = 연한 주황색 */
+        .col-stock  { background: #eceef1; }   /* 재고 = 연한 회색 */
+        /* 구분선 살짝 굵게: 재고↔C예상, C예상2W↔-7-8W */
+        th.col-stock, td.col-stock { border-right: 2px solid #cbd5e1; }
+        th.col-cf2w,  td.col-cf2w  { border-right: 2px solid #cbd5e1; }
+
         /* ========== 로딩 ========== */
         .loading {
             text-align: center;
@@ -629,11 +637,11 @@
                                 <th class="col-narrow" data-sort="총스캔수량">Scan <span class="sort-icon">▲▼</span></th>
                                 <th class="col-narrow" data-sort="부족수량">Fail <span class="sort-icon">▲▼</span></th>
                                 <th id="inputHeader">입력</th>
-                                <th>잔여</th>
-                                <th>주문</th>
-                                <th>재고</th>
+                                <th class="col-remain">잔여</th>
+                                <th class="col-order">주문</th>
+                                <th class="col-stock">재고</th>
                                 <th>C 예상</th>
-                                <th>C 예상<br>2W</th>
+                                <th class="col-cf2w">C 예상<br>2W</th>
                                 <th class="col-week">-7-8W</th>
                                 <th class="col-week">-5-6W</th>
                                 <th class="col-week">-3-4W</th>
@@ -985,11 +993,11 @@
                     <td class="col-narrow">${Number(item.총스캔수량).toLocaleString()}</td>
                     <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
                     <td class="input-cell" data-row="${idx}">${savedInputs.get(item.상품바코드) || ''}</td>
-                    <td>${item.remainQty ? Number(item.remainQty).toLocaleString() : ''}</td>
-                    <td class="yiwu-cell" data-barcode="${item.상품바코드}">${item.yiwuTotalQty ? Number(item.yiwuTotalQty).toLocaleString() : ''}</td>
-                    <td>${item.재고 == null ? '' : Number(item.재고).toLocaleString()}</td>
+                    <td class="col-remain">${item.remainQty ? Number(item.remainQty).toLocaleString() : ''}</td>
+                    <td class="yiwu-cell col-order" data-barcode="${item.상품바코드}">${item.yiwuTotalQty ? Number(item.yiwuTotalQty).toLocaleString() : ''}</td>
+                    <td class="col-stock">${item.재고 == null ? '' : Number(item.재고).toLocaleString()}</td>
                     <td>${formatRounded(item.cForecast)}</td>
-                    <td>${formatRounded(item.cForecast2W)}</td>
+                    <td class="col-cf2w">${formatRounded(item.cForecast2W)}</td>
                     <td class="ds-cell col-week" data-barcode="${item.상품바코드}">${item.w78 ? Number(item.w78).toLocaleString() : ''}</td>
                     <td class="ds-cell col-week" data-barcode="${item.상품바코드}" style="${weekColor(item.w56, item.w78)}">${item.w56 ? Number(item.w56).toLocaleString() : ''}</td>
                     <td class="ds-cell col-week" data-barcode="${item.상품바코드}" style="${weekColor(item.w34, item.w56)}">${item.w34 ? Number(item.w34).toLocaleString() : ''}</td>
