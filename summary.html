@@ -132,12 +132,17 @@
 
         async function loadData(){
             try{
-                const res=await fetch('/api/orders');
+                // 발주서 + 출고스캔(rk_ship_box_items) 병렬 — 스캔수량은 출고스캔 기준
+                const [res,scRes]=await Promise.all([fetch('/api/orders'), fetch('/api/ship-scan/scanned-map')]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const data=await res.json();
+                const scanMap=scRes.ok?await scRes.json():{};
+                // 발주번호|바코드 → 발주번호별 출고스캔 합
+                const scanByOrder=new Map();
+                for(const k in scanMap){ const on=k.split('|')[0]; scanByOrder.set(on,(scanByOrder.get(on)||0)+(Number(scanMap[k])||0)); }
                 orders=data.map(o=>({
                     발주번호:o.발주번호, 물류센터:o.물류센터||'(미정)', 입고예정일:o.입고예정일||'(미정)',
-                    발주수량:Number(o.발주수량)||0, 스캔수량:Number(o.스캔수량)||0, 상태:o.상태||'PROCESSING'
+                    발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0, 상태:o.상태||'PROCESSING'
                 }));
                 render();
             }catch(e){

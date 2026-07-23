@@ -230,9 +230,13 @@
 
         async function loadData(){
             try{
-                const res=await fetch('/api/orders');
+                // 발주서 + 출고스캔(rk_ship_box_items) 병렬 — 스캔수량은 출고스캔 기준
+                const [res,scRes]=await Promise.all([fetch('/api/orders'), fetch('/api/ship-scan/scanned-map')]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const data=await res.json();
+                const scanMap=scRes.ok?await scRes.json():{};
+                const scanByOrder=new Map();
+                for(const k in scanMap){ const on=k.split('|')[0]; scanByOrder.set(on,(scanByOrder.get(on)||0)+(Number(scanMap[k])||0)); }
                 orders=data.filter(o=>selNos.includes(o.발주번호)).map(o=>{
                     // 원본(박스정보 없음) 우선 dedup — 바코드별 1행
                     const seen=new Set(); const items=[];
@@ -249,7 +253,7 @@
                         if(an!==bn) return an?1:-1;
                         return String(a.위치).localeCompare(String(b.위치),'ko',{numeric:true});
                     });
-                    return {발주번호:o.발주번호, 물류센터:o.물류센터||'', 발주수량:Number(o.발주수량)||0, 스캔수량:Number(o.스캔수량)||0, items};
+                    return {발주번호:o.발주번호, 물류센터:o.물류센터||'', 발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0, items};
                 });
                 document.getElementById('ordCount').textContent=orders.length;
                 renderOrders();
