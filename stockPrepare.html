@@ -25,13 +25,20 @@
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
         .btn:disabled{opacity:.55;cursor:default;}
 
-        .filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
-        .filters select{height:38px;padding:0 10px;border:1px solid #e2e8f0;border-radius:9px;background:#fff;color:#334155;font-size:13.5px;cursor:pointer;outline:none;}
-        .filters input{flex:1;min-width:240px;height:38px;padding:0 14px;border:1px solid #e5e9f0;border-radius:9px;background:#fff;font-size:13.5px;color:var(--ink);outline:none;}
+        .tabs{display:flex;gap:6px;margin-bottom:10px;align-items:center;}
+        .tab{height:34px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+        .tab:hover{background:var(--hover);}
+        .tab.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .tab .cnt{font-size:11.5px;opacity:.85;}
+
+        .filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+        .filters select{height:36px;padding:0 10px;border:1px solid #e2e8f0;border-radius:9px;background:#fff;color:#334155;font-size:13px;cursor:pointer;outline:none;}
+        .filters select:disabled{opacity:.5;cursor:default;}
+        .filters input{flex:1;min-width:240px;height:36px;padding:0 14px;border:1px solid #e5e9f0;border-radius:9px;background:#fff;font-size:13.5px;color:var(--ink);outline:none;}
         .filters input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
 
         .table-scroll{overflow-x:auto;max-height:72vh;overflow-y:auto;}
-        table{width:100%;border-collapse:collapse;min-width:1050px;}
+        table{width:100%;border-collapse:collapse;min-width:1100px;}
         thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;}
         thead th.ctr{text-align:center;}
         tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
@@ -39,15 +46,50 @@
         td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
         td.pname{white-space:normal;color:#334155;}
         td.code{font-weight:600;color:#1e293b;}
-        td.loc-text{font-weight:600;color:#1e293b;}
+        td.loc-text{font-weight:600;color:#1e293b;white-space:normal;}
+        .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
+        tbody tr.ge td{border-bottom:2px solid #111827;}   /* 발주번호 그룹 경계 (인쇄 기준과 동일) */
+        /* v2 표시 (newOrder 와 동일) */
+        .loc-v2{color:#F0492F;font-weight:600;}    /* 계산(미저장) 배정 = 주황 */
+        .loc-none{color:#94a3b8;font-weight:500;}  /* 재고 0·NULL 미배정 위치 = 회색 */
+        .loc-v2s{color:#111827;font-weight:600;}   /* 저장됨 = 검정 */
+        .stock-v2{color:#F0492F;font-weight:600;}
+        .stock-v2s{color:#111827;font-weight:600;}
+        .dash{color:#cbd5e1;}
+        /* 기존 탭 회차 배지 */
         tbody tr.latest td{background:#f5f7ff;}
         tbody tr.latest:hover td{background:#eef1fe;}
         .batch-badge{display:inline-block;min-width:26px;text-align:center;background:#eef2ff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:7px;padding:1px 7px;font-weight:700;font-size:12px;}
         tr.latest .batch-badge{background:var(--primary);color:#fff;border-color:var(--primary);}
         .new-tag{display:inline-block;margin-left:5px;background:#f0492f;color:#fff;border-radius:6px;padding:0 5px;font-size:10.5px;font-weight:700;vertical-align:1px;}
-        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
         .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
         .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+
+        /* 오른쪽 슬라이드 패널 (발주서 선택 — inboundArrange 방식) */
+        .side-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10001;}
+        .side-back.show{opacity:1;pointer-events:auto;}
+        .side-panel{position:fixed;top:0;right:0;height:100vh;width:560px;max-width:92vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10002;display:flex;flex-direction:column;}
+        .side-panel.show{transform:translateX(0);}
+        .side-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;font-size:15px;font-weight:600;color:#0f172a;}
+        .side-head .sub{font-size:12px;font-weight:500;color:#94a3b8;margin-left:8px;}
+        .side-head button.x{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .side-tools{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-bottom:1px solid #eef2f7;gap:10px;}
+        .side-tools label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#334155;cursor:pointer;}
+        .side-list{overflow-y:auto;padding:4px 4px 16px;flex:1;}
+        .side-date{display:inline-block;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:6px;margin:14px 6px 9px;user-select:none;cursor:pointer;}
+        .side-date:hover{background:#1d4ed8;}
+        .side-date.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
+        .side-orders{display:flex;flex-wrap:wrap;gap:8px;padding:0 8px 8px;}
+        .side-order{padding:8px 12px;border:1px solid #e5e9f0;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:8px;}
+        .side-order:hover{background:#f8fafc;}
+        .side-order.sel{background:#eef2ff;border-color:#c7d2fe;}
+        .side-order .so-body{display:flex;flex-direction:column;}
+        .so-no{font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;}
+        .so-cnt{color:#94a3b8;font-weight:500;font-size:12px;}
+        .so-center{font-size:12px;color:#1e293b;margin-top:2px;}
+        .side-foot{padding:12px 18px;border-top:1px solid #eef2f7;display:flex;justify-content:flex-end;gap:8px;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
 
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -61,12 +103,18 @@
             <div class="head">
                 <div class="title-wrap">
                     <h1 class="title">재고준비 <span style="font-size:18px">📦</span></h1>
-                    <span class="subtitle">회차 <b id="batchCount">0</b> · 행 <b id="rowCount">0</b> · 총수량 <b id="qtySum">0</b></span>
+                    <span class="subtitle" id="subtitle"></span>
                 </div>
                 <div class="actions">
-                    <button class="btn" onclick="window.print()">인쇄</button>
-                    <button class="btn primary" id="runBtn" onclick="runPrepare()">출고준비</button>
+                    <button class="btn" onclick="openOrderPanel()">위치</button>
+                    <button class="btn primary" onclick="prepareV2()">준비</button>
+                    <button class="btn" onclick="printRows()">인쇄</button>
                 </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" id="tab-new" onclick="switchTab('new')">신규 <span class="cnt" id="cnt-new">0</span></button>
+                <button class="tab" id="tab-saved" onclick="switchTab('saved')">기존 <span class="cnt" id="cnt-saved">0</span></button>
             </div>
 
             <div class="filters">
@@ -76,124 +124,383 @@
             </div>
 
             <div class="table-scroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="ctr" style="width:64px">회차</th>
-                            <th class="ctr" style="width:96px">준비일</th>
-                            <th style="width:110px">발주번호</th>
-                            <th style="width:96px">물류센터</th>
-                            <th class="ctr" style="width:96px">입고예정일</th>
-                            <th>상품명</th>
-                            <th style="width:140px">바코드</th>
-                            <th style="width:96px">위치</th>
-                            <th class="ctr" style="width:64px">수량</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="9">불러오는 중…</td></tr></tbody>
+                <table id="mainTable">
+                    <thead id="thead"></thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="11">[위치] 버튼으로 발주서를 선택해 재고 배정을 계산하세요.</td></tr></tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <!-- 발주서 선택 슬라이드 -->
+    <div class="side-back" id="sideBack" onclick="closeOrderPanel()"></div>
+    <div class="side-panel" id="sidePanel">
+        <div class="side-head">
+            <span>위치 조회 · 발주서 선택 <span class="sub" id="sideCount"></span></span>
+            <button class="x" onclick="closeOrderPanel()">✕</button>
+        </div>
+        <div class="side-tools">
+            <label><input type="checkbox" id="selectAllOrders" checked onchange="toggleAllOrders(this)"> 전체선택</label>
+            <span class="sub" id="selInfo" style="font-size:12px;color:#94a3b8;"></span>
+        </div>
+        <div class="side-list" id="sideList"></div>
+        <div class="side-foot">
+            <button class="btn" onclick="closeOrderPanel()">취소</button>
+            <button class="btn primary" onclick="runLocate()">위치 조회 실행</button>
         </div>
     </div>
 
     <div id="toast"></div>
 
     <script>
-        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;});
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
 
-        let rows=[];        // [{batchNo, preparedAt, orderNumber, center, shippingDate, productName, barcode, location, qty, createdAt}]
+        // ── 상태 ──
+        let allOrders=null;        // /api/orders (전체 발주서, 상품정보 포함) — 패널 열 때 lazy load
+        let selectedOrders=new Set();
+        let newRows=[];            // 신규 탭: 선택 발주서의 원본 상품 행 (newOrder 와 동일 필드 + v2)
+        let savedRows=[];          // 기존 탭: rk_shipping_list(source=재고)
         let maxBatch=0;
+        let activeTab='new';       // 'new' | 'saved'
 
-        const esc=v=>String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-        // 준비일: prepared_at(회차 실행 시각) 우선, 없으면 created_at — YYYY-MM-DD
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         function prepDate(r){ const t=r.preparedAt||r.createdAt; if(!t)return ''; const m=String(t).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?`${m[1]}-${m[2]}-${m[3]}`:''; }
         function prepMonth(r){ const d=prepDate(r); return d?d.slice(0,7):''; }
         function ymd(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}-${m[2]}-${m[3]}`:String(s||''); }
 
-        async function loadData(){
+        // ── 기존(저장분) 로드 ──
+        async function loadSaved(){
             try{
                 const res=await fetch('/api/shipping-list?source=재고');
                 if(!res.ok) throw new Error('출고리스트 조회 실패');
-                rows=await res.json();
-                maxBatch=rows.reduce((m,r)=>Math.max(m,r.batchNo||0),0);
-                // 필터 옵션 구성 (월: 최신순 / 회차: 큰 번호부터, 회차없음 포함)
-                const months=[...new Set(rows.map(prepMonth).filter(Boolean))].sort().reverse();
+                savedRows=await res.json();
+                maxBatch=savedRows.reduce((m,r)=>Math.max(m,r.batchNo||0),0);
+                // 월 옵션 (최신순) — 접속 시 해당월 기본 선택
+                const months=[...new Set(savedRows.map(prepMonth).filter(Boolean))].sort().reverse();
                 const mSel=document.getElementById('monthSel');
+                const prev=mSel.value;
                 mSel.innerHTML='<option value="">전체 월</option>'+months.map(m=>`<option value="${m}">${m}</option>`).join('');
-                const batches=[...new Set(rows.map(r=>r.batchNo||0))].sort((a,b)=>b-a);
+                const now=new Date();
+                const curMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+                mSel.value = prev && [...mSel.options].some(o=>o.value===prev) ? prev : (months.includes(curMonth)?curMonth:'');
+                // 회차 옵션
+                const batches=[...new Set(savedRows.map(r=>r.batchNo||0))].sort((a,b)=>b-a);
                 const bSel=document.getElementById('batchSel');
                 bSel.innerHTML='<option value="">전체 회차</option>'+batches.map(b=>`<option value="${b}">${b===0?'회차없음':b+'회차'}${b===maxBatch&&b>0?' (최신)':''}</option>`).join('');
                 render();
-            }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="9">${esc(e.message)}</td></tr>`;
-            }
+            }catch(e){ toast(e.message); }
         }
 
-        function filtered(){
-            const month=document.getElementById('monthSel').value;
-            const batch=document.getElementById('batchSel').value;
-            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
-            return rows.filter(r=>{
-                if(month && prepMonth(r)!==month) return false;
-                if(batch!=='' && String(r.batchNo||0)!==batch) return false;
-                if(terms.length){
-                    const hay=[r.orderNumber,r.center,r.productName,r.barcode,r.location].map(v=>String(v||'').toLowerCase());
-                    if(!terms.some(t=>hay.some(h=>h.includes(t)))) return false;
-                }
-                return true;
-            });
+        // ── 탭 ──
+        function switchTab(t){
+            activeTab=t;
+            document.getElementById('tab-new').classList.toggle('active',t==='new');
+            document.getElementById('tab-saved').classList.toggle('active',t==='saved');
+            // 월/회차 필터는 기존 탭 전용
+            document.getElementById('monthSel').disabled=(t==='new');
+            document.getElementById('batchSel').disabled=(t==='new');
+            render();
         }
+
+        // ── 발주서 선택 패널 ──
+        async function openOrderPanel(){
+            if(!allOrders){
+                toast('발주서 불러오는 중…');
+                try{
+                    const res=await fetch('/api/orders');
+                    if(!res.ok) throw new Error('발주서 조회 실패');
+                    allOrders=await res.json();
+                    selectedOrders=new Set(uniqueOrders().map(o=>o.발주번호)); // 기본 전체선택
+                }catch(e){ toast(e.message); return; }
+            }
+            renderOrderPanel();
+            document.getElementById('sideBack').classList.add('show');
+            document.getElementById('sidePanel').classList.add('show');
+        }
+        function closeOrderPanel(){
+            document.getElementById('sideBack').classList.remove('show');
+            document.getElementById('sidePanel').classList.remove('show');
+        }
+        function uniqueOrders(){
+            return (allOrders||[]).map(o=>({
+                발주번호:o.발주번호, 물류센터:o.물류센터, 입고예정일:o.입고예정일,
+                count:(o.상품정보||[]).filter(p=>!p.박스정보&&p.상품바코드).length,
+            })).filter(o=>o.count>0);
+        }
+        function ordersOfDate(date){ return uniqueOrders().filter(o=>(o.입고예정일||'(미정)')===date).map(o=>o.발주번호); }
+        function toggleDate(date){
+            const nos=ordersOfDate(date);
+            const allSel=nos.length>0&&nos.every(n=>selectedOrders.has(n));
+            if(allSel) nos.forEach(n=>selectedOrders.delete(n)); else nos.forEach(n=>selectedOrders.add(n));
+            renderOrderPanel();
+        }
+        function toggleOrder(no){
+            if(selectedOrders.has(no)) selectedOrders.delete(no); else selectedOrders.add(no);
+            renderOrderPanel();
+        }
+        function toggleAllOrders(el){
+            selectedOrders=el.checked?new Set(uniqueOrders().map(o=>o.발주번호)):new Set();
+            renderOrderPanel();
+        }
+        function renderOrderPanel(){
+            const uniq=uniqueOrders();
+            document.getElementById('sideCount').textContent=`${uniq.length}건`;
+            const byDate=new Map();
+            for(const o of uniq){ const d=o.입고예정일||'(미정)'; if(!byDate.has(d))byDate.set(d,[]); byDate.get(d).push(o); }
+            let html='';
+            for(const [date,list] of [...byDate.entries()].sort((a,b)=>String(a[0]).localeCompare(String(b[0])))){
+                const dateAllSel=list.length>0&&list.every(o=>selectedOrders.has(o.발주번호));
+                html+=`<div class="side-date ${dateAllSel?'sel':''}" onclick="toggleDate('${esc(date)}')">${esc(date)}</div>`;
+                const byCenter=new Map();
+                for(const o of list){ const c=o.물류센터||'(미정)'; if(!byCenter.has(c))byCenter.set(c,[]); byCenter.get(c).push(o); }
+                for(const [,corders] of byCenter){
+                    html+=`<div class="side-orders">`;
+                    html+=corders.map(o=>{
+                        const sel=selectedOrders.has(o.발주번호);
+                        return `<div class="side-order ${sel?'sel':''}" onclick="toggleOrder('${esc(o.발주번호)}')">
+                            <input type="checkbox" ${sel?'checked':''} onclick="event.stopPropagation();toggleOrder('${esc(o.발주번호)}')">
+                            <div class="so-body"><div class="so-no">${esc(o.발주번호)} <span class="so-cnt">(${o.count})</span></div>
+                            <div class="so-center">${esc(o.물류센터)}</div></div></div>`;
+                    }).join('');
+                    html+=`</div>`;
+                }
+            }
+            document.getElementById('sideList').innerHTML=html;
+            document.getElementById('selInfo').textContent=`${selectedOrders.size}개 선택`;
+            document.getElementById('selectAllOrders').checked=selectedOrders.size===uniq.length&&uniq.length>0;
+        }
+
+        // ── 위치 조회 실행 (선택 발주서 → 재고 배정 계산, newOrder 위치v2와 동일) ──
+        function v2Payload(rows){
+            return rows.filter(r=>r.상품바코드).map(r=>({
+                orderNumber:r.발주번호, center:r.물류센터, shippingDate:r.입고예정일,
+                barcode:r.상품바코드, productName:r.상품명, qty:Number(r.발주수량)||0
+            }));
+        }
+        async function runLocate(){
+            if(selectedOrders.size===0){toast('발주서를 하나 이상 선택하세요.');return;}
+            closeOrderPanel();
+            // 선택 발주서의 원본 상품 → 신규 탭 행
+            newRows=[];
+            for(const o of (allOrders||[])){
+                if(!selectedOrders.has(o.발주번호)) continue;
+                for(const p of (o.상품정보||[])){
+                    if(p.박스정보||!p.상품바코드) continue;
+                    newRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
+                        상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
+                        발주수량:p.발주수량,스캔수량:p.스캔수량,
+                        재고:null,위치v2:null,stockLocs:null,v2Saved:false,입고V2:null});
+                }
+            }
+            if(!newRows.length){toast('선택 발주서에 대상 상품이 없습니다.');return;}
+            toast('재고 배정 계산 중…');
+            try{
+                // 저장분(재고/입고 출고예정) 표시용 로드
+                const [rRes,iRes]=await Promise.all([
+                    fetch('/api/shipping-list?source=재고&status=출고예정'),
+                    fetch('/api/shipping-list?source=입고&status=출고예정')
+                ]);
+                if(rRes.ok){
+                    const list=await rRes.json();
+                    const map=new Map();
+                    for(const x of list){ const k=`${x.orderNumber}|${x.barcode}`; if(!map.has(k))map.set(k,[]); map.get(k).push({location:x.location,qty:Number(x.qty)||0}); }
+                    for(const r of newRows){
+                        const allocs=map.get(`${r.발주번호}|${r.상품바코드}`);
+                        if(allocs&&allocs.length){
+                            allocs.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
+                            r.위치v2=allocs; r.재고=allocs.reduce((s,a)=>s+a.qty,0); r.v2Saved=true;
+                        }
+                    }
+                }
+                if(iRes.ok){
+                    const ilist=await iRes.json();
+                    const imap=new Map();
+                    for(const x of ilist){ const k=`${x.orderNumber}|${x.barcode}`; imap.set(k,(imap.get(k)||0)+(Number(x.qty)||0)); }
+                    for(const r of newRows){ const q=imap.get(`${r.발주번호}|${r.상품바코드}`); r.입고V2=(q&&q>0)?q:null; }
+                }
+                // 배정 계산 (save=false)
+                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:v2Payload(newRows),save:false})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
+                let i=0;
+                for(const r of newRows){
+                    if(!r.상품바코드) continue;
+                    const out=data.results[i++];
+                    if(!out||r.v2Saved) continue;
+                    r.재고=out.allocated; r.위치v2=out.allocations; r.stockLocs=out.stockLocs||[];
+                }
+                switchTab('new');
+                const total=data.results.reduce((s,r)=>s+r.allocated,0);
+                toast(`위치 조회: ${data.results.filter(r=>r.allocated>0).length}행 배정 가능, 총 ${total}개`);
+            }catch(e){toast('위치 조회 실패: '+e.message);}
+        }
+
+        // ── 준비 (계산분 저장 → rk_shipping_list, 새 회차 부여) ──
+        async function prepareV2(){
+            const rows=newRows.filter(r=>r.위치v2&&r.위치v2.length&&!r.v2Saved);
+            if(!rows.length){toast('저장할 새 배정이 없습니다. 먼저 [위치]를 실행하세요.');return;}
+            const totalQty=rows.reduce((s,r)=>s+(Number(r.재고)||0),0);
+            if(!confirm(`${rows.length}행 / 총 ${totalQty}개를 출고예정으로 저장하시겠습니까?`))return;
+            toast('출고예정 저장 중…');
+            try{
+                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:v2Payload(rows),save:true,batch:true})});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
+                if(data.saved>0){
+                    let i=0;
+                    for(const r of rows){
+                        const out=data.results[i++];
+                        if(out&&out.allocated>0){ r.위치v2=out.allocations; r.재고=out.allocated; r.stockLocs=null; r.v2Saved=true; }
+                    }
+                    await loadSaved();
+                    render();
+                    toast(`출고예정 ${data.saved}건 저장 완료${data.batch?` (${data.batch}회차)`:''}`);
+                }else{
+                    toast('저장할 배정이 없습니다. (이미 예약되었거나 재고 없음)');
+                }
+            }catch(e){toast('준비 실패: '+e.message);}
+        }
+
+        // ── 렌더 ──
+        // v2 위치/재고 셀 (newOrder 와 동일 규칙)
+        function v2LocHtml(r){
+            if(r.stockLocs && r.stockLocs.length && !r.v2Saved){
+                const allocMap=new Map((r.위치v2||[]).map(a=>[a.location,a.qty]));
+                return r.stockLocs.map(sl=>{
+                    const a=allocMap.get(sl.location);
+                    return a>0 ? `<span class="loc-v2">${esc(sl.location+'-'+a)}</span>`
+                               : `<span class="loc-none">${esc(sl.location)}</span>`;
+                }).join('<br>');
+            }
+            if(!r.위치v2) return '<span class="dash">-</span>';
+            const allocs=r.위치v2;
+            if(!allocs.length) return '<span class="dash">-</span>';
+            const cls=r.v2Saved?'loc-v2s':'loc-v2';
+            if(allocs.length===1) return `<span class="${cls}">${esc(allocs[0].location)}</span>`;
+            return `<span class="${cls}">${allocs.map(a=>esc(a.location+'-'+a.qty)).join('<br>')}</span>`;
+        }
+        function stockQtyHtml(r){
+            if(r.stockLocs && r.stockLocs.length && !r.v2Saved){
+                return r.stockLocs.map(sl=> sl.qty==null ? '&nbsp;' : String(sl.qty)).join('<br>');
+            }
+            if(r.위치v2) return (Number(r.재고)||0)>0 ? `<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${Number(r.재고)}</span>` : '<span class="dash">-</span>';
+            return dashCell(r.재고);
+        }
+        function modelBold(name){
+            const s=String(name==null?'':name); const ci=s.indexOf(',');
+            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
+                if(m){ const t=m[1];
+                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                        const before=prefix.slice(0, prefix.length-m[0].length);
+                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
+            return esc(s);
+        }
+        const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
+        const sortLoc=(r)=>{
+            if(r.stockLocs && r.stockLocs.length && !r.v2Saved) return r.stockLocs[0].location;
+            if(r.위치v2 && r.위치v2.length) return r.위치v2[0].location;
+            return '';
+        };
+        function sortedNewRows(list){
+            return list.slice().sort((a,b)=>cmp(a.입고예정일,b.입고예정일)||cmp(a.물류센터,b.물류센터)||cmp(a.발주번호,b.발주번호)||cmp(sortLoc(a),sortLoc(b)));
+        }
+        function searchTerms(){ return document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean); }
 
         function render(){
-            const list=filtered();
-            // 정렬: 회차 desc → 발주번호 → 바코드 → 위치
-            list.sort((a,b)=>(b.batchNo||0)-(a.batchNo||0)
-                || String(a.orderNumber||'').localeCompare(String(b.orderNumber||''))
-                || String(a.barcode||'').localeCompare(String(b.barcode||''))
-                || String(a.location||'').localeCompare(String(b.location||''),'ko',{numeric:true}));
+            const thead=document.getElementById('thead');
             const tb=document.getElementById('tbody');
-            if(!list.length){ tb.innerHTML='<tr class="state-row"><td colspan="9">데이터가 없습니다. [출고준비]를 실행해보세요.</td></tr>'; }
-            else{
-                tb.innerHTML=list.map(r=>{
-                    const isLatest=maxBatch>0&&r.batchNo===maxBatch;
-                    return `<tr${isLatest?' class="latest"':''}>
-                        <td class="ctr"><span class="batch-badge">${r.batchNo||'-'}</span>${isLatest?'<span class="new-tag">NEW</span>':''}</td>
-                        <td class="ctr">${esc(prepDate(r))}</td>
-                        <td class="code">${esc(r.orderNumber)}</td>
-                        <td>${esc(r.center)}</td>
-                        <td class="ctr">${esc(ymd(r.shippingDate))}</td>
-                        <td class="pname">${esc(r.productName)}</td>
-                        <td>${esc(r.barcode)}</td>
-                        <td class="loc-text">${esc(r.location)}</td>
-                        <td class="ctr"><b>${Number(r.qty)||0}</b></td>
-                    </tr>`;
-                }).join('');
+            document.getElementById('cnt-new').textContent=newRows.length;
+            document.getElementById('cnt-saved').textContent=savedRows.length;
+            const terms=searchTerms();
+
+            if(activeTab==='new'){
+                thead.innerHTML=`<tr><th>발주번호</th><th>물류센터</th><th>상품번호</th><th>상품바코드</th><th>상품명</th>
+                    <th class="ctr">발주수량</th><th class="ctr">스캔수량</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th class="ctr">입고예정일</th></tr>`;
+                let list=sortedNewRows(newRows);
+                if(terms.length){
+                    list=list.filter(r=>{
+                        const hay=[r.발주번호,r.물류센터,r.상품명,r.상품바코드,(r.위치v2||[]).map(a=>a.location).join(' ')].map(v=>String(v||'').toLowerCase());
+                        return terms.some(t=>hay.some(h=>h.includes(t)));
+                    });
+                }
+                if(!list.length){ tb.innerHTML='<tr class="state-row"><td colspan="11">[위치] 버튼으로 발주서를 선택해 재고 배정을 계산하세요.</td></tr>'; }
+                else{
+                    tb.innerHTML=list.map((r,idx)=>{
+                        const groupEnd=(idx===list.length-1)||(list[idx+1].발주번호!==r.발주번호);
+                        return `<tr class="${groupEnd?'ge':''}">
+                            <td class="code">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
+                            <td>${esc(r.상품번호)}</td><td>${esc(r.상품바코드)}</td>
+                            <td class="pname">${modelBold(r.상품명)}</td>
+                            <td class="ctr">${esc(r.발주수량)}</td><td class="ctr">${esc(r.스캔수량)}</td>
+                            <td class="ctr">${stockQtyHtml(r)}</td><td class="ctr">${dashCell(r.입고V2)}</td>
+                            <td class="loc-text">${v2LocHtml(r)}</td><td class="ctr">${esc(r.입고예정일)}</td>
+                        </tr>`;
+                    }).join('');
+                }
+                const allocRows=newRows.filter(r=>r.위치v2&&r.위치v2.length);
+                document.getElementById('subtitle').innerHTML=`신규 <b>${newRows.length}</b>행 · 배정 <b>${allocRows.length}</b>행 · 배정수량 <b>${allocRows.reduce((s,r)=>s+(Number(r.재고)||0),0)}</b>`;
+            }else{
+                thead.innerHTML=`<tr><th class="ctr" style="width:64px">회차</th><th class="ctr" style="width:96px">준비일</th><th style="width:110px">발주번호</th>
+                    <th style="width:96px">물류센터</th><th class="ctr" style="width:96px">입고예정일</th><th>상품명</th><th style="width:140px">바코드</th>
+                    <th style="width:96px">위치</th><th class="ctr" style="width:64px">수량</th></tr>`;
+                const month=document.getElementById('monthSel').value;
+                const batch=document.getElementById('batchSel').value;
+                let list=savedRows.filter(r=>{
+                    if(month && prepMonth(r)!==month) return false;
+                    if(batch!=='' && String(r.batchNo||0)!==batch) return false;
+                    if(terms.length){
+                        const hay=[r.orderNumber,r.center,r.productName,r.barcode,r.location].map(v=>String(v||'').toLowerCase());
+                        if(!terms.some(t=>hay.some(h=>h.includes(t)))) return false;
+                    }
+                    return true;
+                });
+                list.sort((a,b)=>(b.batchNo||0)-(a.batchNo||0)
+                    || String(a.orderNumber||'').localeCompare(String(b.orderNumber||''))
+                    || String(a.barcode||'').localeCompare(String(b.barcode||''))
+                    || String(a.location||'').localeCompare(String(b.location||''),'ko',{numeric:true}));
+                if(!list.length){ tb.innerHTML='<tr class="state-row"><td colspan="9">데이터가 없습니다.</td></tr>'; }
+                else{
+                    tb.innerHTML=list.map(r=>{
+                        const isLatest=maxBatch>0&&r.batchNo===maxBatch;
+                        return `<tr${isLatest?' class="latest"':''}>
+                            <td class="ctr"><span class="batch-badge">${r.batchNo||'-'}</span>${isLatest?'<span class="new-tag">NEW</span>':''}</td>
+                            <td class="ctr">${esc(prepDate(r))}</td>
+                            <td class="code">${esc(r.orderNumber)}</td>
+                            <td>${esc(r.center)}</td>
+                            <td class="ctr">${esc(ymd(r.shippingDate))}</td>
+                            <td class="pname">${esc(r.productName)}</td>
+                            <td>${esc(r.barcode)}</td>
+                            <td class="loc-text">${esc(r.location)}</td>
+                            <td class="ctr"><b>${Number(r.qty)||0}</b></td>
+                        </tr>`;
+                    }).join('');
+                }
+                document.getElementById('subtitle').innerHTML=`기존 <b>${list.length}</b>행 · 수량 <b>${list.reduce((s,r)=>s+(Number(r.qty)||0),0).toLocaleString()}</b>`;
             }
-            document.getElementById('rowCount').textContent=list.length;
-            document.getElementById('qtySum').textContent=list.reduce((s,r)=>s+(Number(r.qty)||0),0).toLocaleString();
-            document.getElementById('batchCount').textContent=new Set(rows.map(r=>r.batchNo||0)).size ? [...new Set(rows.map(r=>r.batchNo).filter(b=>b>0))].length : 0;
         }
 
-        // ── 출고준비 실행: 발주서 전체 대상 재고 배정 → 새 회차로 저장 ──
-        async function runPrepare(){
-            if(!confirm('출고준비를 실행하시겠습니까?\n발주서에서 재고로 나갈 수 있는 상품을 새 회차로 배정합니다.\n(이미 배정된 출고예정 수량은 중복 배정되지 않습니다)')) return;
-            const btn=document.getElementById('runBtn');
-            btn.disabled=true; const org=btn.textContent; btn.textContent='배정 중…';
-            try{
-                const res=await fetch('/api/stock-prepare/run',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-                const data=await res.json();
-                if(!res.ok) throw new Error(data.error||'출고준비 실패');
-                if(data.saved>0) toast(`출고준비 완료 — ${data.batch}회차 · ${data.saved}행 · ${Number(data.totalQty).toLocaleString()}개 배정`);
-                else toast('새로 배정할 항목이 없습니다. (재고 부족 또는 이미 전부 배정됨)');
-                await loadData();
-            }catch(e){ toast('출고준비 실패: '+e.message); }
-            finally{ btn.disabled=false; btn.textContent=org; }
+        // ── 인쇄 (신규발주서 페이지와 동일 기준: 열/정렬/그룹경계/배지) ──
+        function printRows(){
+            let rows=newRows;
+            if(!rows.length){toast('인쇄할 행이 없습니다. 먼저 [위치]를 실행하세요.');return;}
+            rows=sortedNewRows(rows);
+            const head=['발주번호','물류센터','상품번호','상품바코드','상품명','발주수량','스캔수량','재고','입고','위치','입고예정일'];
+            const body=rows.map((r,idx)=>{
+                const groupEnd=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
+                const cells=[esc(r.발주번호),esc(r.물류센터),esc(r.상품번호),esc(r.상품바코드),modelBold(r.상품명),esc(r.발주수량),esc(r.스캔수량),stockQtyHtml(r),dashCell(r.입고V2),v2LocHtml(r),esc(r.입고예정일)];
+                return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${v}</td>`).join('')}</tr>`;
+            }).join('');
+            const w=window.open('','_blank');
+            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>재고준비 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}th:nth-child(2),td:nth-child(2){white-space:nowrap;}th:nth-child(5),td:nth-child(5){word-break:break-word;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.loc-v2{color:#F0492F;font-weight:600;}.loc-none{color:#94a3b8;}.loc-v2s{color:#111827;font-weight:600;}.stock-v2{color:#F0492F;font-weight:600;}.stock-v2s{color:#111827;font-weight:600;}.dash{color:#cbd5e1;}td:nth-child(8),td:nth-child(10){white-space:nowrap;}</style></head><body><h2>재고준비 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.close();
         }
 
         let toastTimer;
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3600);}
 
-        loadData();
+        switchTab('new');
+        loadSaved();
     </script>
 </body>
 </html>

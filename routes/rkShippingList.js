@@ -35,6 +35,7 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
   try {
     const reqRows = Array.isArray(req.body.rows) ? req.body.rows : [];
     const save = !!req.body.save;
+    const withBatch = !!req.body.batch;   // true면 저장분에 새 회차(batch_no)·prepared_at 부여 (재고준비 페이지용)
     if (!reqRows.length) return res.status(400).json({ error: '대상 행이 없습니다.' });
 
     const barcodes = [...new Set(reqRows.map(r => String(r.barcode || '').trim()).filter(Boolean))];
@@ -120,7 +121,18 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
     }
 
     let saved = 0;
+    let batchNo = null;
     if (save && insertRows.length) {
+      // 재고준비 페이지: 새 회차 번호(batch_no=재고건 max+1)·prepared_at 스탬프
+      if (withBatch) {
+        const { data: mb, error: eMb } = await sb.from('rk_shipping_list')
+          .select('batch_no').eq('source', '재고').not('batch_no', 'is', null)
+          .order('batch_no', { ascending: false }).limit(1);
+        if (eMb) throw eMb;
+        batchNo = ((mb && mb.length ? mb[0].batch_no : 0) || 0) + 1;
+        const runAt = new Date().toISOString();
+        for (const r of insertRows) { r.batch_no = batchNo; r.prepared_at = runAt; }
+      }
       const BATCH = 500;
       for (let i = 0; i < insertRows.length; i += BATCH) {
         const { error } = await sb.from('rk_shipping_list').insert(insertRows.slice(i, i + BATCH));
@@ -129,7 +141,7 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
       saved = insertRows.length;
     }
 
-    res.json({ results, saved });
+    res.json({ results, saved, batch: batchNo });
   } catch (e) {
     console.error('[rk] shipping-list/stock-allocate:', e);
     res.status(500).json({ error: '재고 출고배정 중 오류가 발생했습니다: ' + e.message });
