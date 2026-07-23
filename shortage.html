@@ -607,6 +607,7 @@
                                 <th class="col-narrow" data-sort="부족수량">Fail <span class="sort-icon">▲▼</span></th>
                                 <th id="inputHeader">입력</th>
                                 <th>입고</th>
+                                <th>주문</th>
                                 <th>재고</th>
                                 <th>C 예상</th>
                                 <th>C 예상/2W</th>
@@ -857,6 +858,7 @@
                     <td class="col-narrow">${Number(item.총스캔수량).toLocaleString()}</td>
                     <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
                     <td class="input-cell" data-row="${idx}">${savedInputs.get(item.상품바코드) || ''}</td>
+                    <td></td>
                     <td class="yiwu-cell" data-barcode="${item.상품바코드}">${item.yiwuTotalQty ? Number(item.yiwuTotalQty).toLocaleString() : ''}</td>
                     <td>${item.재고 == null ? '' : Number(item.재고).toLocaleString()}</td>
                     <td>${formatRounded(item.cForecast)}</td>

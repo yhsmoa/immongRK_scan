@@ -110,9 +110,17 @@ router.post('/api/ship-scan/save', async (req, res) => {
     const boxIdByNo = new Map((existBoxes || []).map(b => [b.box_no, b.id]));
     const allBoxNos = new Set([...list.map(i => i.boxNo), ...sizeByNo.keys()].filter(n => Number.isFinite(n) && n >= 1));
     for (const no of allBoxNos) {
-      if (boxIdByNo.has(no)) continue;
+      const size = sizeByNo.get(no) || '극소';
+      if (boxIdByNo.has(no)) {
+        // 기존 박스: 크기 변경 반영 (박스 크기 입력이 있을 때만)
+        if (sizeByNo.has(no)) {
+          const { error } = await sb.from('rk_ship_boxes').update({ box_size: size }).eq('id', boxIdByNo.get(no));
+          if (error) throw error;
+        }
+        continue;
+      }
       const { data, error } = await sb.from('rk_ship_boxes')
-        .insert({ order_number: orderNumber, box_no: no, box_size: sizeByNo.get(no) || '극소' }).select('id').single();
+        .insert({ order_number: orderNumber, box_no: no, box_size: size }).select('id').single();
       if (error) throw error;
       boxIdByNo.set(no, data.id);
     }

@@ -392,8 +392,12 @@
         }
         function selectSize(size){
             if(currentBoxNo==null){ toast('박스를 먼저 선택하세요.'); return; }
+            if(currentBoxSize===size){ return; }   // 동일 크기 재선택 = 변경 없음
             currentBoxSize=size;
-            if(!savedBoxes.some(b=>b.boxNo===currentBoxNo)) boxSizeMap.set(currentBoxNo,size);
+            boxSizeMap.set(currentBoxNo,size);
+            const saved=savedBoxes.find(b=>b.boxNo===currentBoxNo);
+            if(saved) saved.boxSize=size;          // 저장된 박스 크기 변경 → 저장 대상
+            dirty=true; updateCounts();            // 크기 변경도 [저장] 활성화
             setSizeActive(); renderList();
             bcInput.focus();   // 크기 선택/변경 → 바로 바코드 스캔으로
         }
@@ -697,7 +701,8 @@
         // ── 저장 (현재 박스아이템 전체를 SET) ──
         async function saveShip(){
             if(!dirty){ toast('저장할 변경이 없습니다.'); return; }
-            const boxes=[...new Set(boxItems.map(i=>i.boxNo))].map(no=>({boxNo:no, boxSize:boxSizeOf(no)}));
+            const boxNos=[...new Set([...boxItems.map(i=>i.boxNo), ...savedBoxes.map(b=>b.boxNo)])];
+            const boxes=boxNos.map(no=>({boxNo:no, boxSize:boxSizeOf(no)}));
             const items=boxItems.map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName, qty:i.qty}));
             const btn=document.getElementById('saveBtn'); btn.disabled=true;
             toast('저장 중…');
