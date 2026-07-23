@@ -559,6 +559,10 @@
                     <span style="color:#999; font-size:10pt;">~</span>
                     <input type="date" class="date-filter" id="endDate" min="2020-01-01" max="2099-12-31">
                     <button class="btn btn-load" onclick="loadData()">불러오기</button>
+                    <select id="viewMode" class="date-filter" onchange="onModeChange()" style="cursor:pointer;">
+                        <option value="shortage">재고부족</option>
+                        <option value="pending">입고재고</option>
+                    </select>
                 </div>
                 <!-- 우측: 초기화 | xlsx업로드 | 입력목록+저장 | 사입복사 -->
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -629,6 +633,7 @@
         /* ========== 상태 변수 ========== */
         let allData = [];
         let filteredData = [];
+        let loadToken = 0;   // 로드 경쟁 방지: 최신 로드만 화면에 반영
         let currentSort = { key: '부족수량', order: 'desc' };
         let savedInputs = new Map(); // barcode → qty (임시저장 데이터)
 
@@ -657,14 +662,20 @@
             });
             startEl.addEventListener('focus', () => { startJumped = false; });
 
-            // 저장된 기간 복원 → 있으면 자동 불러오기 (접속 시 날짜 재입력 불필요)
+            // 저장된 모드/기간 복원 → 있으면 자동 불러오기 (접속 시 재입력 불필요)
             try {
+                const savedMode = localStorage.getItem('shortageViewMode');
+                const modeEl = document.getElementById('viewMode');
+                if (savedMode && modeEl) modeEl.value = savedMode;
                 const saved = JSON.parse(localStorage.getItem('shortageDateRange') || 'null');
-                if (saved && (saved.startDate || saved.endDate)) {
+                if (saved) {
                     if (saved.startDate) startEl.value = saved.startDate;
                     if (saved.endDate) endEl.value = saved.endDate;
-                    loadData();
                 }
+                updateModeUI();
+                // 입고재고 모드는 무조건 자동 로드, 재고부족 모드는 저장된 기간 있을 때 자동 로드
+                if (savedMode === 'pending') loadData();
+                else if (saved && (saved.startDate || saved.endDate)) loadData();
             } catch (e) { /* 무시 */ }
         });
 
@@ -694,8 +705,34 @@
             }
         }
 
-        /* ========== 데이터 로드 (기간 필터 포함) ========== */
+        /* ========== 조회 모드 (재고부족 / 입고재고) ========== */
+        function getViewMode() {
+            const el = document.getElementById('viewMode');
+            return el ? el.value : 'shortage';
+        }
+        function updateModeUI() {
+            const pending = getViewMode() === 'pending';
+            // 입고재고 모드는 기간 필터를 쓰지 않음 → 날짜 입력 비활성
+            document.getElementById('startDate').disabled = pending;
+            document.getElementById('endDate').disabled = pending;
+        }
+        function onModeChange() {
+            try { localStorage.setItem('shortageViewMode', getViewMode()); } catch (e) { /* 무시 */ }
+            updateModeUI();
+            loadData();
+        }
+
+        /* ========== 데이터 로드 (모드 분기) ========== */
         async function loadData() {
+            const mode = getViewMode();
+            try { localStorage.setItem('shortageViewMode', mode); } catch (e) { /* 무시 */ }
+            // 정렬 기준: 입고재고=잔여 내림차순 / 재고부족=부족수량(기본)
+            if (mode === 'pending') currentSort = { key: 'remainQty', order: 'desc' };
+            else if (currentSort.key === 'remainQty') currentSort = { key: '부족수량', order: 'desc' };
+
+            if (mode === 'pending') { await loadPendingData(); return; }
+
+            const myToken = ++loadToken;
             try {
                 showLoading();
 
@@ -713,12 +750,49 @@
                 const response = await fetch('/api/shortage' + (queryStr ? '?' + queryStr : ''));
                 if (!response.ok) throw new Error('API 호출 실패');
 
-                allData = await response.json();
+                const json = await response.json();
+                if (myToken !== loadToken) return;   // 더 최신 로드가 시작됨 → 이 결과 폐기
+                allData = json;
                 filteredData = [...allData];
                 sortData();
                 renderTable();
             } catch (error) {
                 console.error('데이터 로드 오류:', error);
+                document.getElementById('loadingArea').innerHTML = '<p style="color:#dc3545;">데이터를 불러오는데 실패했습니다.</p>';
+            }
+        }
+
+        /* ========== 입고재고 로드 (stockArrange 처리중 전체 · 바코드 합산) ========== */
+        async function loadPendingData() {
+            const myToken = ++loadToken;
+            try {
+                showLoading();
+                const res = await fetch('/api/inbound/stock-arranges');
+                if (!res.ok) throw new Error('API 호출 실패');
+                const data = await res.json();
+                if (myToken !== loadToken) return;   // 더 최신 로드가 시작됨 → 이 결과 폐기
+
+                // 처리중(pending)만 바코드 기준 합산 (부족기준 아님)
+                const map = new Map(); // barcode -> { 상품이름, remainQty }
+                (data.pending || []).forEach(p => {
+                    if (!p.바코드) return;
+                    const cur = map.get(p.바코드) || { 상품이름: p.상품명 || '', remainQty: 0 };
+                    cur.remainQty += (p.남은 || 0);
+                    if (!cur.상품이름 && p.상품명) cur.상품이름 = p.상품명;
+                    map.set(p.바코드, cur);
+                });
+
+                allData = [...map.entries()].map(([barcode, v]) => ({
+                    skuId: '', 상품바코드: barcode, 상품이름: v.상품이름,
+                    총발주수량: 0, 총스캔수량: 0, 부족수량: 0,
+                    remainQty: v.remainQty, yiwuTotalQty: 0, 재고: null,
+                    cForecast: null, cForecast2W: null, w78: 0, w56: 0, w34: 0, w12: 0,
+                }));
+                filteredData = [...allData];
+                sortData();
+                renderTable();
+            } catch (error) {
+                console.error('입고재고 로드 오류:', error);
                 document.getElementById('loadingArea').innerHTML = '<p style="color:#dc3545;">데이터를 불러오는데 실패했습니다.</p>';
             }
         }
