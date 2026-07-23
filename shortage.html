@@ -633,8 +633,8 @@
         let savedInputs = new Map(); // barcode → qty (임시저장 데이터)
 
         /* ========== 초기화 ========== */
-        document.addEventListener('DOMContentLoaded', () => {
-            loadSavedInputs();
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadSavedInputs();
             // Enter 키로 검색
             document.getElementById('searchInput').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') applyFilter();
@@ -656,6 +656,16 @@
                 }
             });
             startEl.addEventListener('focus', () => { startJumped = false; });
+
+            // 저장된 기간 복원 → 있으면 자동 불러오기 (접속 시 날짜 재입력 불필요)
+            try {
+                const saved = JSON.parse(localStorage.getItem('shortageDateRange') || 'null');
+                if (saved && (saved.startDate || saved.endDate)) {
+                    if (saved.startDate) startEl.value = saved.startDate;
+                    if (saved.endDate) endEl.value = saved.endDate;
+                    loadData();
+                }
+            } catch (e) { /* 무시 */ }
         });
 
         /* ========== 임시저장 데이터 로드 ========== */
@@ -695,6 +705,9 @@
                 const endDate = document.getElementById('endDate').value;
                 if (startDate) params.set('startDate', startDate);
                 if (endDate) params.set('endDate', endDate);
+
+                // 기간 로컬 저장 (다음 접속 시 자동 복원)
+                try { localStorage.setItem('shortageDateRange', JSON.stringify({ startDate, endDate })); } catch (e) { /* 무시 */ }
 
                 const queryStr = params.toString();
                 const response = await fetch('/api/shortage' + (queryStr ? '?' + queryStr : ''));
