@@ -226,6 +226,10 @@
             color: #334155;
             font-variant-numeric: normal;
         }
+        /* 상품명 모델코드 배지 (rocket 동일) — 클릭 시 클립보드 복사 */
+        .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;cursor:pointer;}
+        .name-badge:hover{background:#bfdbfe;}
+        .name-badge.copied{background:#dcfce7;color:#16a34a;border-color:#bbf7d0;}
         /* 숫자 열 너비 축소 */
         .col-narrow { max-width: 55px; padding: 9px 4px; }
         .col-week { max-width: 50px; padding: 9px 4px; }
@@ -706,6 +710,7 @@
             } catch (e) { /* 무시 */ }
 
             setupImgPreview();
+            setupBadgeCopy();
         });
 
         /* ========== 임시저장 데이터 로드 ========== */
@@ -989,7 +994,7 @@
                     <td class="img-cell">${item.img ? `<span class="img-emoji" data-img="${String(item.img).replace(/"/g, '&quot;')}">🖼️</span>` : ''}</td>
                     <td>${item.skuId || ''}</td>
                     <td>${item.상품바코드}</td>
-                    <td class="name-cell" title="${item.상품이름}">${item.상품이름}</td>
+                    <td class="name-cell" title="${item.상품이름}">${modelBadge(item.상품이름)}</td>
                     <td class="col-narrow">${Number(item.총발주수량).toLocaleString()}</td>
                     <td class="col-narrow">${Number(item.총스캔수량).toLocaleString()}</td>
                     <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
@@ -1014,6 +1019,42 @@
         }
 
         /* ========== C예상 소수점 연하게 포맷 ========== */
+        /* ========== 상품명 모델코드 배지 (rocket 동일) + 클릭 복사 ========== */
+        function badgeEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+        function modelBadge(name){
+            const s = String(name==null?'':name); const ci = s.indexOf(',');
+            if (ci > 0) {
+                const prefix = s.slice(0, ci), rest = s.slice(ci);
+                const m = prefix.match(/(\S+)(\s*)$/);
+                if (m) {
+                    const t = m[1];
+                    if (/^[A-Za-z0-9]+$/.test(t) && /[A-Za-z]/.test(t) && /\d/.test(t)) {
+                        const before = prefix.slice(0, prefix.length - m[0].length);
+                        return badgeEsc(before) + '<span class="name-badge" data-code="' + badgeEsc(t) + '">' + badgeEsc(t) + '</span>' + badgeEsc(m[2]) + badgeEsc(rest);
+                    }
+                }
+            }
+            return badgeEsc(s);
+        }
+        function setupBadgeCopy() {
+            document.addEventListener('click', (e) => {
+                const b = e.target.closest('.name-badge');
+                if (!b) return;
+                const code = b.getAttribute('data-code') || b.textContent;
+                const done = () => { b.classList.add('copied'); setTimeout(() => b.classList.remove('copied'), 900); };
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(code).then(done).catch(() => badgeFallbackCopy(code, done));
+                } else badgeFallbackCopy(code, done);
+            });
+        }
+        function badgeFallbackCopy(text, cb) {
+            const ta = document.createElement('textarea');
+            ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch (_) {}
+            ta.remove(); cb && cb();
+        }
+
         /* C예상 계열: 소수점 없이 반올림 정수로 표시 */
         /* ========== img 셀 hover 미리보기 (마우스 오른쪽 400x400) ========== */
         function setupImgPreview() {
