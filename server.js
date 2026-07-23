@@ -3251,6 +3251,42 @@ app.get('/api/shortage', async (req, res) => {
             item.재고 = (!s || !s.has) ? null : Math.max(0, s.sum - (stockResMap.get(item.상품바코드) || 0));
         });
 
+        // 5.7단계: 입고 = 최근 업로드된 입고리스트(rk_cn_shipments) 2건의 아이템 수량 바코드별 합
+        //   헤드테이블 created_at DESC 상위 2건 → 해당 아이템(rk_cn_shipment_items) quantity 합산
+        const inboundMap = new Map(); // barcode → 수량 합
+        try {
+            const { data: recentShipments, error: eShip } = await supabase
+                .from('rk_cn_shipments')
+                .select('id')
+                .order('created_at', { ascending: false })
+                .limit(2);
+            if (eShip) throw eShip;
+            const shipIds = (recentShipments || []).map(s => s.id);
+            if (shipIds.length) {
+                let from = 0; const PAGE = 1000;
+                while (true) {
+                    const { data, error } = await supabase
+                        .from('rk_cn_shipment_items')
+                        .select('barcode, quantity')
+                        .in('shipment_id', shipIds)
+                        .range(from, from + PAGE - 1);
+                    if (error) { console.error('rk_cn_shipment_items(입고) 조회 오류:', error); break; }
+                    if (!data || data.length === 0) break;
+                    data.forEach(r => {
+                        if (!r.barcode) return;
+                        inboundMap.set(r.barcode, (inboundMap.get(r.barcode) || 0) + (parseInt(r.quantity) || 0));
+                    });
+                    if (data.length < PAGE) break;
+                    from += PAGE;
+                }
+            }
+        } catch (inbErr) {
+            console.error('입고리스트 수량 조회 실패 (무시):', inbErr);
+        }
+        shortageList.forEach(item => {
+            item.inboundQty = inboundMap.get(item.상품바코드) || 0;
+        });
+
         // 6단계: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
         const allBarcodes = shortageList.map(i => i.상품바코드).filter(Boolean);
         const now = new Date();
