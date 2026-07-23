@@ -330,9 +330,12 @@
                     if(!out||r.v2Saved) continue;
                     r.재고=out.allocated; r.위치v2=out.allocations; r.stockLocs=out.stockLocs||[];
                 }
-                switchTab('new');
                 const total=data.results.reduce((s,r)=>s+r.allocated,0);
-                toast(`위치 조회: ${data.results.filter(r=>r.allocated>0).length}행 배정 가능, 총 ${total}개`);
+                const cntAlloc=data.results.filter(r=>r.allocated>0).length;
+                // 신규발주서와 다르게: 재고에서 나갈 수 있는(배정된) 상품만 표시
+                newRows=newRows.filter(r=>r.위치v2&&r.위치v2.length>0);
+                switchTab('new');
+                toast(newRows.length?`위치 조회: 나갈 수 있는 ${newRows.length}행 (신규 ${cntAlloc}행·총 ${total}개)`:'나갈 수 있는 상품이 없습니다.');
             }catch(e){toast('위치 조회 실패: '+e.message);}
         }
 
