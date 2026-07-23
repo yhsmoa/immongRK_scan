@@ -36,10 +36,33 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
     const reqRows = Array.isArray(req.body.rows) ? req.body.rows : [];
     const save = !!req.body.save;
     const withBatch = !!req.body.batch;   // true면 저장분에 새 회차(batch_no)·prepared_at 부여 (재고준비 페이지용)
+    const excludeShipScan = !!req.body.excludeShipScan;  // true면 needed에서 출고스캔(rk_ship_box_items)도 차감 (재고준비 전용)
     if (!reqRows.length) return res.status(400).json({ error: '대상 행이 없습니다.' });
 
     const barcodes = [...new Set(reqRows.map(r => String(r.barcode || '').trim()).filter(Boolean))];
     if (!barcodes.length) return res.status(400).json({ error: '바코드가 있는 행이 없습니다.' });
+
+    // 출고스캔(rk_ship_box_items) 발주번호+바코드별 합 — excludeShipScan 일 때만 조회
+    const shipScanByOrderBc = new Map();
+    if (excludeShipScan) {
+      const orderNos = [...new Set(reqRows.map(r => String(r.orderNumber || '').trim()).filter(Boolean))];
+      for (let i = 0; i < orderNos.length; i += 200) {
+        const batch = orderNos.slice(i, i + 200);
+        let from = 0; const PAGE = 1000;
+        while (true) {
+          const { data, error } = await sb.from('rk_ship_box_items').select('order_number, barcode, qty').in('order_number', batch).range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (!data || !data.length) break;
+          for (const r of data) {
+            if (!r.order_number || !r.barcode) continue;
+            const k = `${r.order_number}|${r.barcode}`;
+            shipScanByOrderBc.set(k, (shipScanByOrderBc.get(k) || 0) + (parseInt(r.qty) || 0));
+          }
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+      }
+    }
 
     // 1) 재고 로드 → (바코드,위치)별 가용 풀
     const stocks = await fetchIn('rk_stocks', 'id, barcode, location, qty', 'barcode', barcodes);
@@ -90,7 +113,8 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
       const orderNumber = String(row.orderNumber || '').trim();
       const orderQty = parseInt(row.qty) || 0;
       const alreadyReserved = reservedByOrder.get(`${orderNumber}|${barcode}`) || 0;
-      let needed = orderQty - alreadyReserved;
+      const shipScanned = excludeShipScan ? (shipScanByOrderBc.get(`${orderNumber}|${barcode}`) || 0) : 0;
+      let needed = orderQty - alreadyReserved - shipScanned;
       const allocations = [];
       if (barcode && needed > 0) {
         const pool = poolByBarcode.get(barcode) || [];

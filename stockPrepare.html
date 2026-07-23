@@ -320,7 +320,7 @@
                     for(const r of newRows){ const q=imap.get(`${r.발주번호}|${r.상품바코드}`); r.입고V2=(q&&q>0)?q:null; }
                 }
                 // 배정 계산 (save=false)
-                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:v2Payload(newRows),save:false})});
+                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:v2Payload(newRows),save:false,excludeShipScan:true})});
                 const data=await res.json();
                 if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
                 let i=0;
@@ -347,7 +347,7 @@
             if(!confirm(`${rows.length}행 / 총 ${totalQty}개를 출고예정으로 저장하시겠습니까?`))return;
             toast('출고예정 저장 중…');
             try{
-                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:v2Payload(rows),save:true,batch:true})});
+                const res=await fetch('/api/shipping-list/stock-allocate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:v2Payload(rows),save:true,batch:true,excludeShipScan:true})});
                 const data=await res.json();
                 if(!res.ok)throw new Error(data.error||'HTTP '+res.status);
                 if(data.saved>0){
