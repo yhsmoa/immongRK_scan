@@ -8,18 +8,96 @@ const S = require('./rkShared');
 
 const router = express.Router();
 
-// 스캔된(헤더 스캔수량>0) 발주서만, orderNumbers 지정 시 해당만
-async function scannedOrders(orderNumbers) {
+// 출고스캔(shipScan) 저장 데이터 기반 발주서 구성.
+//   rk_ship_boxes(박스 헤더: box_no/box_size) + rk_ship_box_items(박스별 상품: barcode/qty) 를 읽어
+//   기존 상품정보(박스행) 계약과 동일한 형태로 변환한다.
+//   각 상품행: 박스정보=`${box_no}-${box_size}`, 스캔수량=qty, 상품메타(상품번호/이름/확정수량)는 원본 발주상품(바코드)에서.
+//   출고스캔 저장분이 있는 발주서만 반환. (scanned_qty·rk_order_items 박스정보 미사용)
+async function shipScanOrders(orderNumbers) {
   const all = await S.listOrdersFull('rk_orders', 'rk_order_items');
   const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
-  return all.filter((o) => (!has || orderNumbers.includes(o.발주번호)) && o.스캔수량 > 0);
+  const orders = all.filter((o) => !has || orderNumbers.includes(o.발주번호));
+  const orderNos = [...new Set(orders.map((o) => o.발주번호).filter(Boolean))];
+  if (!orderNos.length) return [];
+
+  // 박스 헤더: box_id → { order_number, box_no, box_size }
+  const boxById = new Map();
+  for (let i = 0; i < orderNos.length; i += 200) {
+    const batch = orderNos.slice(i, i + 200);
+    const { data, error } = await S.supabase.from('rk_ship_boxes')
+      .select('id, order_number, box_no, box_size').in('order_number', batch);
+    if (error) throw error;
+    for (const b of (data || [])) boxById.set(b.id, b);
+  }
+
+  // 박스 아이템: order_number → [{ box_id, barcode, qty, product_name }]
+  const itemsByOrder = new Map();
+  for (let i = 0; i < orderNos.length; i += 200) {
+    const batch = orderNos.slice(i, i + 200);
+    let from = 0; const PAGE = 1000;
+    while (true) {
+      const { data, error } = await S.supabase.from('rk_ship_box_items')
+        .select('order_number, box_id, barcode, qty, product_name').in('order_number', batch).range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      for (const r of data) {
+        if (!itemsByOrder.has(r.order_number)) itemsByOrder.set(r.order_number, []);
+        itemsByOrder.get(r.order_number).push(r);
+      }
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+  }
+
+  const result = [];
+  for (const order of orders) {
+    const items = itemsByOrder.get(order.발주번호) || [];
+    if (!items.length) continue;
+    // 원본 상품 메타(바코드 기준): 상품번호/상품이름/발주수량/확정수량
+    const metaByBc = new Map();
+    for (const p of (order.상품정보 || [])) {
+      if (p.박스정보) continue; // 원본(박스행 아님)만
+      if (!metaByBc.has(p.상품바코드)) metaByBc.set(p.상품바코드, p);
+    }
+    const 상품정보 = [];
+    for (const it of items) {
+      const box = boxById.get(it.box_id);
+      if (!box) continue;
+      const qty = parseInt(it.qty) || 0;
+      if (qty <= 0) continue;
+      const meta = metaByBc.get(it.barcode) || {};
+      상품정보.push({
+        상품번호: meta.상품번호 || '',
+        상품바코드: it.barcode,
+        상품이름: meta.상품이름 || it.product_name || '',
+        발주수량: meta.발주수량 || 0,
+        확정수량: meta.확정수량 || 0,
+        스캔수량: qty,
+        박스정보: `${box.box_no}-${box.box_size}`,
+      });
+    }
+    if (!상품정보.length) continue;
+    result.push({ ...order, 상품정보 });
+  }
+  return result;
 }
+
+// ── 쉽먼트 목록 (출고스캔 저장 데이터 기반) — 화면 테이블/송장 모달용 ──
+router.get('/api/shipment/orders', async (req, res) => {
+  try {
+    const orders = await shipScanOrders(null);
+    res.json(orders);
+  } catch (e) {
+    console.error('[rk] shipment/orders:', e);
+    res.status(500).json({ error: '쉽먼트 목록을 불러오는데 실패했습니다.' });
+  }
+});
 
 // ── 쉽먼트 내보내기 ──
 router.post('/api/shipment/export', async (req, res) => {
   try {
     const { orderNumbers, invoiceNumbers } = req.body;
-    const orders = await scannedOrders(orderNumbers);
+    const orders = await shipScanOrders(orderNumbers);
 
     const workbook = await XlsxPopulate.fromBlankAsync();
     const mainSheet = workbook.sheet(0);
@@ -81,7 +159,7 @@ router.post('/api/shipment/export', async (req, res) => {
 router.post('/api/shipment/export-cj', async (req, res) => {
   try {
     const { orderNumbers } = req.body;
-    const orders = await scannedOrders(orderNumbers);
+    const orders = await shipScanOrders(orderNumbers);
 
     const { data: centerData } = await S.supabase.from('coupang_centers').select('center, contact, address');
     const centerMap = new Map();

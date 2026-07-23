@@ -682,11 +682,8 @@
 
         async function loadOrders() {
             try {
-                const response = await fetch('/api/orders', {
-                    headers: {
-                        'Referer': window.location.origin + '/shipment'  // Referer 헤더 추가
-                    }
-                });
+                // 출고스캔(shipScan) 저장 데이터 기반 목록
+                const response = await fetch('/api/shipment/orders');
                 if (!response.ok) {
                     throw new Error('발주서 목록을 불러오는데 실패했습니다.');
                 }
@@ -785,25 +782,7 @@
                                         <td>${product.상품이름 || '-'}</td>
                                         <td>${product.발주수량 || 0}</td>
                                         <td>${product.확정수량 || 0}</td>
-                                        <td class="scan-count-cell" 
-                                            data-order-number="${order.발주번호}"
-                                            data-barcode="${product.상품바코드}"
-                                            data-box-info="${product.박스정보}"
-                                            data-scan-count="${product.스캔수량 || 0}">
-                                            <span class="scan-count-display">${product.스캔수량 || 0}</span>
-                                            <div class="scan-count-edit" style="display: none;">
-                                                <input type="number" 
-                                                    class="scan-count-input" 
-                                                    value="${product.스캔수량 || 0}"
-                                                    min="0"
-                                                    max="${product.확정수량 || 0}">
-                                                <button class="save-btn">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                        <path d="M20 6L9 17l-5-5"/>
-                                                    </svg>
-                                                </button>
-                                            </div>
-                                        </td>
+                                        <td>${product.스캔수량 || 0}</td>
                                         <td>${product.박스정보}</td>
                                     </tr>
                                 `).join('')}
@@ -954,7 +933,7 @@
             }
 
             try {
-                const response = await fetch('/api/orders?referer=shipment');
+                const response = await fetch('/api/shipment/orders');
                 if (!response.ok) {
                     throw new Error('주문 정보를 가져오는데 실패했습니다.');
                 }
