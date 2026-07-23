@@ -1459,6 +1459,11 @@ app.get('/stockScan', (req, res) => {
     res.sendFile(path.join(__dirname, 'stockScan.html'));
 });
 
+// 재고관리 > 재고준비 (발주서 대상 재고 출고배정, 회차 단위)
+app.get('/stockPrepare', (req, res) => {
+    res.sendFile(path.join(__dirname, 'stockPrepare.html'));
+});
+
 app.get('/shipScan', (req, res) => {
     res.sendFile(path.join(__dirname, 'shipScan.html'));
 });
