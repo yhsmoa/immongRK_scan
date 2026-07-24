@@ -302,12 +302,23 @@ router.post('/api/stocks/scan-save', async (req, res) => {
   }
 });
 
-// 수량 일괄 수정 (저장 버튼)
+// 수량 일괄 수정 (저장 버튼) — 변경분은 rk_stock_histories 에 'edit' 기록
 router.post('/api/stocks/batch-update-qty', async (req, res) => {
   try {
     const updates = Array.isArray(req.body.updates) ? req.body.updates : [];
     if (!updates.length) return res.status(400).json({ error: '수정할 항목이 없습니다.' });
+
+    // 현재 값 일괄 조회 (이력 before 기록용)
+    const ids = updates.map((u) => parseInt(u.id, 10)).filter(Number.isFinite);
+    const curById = new Map();
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await sb.from('rk_stocks').select('id, sku_id, barcode, location, qty').in('id', ids.slice(i, i + 200));
+      if (error) throw error;
+      for (const s of (data || [])) curById.set(s.id, s);
+    }
+
     let updated = 0;
+    const histories = [];
     for (const u of updates) {
       if (!u.id) continue;
       let qty; // null = 빈칸(미입력), 0과 구별
@@ -319,11 +330,51 @@ router.post('/api/stocks/batch-update-qty', async (req, res) => {
       const { data, error } = await sb.from('rk_stocks').update({ qty }).eq('id', u.id).select('id');
       if (error) throw error;
       updated += (data ? data.length : 0);
+      const cur = curById.get(parseInt(u.id, 10));
+      if (cur && (cur.qty ?? null) !== (qty ?? null)) {
+        histories.push({
+          stock_id: cur.id, sku_id: cur.sku_id || null, barcode: cur.barcode, location: cur.location,
+          change_type: 'adjust', qty: (qty ?? 0) - (parseInt(cur.qty) || 0),  // 'adjust' = 직접수정 (DB CHECK: add/deduct/adjust)
+          qty_before: cur.qty ?? null, qty_after: qty ?? null, note: '전체재고 직접수정',
+        });
+      }
+    }
+    for (let i = 0; i < histories.length; i += 500) {
+      const { error } = await sb.from('rk_stock_histories').insert(histories.slice(i, i + 500));
+      if (error) console.error('[rk] batch-update-qty 이력 기록 실패(계속):', error.message);
     }
     res.json({ ok: true, updated });
   } catch (e) {
     console.error('[rk] stocks/batch-update-qty:', e);
     res.status(500).json({ error: '수량 저장 실패: ' + e.message });
+  }
+});
+
+// 바코드별 재고 변경 이력 조회 (전체재고 상품명 클릭 팝업용)
+router.get('/api/stocks/history', async (req, res) => {
+  try {
+    const barcode = String(req.query.barcode || '').trim();
+    if (!barcode) return res.status(400).json({ error: '바코드가 필요합니다.' });
+    const all = [];
+    let from = 0; const PAGE = 1000;
+    while (true) {
+      const { data, error } = await sb.from('rk_stock_histories')
+        .select('*').eq('barcode', barcode)
+        .order('created_at', { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      all.push(...(data || []));
+      if (!data || data.length < PAGE) break;
+      from += PAGE;
+    }
+    res.json(all.map((h) => ({
+      id: h.id, stockId: h.stock_id, barcode: h.barcode, location: h.location,
+      changeType: h.change_type, qty: h.qty, qtyBefore: h.qty_before, qtyAfter: h.qty_after,
+      note: h.note, createdAt: h.created_at,
+    })));
+  } catch (e) {
+    console.error('[rk] stocks/history:', e);
+    res.status(500).json({ error: '이력 조회 실패: ' + e.message });
   }
 });
 
