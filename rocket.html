@@ -72,7 +72,28 @@
         .c-created{font-size:10px;}
         td.c-created,th.c-created{text-align:center;padding-left:2px;padding-right:2px;}
         td.order-no{font-weight:600;color:#1e293b;}
-        td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;}
+        td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;cursor:pointer;}
+
+        /* 스캔 상세 — 오른쪽 슬라이드 패널 */
+        .scan-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10000;}
+        .scan-back.show{opacity:1;pointer-events:auto;}
+        .scan-modal{position:fixed;top:0;right:0;height:100vh;width:660px;max-width:94vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10001;display:flex;flex-direction:column;}
+        .scan-back.show .scan-modal{transform:translateX(0);}
+        .scan-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;}
+        .scan-head h3{margin:0;font-size:15.5px;color:#0f172a;}
+        .scan-head .sub{font-size:12px;color:#94a3b8;margin-left:8px;font-weight:500;}
+        .scan-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .scan-body{overflow-y:auto;padding:8px 18px 20px;flex:1;min-height:0;}
+        .scan-sec{margin-top:16px;}
+        .scan-sec h4{margin:0 0 7px;font-size:13px;font-weight:700;color:#334155;display:flex;align-items:center;gap:8px;}
+        .scan-sec h4 .cnt{font-size:11.5px;font-weight:600;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:1px 8px;}
+        .scan-sec table{width:100%;border-collapse:collapse;font-size:12.5px;}
+        .scan-sec th{background:#f1f3f6;color:#8b94a3;font-size:12px;font-weight:600;padding:7px 9px;border:1px solid #dfe3ea;text-align:center;white-space:nowrap;}
+        .scan-sec td{padding:6px 9px;border:1px solid #e8ebf1;text-align:center;font-variant-numeric:tabular-nums;}
+        .scan-sec td.l{text-align:left;}
+        .scan-empty{color:#94a3b8;font-size:12.5px;padding:10px 2px;}
+        .tag-jaego{color:#2563eb;font-weight:600;}
+        .tag-ipgo{color:#ea580c;font-weight:600;}
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         .scan-zero{color:#cbd5e1;}
         .scan-pos{color:#1e293b;}
@@ -281,7 +302,7 @@
                     return `<tr data-i="${i}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
                         <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
-                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
+                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname" title="클릭하면 스캔·재고·입고 상세" onclick="openScanDetail('${esc(r.발주번호)}','${esc(r.상품바코드)}','${esc(String(r.상품명||'').replace(/'/g,'&#39;'))}')">${modelBadge(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${dashCell(r.재고)}</td>
@@ -571,7 +592,74 @@
             w.document.close();
         }
 
+        // ── 상품명 클릭 → 스캔·재고·입고 상세 (오른쪽 슬라이드) ──
+        async function openScanDetail(orderNumber, barcode, name){
+            if(!barcode) return;
+            document.getElementById('scanTitle').textContent=name||barcode;
+            document.getElementById('scanSub').textContent=`${orderNumber} · ${barcode}`;
+            document.getElementById('scanBody').innerHTML='<div class="scan-empty">불러오는 중…</div>';
+            document.getElementById('scanBack').classList.add('show');
+            try{
+                const res=await fetch(`/api/rocket/scan-detail?orderNumber=${encodeURIComponent(orderNumber)}&barcode=${encodeURIComponent(barcode)}`);
+                const d=await res.json();
+                if(!res.ok) throw new Error(d.error||'조회 실패');
+                document.getElementById('scanBody').innerHTML=renderScanDetail(d);
+            }catch(e){
+                document.getElementById('scanBody').innerHTML=`<div class="scan-empty">${esc(e.message)}</div>`;
+            }
+        }
+        function closeScanDetail(){ document.getElementById('scanBack').classList.remove('show'); }
+        function ymdDash(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}-${m[2]}-${m[3]}`:(String(s||'').slice(0,10)); }
+        function renderScanDetail(d){
+            const sl=d.shippingList||[], bi=d.boxItems||[], st=d.stocks||[];
+            // 1) 출고예정 내역 (재고/입고)
+            const slSum=sl.reduce((s,r)=>s+(Number(r.qty)||0),0);
+            const slRows = sl.length ? sl
+                .sort((a,b)=>String(a.source).localeCompare(String(b.source))||String(a.location||'').localeCompare(String(b.location||''),'ko',{numeric:true}))
+                .map(r=>`<tr>
+                    <td><span class="${r.source==='재고'?'tag-jaego':'tag-ipgo'}">${esc(r.source)}</span></td>
+                    <td>${esc(r.status)}</td><td>${esc(r.orderNumber)}</td>
+                    <td>${esc(r.location||'-')}</td><td><b>${Number(r.qty)||0}</b></td>
+                    <td>${esc(ymdDash(r.shippingDate))}</td></tr>`).join('')
+                : `<tr><td colspan="6" class="scan-empty">출고예정 내역이 없습니다.</td></tr>`;
+            // 2) 출고스캔 박스 (몇 번 박스에 몇 개)
+            const biSum=bi.reduce((s,r)=>s+(Number(r.qty)||0),0);
+            const biRows = bi.length ? bi.map(r=>`<tr>
+                    <td>${esc(r.orderNumber)}</td><td>📦 ${esc(r.boxNo)}</td>
+                    <td>${esc(r.boxSize||'-')}</td><td><b>${Number(r.qty)||0}</b></td></tr>`).join('')
+                : `<tr><td colspan="4" class="scan-empty">스캔된 박스가 없습니다.</td></tr>`;
+            // 3) 재고 (rk_stocks)
+            const stSum=st.reduce((s,r)=>s+(Number(r.qty)||0),0);
+            const stRows = st.length ? st.map(r=>`<tr>
+                    <td>${esc(r.location)}</td><td><b>${r.qty==null?'-':Number(r.qty)}</b></td></tr>`).join('')
+                : `<tr><td colspan="2" class="scan-empty">재고가 없습니다.</td></tr>`;
+            return `
+                <div class="scan-sec">
+                    <h4>출고예정 내역 (재고·입고) <span class="cnt">합 ${slSum}</span></h4>
+                    <table><thead><tr><th>구분</th><th>상태</th><th>발주번호</th><th>위치</th><th>수량</th><th>출고예정일</th></tr></thead><tbody>${slRows}</tbody></table>
+                </div>
+                <div class="scan-sec">
+                    <h4>출고스캔 박스 <span class="cnt">스캔 ${biSum}</span></h4>
+                    <table><thead><tr><th>발주번호</th><th>박스</th><th>크기</th><th>수량</th></tr></thead><tbody>${biRows}</tbody></table>
+                </div>
+                <div class="scan-sec">
+                    <h4>재고 (rk_stocks) <span class="cnt">합 ${stSum}</span></h4>
+                    <table><thead><tr><th>위치</th><th>수량</th></tr></thead><tbody>${stRows}</tbody></table>
+                </div>`;
+        }
+
         loadData();
     </script>
+
+    <!-- 스캔 상세 오른쪽 슬라이드 -->
+    <div class="scan-back" id="scanBack" onclick="if(event.target.id==='scanBack')closeScanDetail()">
+        <div class="scan-modal">
+            <div class="scan-head">
+                <h3>스캔 상세 · <span id="scanTitle"></span><span class="sub" id="scanSub"></span></h3>
+                <button onclick="closeScanDetail()">✕</button>
+            </div>
+            <div class="scan-body" id="scanBody"></div>
+        </div>
+    </div>
 </body>
 </html>

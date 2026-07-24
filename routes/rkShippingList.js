@@ -275,6 +275,53 @@ router.post('/api/shipping-list/stock-cancel', async (req, res) => {
   }
 });
 
+// rocket 상품명 클릭 상세 — 발주+바코드의 출고예정 내역 / 출고스캔 박스 / 재고
+router.get('/api/rocket/scan-detail', async (req, res) => {
+  try {
+    const orderNumber = String(req.query.orderNumber || '').trim();
+    const barcode = String(req.query.barcode || '').trim();
+    if (!barcode) return res.status(400).json({ error: '바코드가 필요합니다.' });
+
+    // 1) 출고예정 내역 (rk_shipping_list) — 재고/입고
+    let slq = sb.from('rk_shipping_list').select('*').eq('barcode', barcode);
+    if (orderNumber) slq = slq.eq('order_number', orderNumber);
+    const { data: sl, error: e1 } = await slq;
+    if (e1) throw e1;
+
+    // 2) 출고스캔 박스 (rk_ship_box_items + rk_ship_boxes)
+    let biq = sb.from('rk_ship_box_items').select('box_id, order_number, barcode, qty').eq('barcode', barcode);
+    if (orderNumber) biq = biq.eq('order_number', orderNumber);
+    const { data: bi, error: e2 } = await biq;
+    if (e2) throw e2;
+    const boxIds = [...new Set((bi || []).map(x => x.box_id).filter(x => x != null))];
+    const boxById = new Map();
+    for (let i = 0; i < boxIds.length; i += 200) {
+      const { data: bx, error: eB } = await sb.from('rk_ship_boxes').select('id, box_no, box_size').in('id', boxIds.slice(i, i + 200));
+      if (eB) throw eB;
+      for (const b of (bx || [])) boxById.set(b.id, b);
+    }
+
+    // 3) 재고 (rk_stocks) — 바코드 전체 위치
+    const { data: st, error: e3 } = await sb.from('rk_stocks').select('location, qty, item_name').eq('barcode', barcode);
+    if (e3) throw e3;
+
+    res.json({
+      shippingList: (sl || []).map(r => ({
+        source: r.source, status: r.status, orderNumber: r.order_number, center: r.center,
+        location: r.location, qty: r.qty, shippingDate: r.shipping_date, batchNo: r.batch_no, createdAt: r.created_at,
+      })),
+      boxItems: (bi || []).map(r => { const b = boxById.get(r.box_id) || {}; return { orderNumber: r.order_number, boxNo: b.box_no, boxSize: b.box_size, qty: r.qty }; })
+        .sort((a, b) => (a.boxNo || 0) - (b.boxNo || 0)),
+      stocks: (st || []).map(r => ({ location: r.location, qty: r.qty, itemName: r.item_name }))
+        .filter(r => r.location && r.location !== '-')
+        .sort((a, b) => String(a.location).localeCompare(String(b.location), 'ko', { numeric: true })),
+    });
+  } catch (e) {
+    console.error('[rk] rocket/scan-detail:', e);
+    res.status(500).json({ error: '스캔 상세 조회 실패: ' + e.message });
+  }
+});
+
 // 통합 출고리스트 조회 (추후 통합 화면/스캔용)
 router.get('/api/shipping-list', async (req, res) => {
   try {
