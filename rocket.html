@@ -72,28 +72,39 @@
         .c-created{font-size:10px;}
         td.c-created,th.c-created{text-align:center;padding-left:2px;padding-right:2px;}
         td.order-no{font-weight:600;color:#1e293b;}
-        td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;cursor:pointer;}
+        td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;cursor:text;user-select:text;}
+        /* 상품명 모델코드 배지 — 클릭 시 클립보드 복사 (shortage 동일) */
+        .name-badge{cursor:pointer;}
+        .name-badge:hover{filter:brightness(.96);}
+        .name-badge.copied{background:#dcfce7;color:#16a34a;border-color:#bbf7d0;}
+        /* 발주~입고 값 셀: 클릭하면 상세 */
+        td.dt{cursor:pointer;}
+        td.dt:hover{background:#f1f5ff;}
 
-        /* 스캔 상세 — 오른쪽 슬라이드 패널 */
-        .scan-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10000;}
+        /* 스캔 상세 — 오른쪽 슬라이드 패널 (미니멀) */
+        .scan-back{position:fixed;inset:0;background:rgba(15,23,42,.3);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10000;}
         .scan-back.show{opacity:1;pointer-events:auto;}
-        .scan-modal{position:fixed;top:0;right:0;height:100vh;width:660px;max-width:94vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10001;display:flex;flex-direction:column;}
+        .scan-modal{position:fixed;top:0;right:0;height:100vh;width:520px;max-width:94vw;background:#fff;box-shadow:-10px 0 40px rgba(15,23,42,.14);transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:10001;display:flex;flex-direction:column;}
         .scan-back.show .scan-modal{transform:translateX(0);}
-        .scan-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;}
-        .scan-head h3{margin:0;font-size:15.5px;color:#0f172a;}
-        .scan-head .sub{font-size:12px;color:#94a3b8;margin-left:8px;font-weight:500;}
-        .scan-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
-        .scan-body{overflow-y:auto;padding:8px 18px 20px;flex:1;min-height:0;}
-        .scan-sec{margin-top:16px;}
-        .scan-sec h4{margin:0 0 7px;font-size:13px;font-weight:700;color:#334155;display:flex;align-items:center;gap:8px;}
-        .scan-sec h4 .cnt{font-size:11.5px;font-weight:600;color:#4f46e5;background:#eef2ff;border:1px solid #c7d2fe;border-radius:999px;padding:1px 8px;}
-        .scan-sec table{width:100%;border-collapse:collapse;font-size:12.5px;}
-        .scan-sec th{background:#f1f3f6;color:#8b94a3;font-size:12px;font-weight:600;padding:7px 9px;border:1px solid #dfe3ea;text-align:center;white-space:nowrap;}
-        .scan-sec td{padding:6px 9px;border:1px solid #e8ebf1;text-align:center;font-variant-numeric:tabular-nums;}
+        .scan-head{padding:18px 22px 15px;border-bottom:1px solid #f0f2f6;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+        .scan-head .htxt{min-width:0;}
+        .scan-head .hname{font-size:15px;font-weight:700;color:#0f172a;line-height:1.35;word-break:break-word;}
+        .scan-head .hsub{margin-top:4px;font-size:12px;color:#94a3b8;font-variant-numeric:tabular-nums;}
+        .scan-head button{flex:none;border:none;background:#f4f5f8;width:30px;height:30px;border-radius:8px;font-size:15px;cursor:pointer;color:#64748b;line-height:1;transition:background .12s;}
+        .scan-head button:hover{background:#e9ebf1;color:#334155;}
+        .scan-body{overflow-y:auto;padding:6px 22px 24px;flex:1;min-height:0;}
+        .scan-sec{margin-top:20px;}
+        .scan-sec .stitle{font-size:11.5px;font-weight:700;color:#8b93a5;letter-spacing:.04em;text-transform:uppercase;margin:0 0 8px;padding-left:9px;border-left:3px solid #c7d2fe;}
+        .scan-sec table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;border:1px solid #eceef3;border-radius:10px;overflow:hidden;}
+        .scan-sec th{background:#f8f9fc;color:#8b93a5;font-size:11.5px;font-weight:600;padding:8px 10px;text-align:center;white-space:nowrap;border-bottom:1px solid #eceef3;}
+        .scan-sec td{padding:8px 10px;text-align:center;font-variant-numeric:tabular-nums;color:#334155;border-bottom:1px solid #f2f4f8;}
+        .scan-sec tbody tr:last-child td{border-bottom:none;}
         .scan-sec td.l{text-align:left;}
-        .scan-empty{color:#94a3b8;font-size:12.5px;padding:10px 2px;}
-        .tag-jaego{color:#2563eb;font-weight:600;}
-        .tag-ipgo{color:#ea580c;font-weight:600;}
+        .scan-sec .sumrow td{background:#fafbfe;font-weight:700;color:#0f172a;border-top:1px solid #eceef3;}
+        .scan-empty td{color:#a9b0bd;padding:16px 0;font-size:12.5px;}
+        .tag-jaego{display:inline-block;background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 7px;font-weight:600;font-size:11.5px;}
+        .tag-ipgo{display:inline-block;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;border-radius:6px;padding:0 7px;font-weight:600;font-size:11.5px;}
+        .box-chip{display:inline-block;background:#eef2ff;color:#4f46e5;border:1px solid #c7d2fe;border-radius:6px;padding:0 7px;font-weight:600;}
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         .scan-zero{color:#cbd5e1;}
         .scan-pos{color:#1e293b;}
@@ -222,7 +233,7 @@
                 if(m){ const t=m[1];
                     if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
                         const before=prefix.slice(0, prefix.length-m[0].length);
-                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
+                        return esc(before)+'<span class="name-badge" data-code="'+esc(t)+'">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
             return esc(s);
         }
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
@@ -299,14 +310,14 @@
                         : (scanN>0 && conf>scanN) ? `<span class="scan-badge scan-orange">${scanN}</span>`
                         : `<span class="${scanN>0?'scan-pos':'scan-zero'}">${scanN}</span>`;
                     const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
-                    return `<tr data-i="${i}" class="${ge}">
+                    return `<tr data-i="${i}" data-ord="${esc(r.발주번호)}" data-bc="${esc(r.상품바코드)}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
                         <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
-                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname" title="클릭하면 스캔·재고·입고 상세" onclick="openScanDetail('${esc(r.발주번호)}','${esc(r.상품바코드)}','${esc(String(r.상품명||'').replace(/'/g,'&#39;'))}')">${modelBadge(r.상품명)}</td>
-                        <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
-                        <td class="num">${scanHtml}</td>
-                        <td class="ctr">${dashCell(r.재고)}</td>
-                        <td class="ctr">${dashCell(r.입고V2)}</td><td>${stockLocCell(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
+                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
+                        <td class="num dt">${esc(r.발주수량)}</td><td class="num dt">${esc(r.확정수량)}</td>
+                        <td class="num dt">${scanHtml}</td>
+                        <td class="ctr dt">${dashCell(r.재고)}</td>
+                        <td class="ctr dt">${dashCell(r.입고V2)}</td><td>${stockLocCell(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
                 }).join('');
             }
@@ -612,41 +623,70 @@
         function ymdDash(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}-${m[2]}-${m[3]}`:(String(s||'').slice(0,10)); }
         function renderScanDetail(d){
             const sl=d.shippingList||[], bi=d.boxItems||[], st=d.stocks||[];
-            // 1) 출고예정 내역 (재고/입고)
+            // 1) 출고예정 내역: 구분(재고/입고) · 수량 · 출고예정일 · 회차
             const slSum=sl.reduce((s,r)=>s+(Number(r.qty)||0),0);
-            const slRows = sl.length ? sl
-                .sort((a,b)=>String(a.source).localeCompare(String(b.source))||String(a.location||'').localeCompare(String(b.location||''),'ko',{numeric:true}))
-                .map(r=>`<tr>
-                    <td><span class="${r.source==='재고'?'tag-jaego':'tag-ipgo'}">${esc(r.source)}</span></td>
-                    <td>${esc(r.status)}</td><td>${esc(r.orderNumber)}</td>
-                    <td>${esc(r.location||'-')}</td><td><b>${Number(r.qty)||0}</b></td>
-                    <td>${esc(ymdDash(r.shippingDate))}</td></tr>`).join('')
-                : `<tr><td colspan="6" class="scan-empty">출고예정 내역이 없습니다.</td></tr>`;
-            // 2) 출고스캔 박스 (몇 번 박스에 몇 개)
+            const slSorted=sl.slice().sort((a,b)=>String(a.source).localeCompare(String(b.source))||((b.batchNo||0)-(a.batchNo||0)));
+            const slRows = sl.length
+                ? slSorted.map(r=>`<tr>
+                    <td>${r.source==='재고'?'<span class="tag-jaego">재고</span>':'<span class="tag-ipgo">입고</span>'}</td>
+                    <td><b>${Number(r.qty)||0}</b></td>
+                    <td>${esc(ymdDash(r.shippingDate))||'-'}</td>
+                    <td>${r.batchNo?esc(r.batchNo)+'회차':'-'}</td></tr>`).join('')
+                  +`<tr class="sumrow"><td>합계</td><td>${slSum}</td><td></td><td></td></tr>`
+                : `<tr class="scan-empty"><td colspan="4">출고예정 내역이 없습니다.</td></tr>`;
+            // 2) 출고스캔 박스: 박스 · 크기 · 수량
             const biSum=bi.reduce((s,r)=>s+(Number(r.qty)||0),0);
-            const biRows = bi.length ? bi.map(r=>`<tr>
-                    <td>${esc(r.orderNumber)}</td><td>📦 ${esc(r.boxNo)}</td>
-                    <td>${esc(r.boxSize||'-')}</td><td><b>${Number(r.qty)||0}</b></td></tr>`).join('')
-                : `<tr><td colspan="4" class="scan-empty">스캔된 박스가 없습니다.</td></tr>`;
-            // 3) 재고 (rk_stocks)
+            const biRows = bi.length
+                ? bi.map(r=>`<tr>
+                    <td><span class="box-chip">${esc(r.boxNo)}번</span></td>
+                    <td>${esc(r.boxSize||'-')}</td>
+                    <td><b>${Number(r.qty)||0}</b></td></tr>`).join('')
+                  +`<tr class="sumrow"><td>합계</td><td></td><td>${biSum}</td></tr>`
+                : `<tr class="scan-empty"><td colspan="3">스캔된 박스가 없습니다.</td></tr>`;
+            // 3) 재고 (rk_stocks): 위치 · 수량
             const stSum=st.reduce((s,r)=>s+(Number(r.qty)||0),0);
-            const stRows = st.length ? st.map(r=>`<tr>
-                    <td>${esc(r.location)}</td><td><b>${r.qty==null?'-':Number(r.qty)}</b></td></tr>`).join('')
-                : `<tr><td colspan="2" class="scan-empty">재고가 없습니다.</td></tr>`;
+            const stRows = st.length
+                ? st.map(r=>`<tr>
+                    <td class="l">${esc(r.location)}</td><td><b>${r.qty==null?'-':Number(r.qty)}</b></td></tr>`).join('')
+                  +`<tr class="sumrow"><td>합계</td><td>${stSum}</td></tr>`
+                : `<tr class="scan-empty"><td colspan="2">재고가 없습니다.</td></tr>`;
             return `
                 <div class="scan-sec">
-                    <h4>출고예정 내역 (재고·입고) <span class="cnt">합 ${slSum}</span></h4>
-                    <table><thead><tr><th>구분</th><th>상태</th><th>발주번호</th><th>위치</th><th>수량</th><th>출고예정일</th></tr></thead><tbody>${slRows}</tbody></table>
+                    <div class="stitle">출고예정 내역</div>
+                    <table><thead><tr><th>구분</th><th>수량</th><th>출고예정일</th><th>회차</th></tr></thead><tbody>${slRows}</tbody></table>
                 </div>
                 <div class="scan-sec">
-                    <h4>출고스캔 박스 <span class="cnt">스캔 ${biSum}</span></h4>
-                    <table><thead><tr><th>발주번호</th><th>박스</th><th>크기</th><th>수량</th></tr></thead><tbody>${biRows}</tbody></table>
+                    <div class="stitle">출고스캔 박스</div>
+                    <table><thead><tr><th>박스</th><th>크기</th><th>수량</th></tr></thead><tbody>${biRows}</tbody></table>
                 </div>
                 <div class="scan-sec">
-                    <h4>재고 (rk_stocks) <span class="cnt">합 ${stSum}</span></h4>
+                    <div class="stitle">재고 (rk_stocks)</div>
                     <table><thead><tr><th>위치</th><th>수량</th></tr></thead><tbody>${stRows}</tbody></table>
                 </div>`;
         }
+
+        // ── 발주~입고 값 클릭 → 상세 / 상품명 배지 클릭 → 복사 (event delegation) ──
+        (function(){
+            const tb=document.getElementById('tbody');
+            if(!tb) return;
+            tb.addEventListener('click', e=>{
+                const badge=e.target.closest('.name-badge');
+                if(badge){ copyBadge(badge); return; }
+                const cell=e.target.closest('td.dt');
+                if(!cell) return;
+                const tr=cell.closest('tr'); if(!tr) return;
+                const ord=tr.getAttribute('data-ord'), bc=tr.getAttribute('data-bc');
+                const pn=tr.querySelector('td.pname');
+                openScanDetail(ord, bc, pn?pn.textContent.trim():'');
+            });
+        })();
+        function copyBadge(b){
+            const code=b.getAttribute('data-code')||b.textContent;
+            const done=()=>{ b.classList.add('copied'); setTimeout(()=>b.classList.remove('copied'),900); };
+            if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(code).then(done).catch(()=>fbCopy(code,done)); }
+            else fbCopy(code,done);
+        }
+        function fbCopy(text,cb){ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(_){} ta.remove(); cb&&cb(); }
 
         loadData();
     </script>
@@ -655,7 +695,10 @@
     <div class="scan-back" id="scanBack" onclick="if(event.target.id==='scanBack')closeScanDetail()">
         <div class="scan-modal">
             <div class="scan-head">
-                <h3>스캔 상세 · <span id="scanTitle"></span><span class="sub" id="scanSub"></span></h3>
+                <div class="htxt">
+                    <div class="hname" id="scanTitle"></div>
+                    <div class="hsub" id="scanSub"></div>
+                </div>
                 <button onclick="closeScanDetail()">✕</button>
             </div>
             <div class="scan-body" id="scanBody"></div>
