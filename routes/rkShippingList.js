@@ -289,7 +289,7 @@ router.get('/api/rocket/scan-detail', async (req, res) => {
     if (e1) throw e1;
 
     // 2) 출고스캔 박스 (rk_ship_box_items + rk_ship_boxes)
-    let biq = sb.from('rk_ship_box_items').select('box_id, order_number, barcode, qty').eq('barcode', barcode);
+    let biq = sb.from('rk_ship_box_items').select('id, box_id, order_number, barcode, qty').eq('barcode', barcode);
     if (orderNumber) biq = biq.eq('order_number', orderNumber);
     const { data: bi, error: e2 } = await biq;
     if (e2) throw e2;
@@ -302,7 +302,7 @@ router.get('/api/rocket/scan-detail', async (req, res) => {
     }
 
     // 3) 재고 (rk_stocks) — 바코드 전체 위치
-    const { data: st, error: e3 } = await sb.from('rk_stocks').select('location, qty, item_name').eq('barcode', barcode);
+    const { data: st, error: e3 } = await sb.from('rk_stocks').select('id, location, qty, item_name').eq('barcode', barcode);
     if (e3) throw e3;
 
     // 4) 상품 이미지 (rk_inventories.img)
@@ -315,15 +315,66 @@ router.get('/api/rocket/scan-detail', async (req, res) => {
         source: r.source, status: r.status, orderNumber: r.order_number, center: r.center,
         location: r.location, qty: r.qty, shippingDate: r.shipping_date, batchNo: r.batch_no, createdAt: r.created_at,
       })),
-      boxItems: (bi || []).map(r => { const b = boxById.get(r.box_id) || {}; return { orderNumber: r.order_number, boxNo: b.box_no, boxSize: b.box_size, qty: r.qty }; })
+      boxItems: (bi || []).map(r => { const b = boxById.get(r.box_id) || {}; return { id: r.id, orderNumber: r.order_number, boxNo: b.box_no, boxSize: b.box_size, qty: r.qty }; })
         .sort((a, b) => (a.boxNo || 0) - (b.boxNo || 0)),
-      stocks: (st || []).map(r => ({ location: r.location, qty: r.qty, itemName: r.item_name }))
+      stocks: (st || []).map(r => ({ id: r.id, location: r.location, qty: r.qty, itemName: r.item_name }))
         .filter(r => r.location && r.location !== '-')
         .sort((a, b) => String(a.location).localeCompare(String(b.location), 'ko', { numeric: true })),
     });
   } catch (e) {
     console.error('[rk] rocket/scan-detail:', e);
     res.status(500).json({ error: '스캔 상세 조회 실패: ' + e.message });
+  }
+});
+
+// rocket 스캔 상세 저장 — 출고스캔 박스 수량(rk_ship_box_items) / 재고 수량(rk_stocks, +이력) 수정
+// body: { boxItems:[{id,qty}], stocks:[{id,qty}] }
+router.post('/api/rocket/scan-detail/save', async (req, res) => {
+  try {
+    const boxItems = Array.isArray(req.body.boxItems) ? req.body.boxItems : [];
+    const stocks = Array.isArray(req.body.stocks) ? req.body.stocks : [];
+
+    // 1) 출고스캔 박스 수량
+    let boxUpdated = 0;
+    for (const b of boxItems) {
+      const id = parseInt(b.id, 10); const qty = parseInt(b.qty, 10);
+      if (!Number.isFinite(id) || !Number.isFinite(qty) || qty < 0) continue;
+      const { error } = await sb.from('rk_ship_box_items').update({ qty }).eq('id', id);
+      if (error) throw error;
+      boxUpdated++;
+    }
+
+    // 2) 재고 수량 (+이력)
+    let stockUpdated = 0;
+    const sids = stocks.map(s => parseInt(s.id, 10)).filter(Number.isFinite);
+    const curById = new Map();
+    for (let i = 0; i < sids.length; i += 200) {
+      const { data, error } = await sb.from('rk_stocks').select('id, barcode, location, sku_id, qty').in('id', sids.slice(i, i + 200));
+      if (error) throw error;
+      for (const s of (data || [])) curById.set(s.id, s);
+    }
+    const hist = [];
+    for (const s of stocks) {
+      const id = parseInt(s.id, 10); const qty = parseInt(s.qty, 10);
+      if (!Number.isFinite(id) || !Number.isFinite(qty) || qty < 0) continue;
+      const cur = curById.get(id); if (!cur) continue;
+      const before = parseInt(cur.qty) || 0;
+      if (before === qty) continue;
+      const { error } = await sb.from('rk_stocks').update({ qty }).eq('id', id);
+      if (error) throw error;
+      stockUpdated++;
+      hist.push({ stock_id: id, sku_id: cur.sku_id || null, barcode: cur.barcode, location: cur.location,
+        change_type: 'adjust', qty: qty - before, qty_before: before, qty_after: qty, note: '스캔상세 직접수정' });
+    }
+    for (let i = 0; i < hist.length; i += 500) {
+      const { error } = await sb.from('rk_stock_histories').insert(hist.slice(i, i + 500));
+      if (error) console.error('[rk] scan-detail/save 이력 실패(계속):', error.message);
+    }
+
+    res.json({ boxUpdated, stockUpdated });
+  } catch (e) {
+    console.error('[rk] rocket/scan-detail/save:', e);
+    res.status(500).json({ error: '스캔 상세 저장 실패: ' + e.message });
   }
 });
 

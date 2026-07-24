@@ -112,16 +112,22 @@
         .scard-h .cnt{font-size:11px;font-weight:600;color:#64748b;background:#f1f3f7;border-radius:999px;padding:3px 11px;}
         .scard-h .cnt.green{background:#e7f7ec;color:#16a34a;}
         .htable{width:100%;min-width:0;border-collapse:collapse;font-size:12.5px;table-layout:fixed;}
-        .htable th{color:#9aa1b0;font-size:11px;font-weight:600;padding:3px 4px 9px;text-align:center;white-space:nowrap;}
-        .htable td{padding:11px 4px;border-top:1px solid #f2f4f8;color:#374151;font-variant-numeric:tabular-nums;word-break:break-word;text-align:center;}
+        .htable th{border:0;background:transparent;color:#9aa1b0;font-size:11px;font-weight:600;padding:3px 4px 9px;text-align:center;white-space:nowrap;}
+        .htable td{border:0;padding:9px 4px;color:#374151;font-variant-numeric:tabular-nums;word-break:break-word;text-align:center;white-space:normal;overflow:visible;}
         .htable td.r{font-weight:700;color:#111827;}
-        .htable tbody tr:first-child td{border-top:1px solid #eef1f5;}
-        .htable .sumrow td{font-weight:700;color:#111827;border-top:1px solid #e6e9ef;}
+        .htable td.qty-edit{cursor:text;border-radius:6px;}
+        .htable td.qty-edit:hover{background:#f4f7ff;}
+        .htable td.qty-edit:focus{outline:none;background:#fff;box-shadow:inset 0 0 0 2px #c7d2fe;}
+        .htable td.qty-edit.dirty{color:#F0492F;}
         .type-pill{display:inline-block;background:#eef0f4;color:#475569;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:600;}
         .type-pill.jaego{background:#e8f0ff;color:#2563eb;}
         .type-pill.ipgo{background:#fff1e6;color:#ea580c;}
         .box-emoji{font-weight:600;color:#374151;}
         .hempty{color:#a9b0bd;font-size:12px;padding:14px 0;text-align:center;}
+        /* 하단 저장 */
+        .scan-foot{flex:none;padding:12px 18px;border-top:1px solid #eef0f4;background:#fff;display:flex;justify-content:flex-end;}
+        .scan-foot .savebtn{height:38px;padding:0 22px;border:1px solid #e2e8f0;background:#fff;color:#a9b0bd;border-radius:9px;font-size:13.5px;font-weight:600;cursor:default;transition:background .12s,color .12s;}
+        .scan-foot .savebtn.on{background:#4f46e5;color:#fff;border-color:#4f46e5;cursor:pointer;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         .scan-zero{color:#cbd5e1;}
         .scan-pos{color:#1e293b;}
@@ -631,8 +637,11 @@
             const baseName = model ? head.slice(0, head.lastIndexOf(model)).trim() : head;
             return { baseName, model, color:(parts[1]||''), size:(parts[2]||'') };
         }
+        let scanCtx={};
         async function openScanDetail(orderNumber, barcode, name){
             if(!barcode) return;
+            scanCtx={orderNumber, barcode, name};
+            const sb=document.getElementById('scanSaveBtn'); if(sb){ sb.disabled=true; sb.classList.remove('on'); sb.textContent='저장'; }
             const p=parseProduct(name);
             document.getElementById('scanName').textContent=p.baseName||name||barcode;
             const badges=[];
@@ -657,10 +666,43 @@
         function closeScanDetail(){ document.getElementById('scanBack').classList.remove('show'); }
         function ymdDash(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}-${m[2]}-${m[3]}`:(String(s||'').slice(0,10)); }
         function dateOnly(ts){ if(!ts)return '-'; const m=String(ts).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?`${m[1]}-${m[2]}-${m[3]}`:'-'; }
+        // ── 수량 인라인 편집 → [저장] 활성화 / 저장 ──
+        function normNum(v){ const n=parseInt(String(v==null?'':v).replace(/[^0-9]/g,''),10); return Number.isFinite(n)?n:null; }
+        function sanitizeQty(cell){ const n=normNum(cell.textContent); cell.textContent=(n==null?'':n); updateScanSaveBtn(); }
+        function updateScanSaveBtn(){
+            let dirty=false;
+            document.querySelectorAll('#scanBody .qty-edit').forEach(c=>{
+                const changed = normNum(c.textContent) !== normNum(c.getAttribute('data-orig'));
+                c.classList.toggle('dirty', changed);
+                if(changed) dirty=true;
+            });
+            const btn=document.getElementById('scanSaveBtn');
+            btn.disabled=!dirty; btn.classList.toggle('on', dirty);
+        }
+        async function saveScanEdits(){
+            const box=[], stock=[];
+            document.querySelectorAll('#scanBody .qty-edit').forEach(c=>{
+                const cur=normNum(c.textContent);
+                if(cur==null) return;
+                if(cur===normNum(c.getAttribute('data-orig'))) return;
+                const id=parseInt(c.getAttribute('data-id'),10);
+                if(!Number.isFinite(id)) return;
+                (c.getAttribute('data-kind')==='box'?box:stock).push({id, qty:cur});
+            });
+            if(!box.length && !stock.length) return;
+            const btn=document.getElementById('scanSaveBtn'); btn.disabled=true; btn.classList.remove('on'); btn.textContent='저장 중…';
+            try{
+                const res=await fetch('/api/rocket/scan-detail/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxItems:box, stocks:stock})});
+                const d=await res.json();
+                if(!res.ok) throw new Error(d.error||'저장 실패');
+                toast(`저장 완료 (박스 ${d.boxUpdated||0} · 재고 ${d.stockUpdated||0})`);
+                await openScanDetail(scanCtx.orderNumber, scanCtx.barcode, scanCtx.name); // 최신값 재조회
+                loadData();  // 목록 스캔수량 갱신
+            }catch(e){ btn.textContent='저장'; updateScanSaveBtn(); toast('저장 실패: '+e.message); }
+        }
         function renderScanDetail(d){
             const sl=d.shippingList||[], bi=d.boxItems||[], st=d.stocks||[];
             // 1) 출고예정 내역: 구분(재고/입고) · 생성일(created_at) · 회차 · 수량
-            const slSum=sl.reduce((s,r)=>s+(Number(r.qty)||0),0);
             const slSorted=sl.slice().sort((a,b)=>String(a.source).localeCompare(String(b.source))||((b.batchNo||0)-(a.batchNo||0)));
             const slRows = sl.length
                 ? slSorted.map(r=>`<tr>
@@ -668,24 +710,21 @@
                     <td class="c">${esc(dateOnly(r.createdAt))}</td>
                     <td class="c">${r.batchNo?esc(r.batchNo):'–'}</td>
                     <td class="r">${Number(r.qty)||0}</td></tr>`).join('')
-                  +`<tr class="sumrow"><td>합계</td><td class="c"></td><td class="c"></td><td class="r">${slSum}</td></tr>`
                 : `<tr><td colspan="4" class="hempty">출고예정 내역이 없습니다.</td></tr>`;
-            // 2) 출고스캔 박스: 박스(📦N번) · 크기 · 수량
-            const biSum=bi.reduce((s,r)=>s+(Number(r.qty)||0),0);
+            // 2) 출고스캔 박스: 박스(📦N번) · 크기 · 수량(편집)
             const biRows = bi.length
                 ? bi.map(r=>`<tr>
                     <td class="c"><span class="box-emoji">📦 ${esc(r.boxNo)}번</span></td>
                     <td class="c">${esc(r.boxSize||'-')}</td>
-                    <td class="r">${Number(r.qty)||0}</td></tr>`).join('')
-                  +`<tr class="sumrow"><td>합계</td><td class="c"></td><td class="r">${biSum}</td></tr>`
+                    <td class="r qty-edit" contenteditable="true" data-kind="box" data-id="${esc(r.id)}" data-orig="${Number(r.qty)||0}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" oninput="updateScanSaveBtn()" onblur="sanitizeQty(this)">${Number(r.qty)||0}</td></tr>`).join('')
                 : `<tr><td colspan="3" class="hempty">스캔된 박스가 없습니다.</td></tr>`;
-            // 3) 재고 (rk_stocks): 위치 · 수량
-            const stSum=st.reduce((s,r)=>s+(Number(r.qty)||0),0);
+            // 3) 재고 (rk_stocks): 위치 · 수량(편집)
             const stRows = st.length
                 ? st.map(r=>`<tr>
-                    <td>${esc(r.location)}</td><td class="r">${r.qty==null?'-':Number(r.qty)}</td></tr>`).join('')
-                  +`<tr class="sumrow"><td>합계</td><td class="r">${stSum}</td></tr>`
+                    <td>${esc(r.location)}</td>
+                    <td class="r qty-edit" contenteditable="true" data-kind="stock" data-id="${esc(r.id)}" data-orig="${r.qty==null?'':Number(r.qty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" oninput="updateScanSaveBtn()" onblur="sanitizeQty(this)">${r.qty==null?'-':Number(r.qty)}</td></tr>`).join('')
                 : `<tr><td colspan="2" class="hempty">재고가 없습니다.</td></tr>`;
+            const stSum=st.reduce((s,r)=>s+(Number(r.qty)||0),0);
             return `
                 <div class="scard">
                     <div class="scard-h"><span class="t">출고예정 내역</span><span class="cnt">${sl.length}건</span></div>
@@ -748,6 +787,7 @@
                 </div>
             </div>
             <div class="scan-scroll"><div id="scanBody"></div></div>
+            <div class="scan-foot"><button class="savebtn" id="scanSaveBtn" onclick="saveScanEdits()" disabled>저장</button></div>
         </div>
     </div>
 </body>
