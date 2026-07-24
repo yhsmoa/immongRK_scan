@@ -680,22 +680,23 @@
             btn.disabled=!dirty; btn.classList.toggle('on', dirty);
         }
         async function saveScanEdits(){
-            const box=[], stock=[];
+            const box=[], stock=[], shipping=[];
             document.querySelectorAll('#scanBody .qty-edit').forEach(c=>{
                 const cur=normNum(c.textContent);
                 if(cur==null) return;
                 if(cur===normNum(c.getAttribute('data-orig'))) return;
                 const id=parseInt(c.getAttribute('data-id'),10);
                 if(!Number.isFinite(id)) return;
-                (c.getAttribute('data-kind')==='box'?box:stock).push({id, qty:cur});
+                const kind=c.getAttribute('data-kind');
+                (kind==='box'?box:kind==='stock'?stock:shipping).push({id, qty:cur});
             });
-            if(!box.length && !stock.length) return;
+            if(!box.length && !stock.length && !shipping.length) return;
             const btn=document.getElementById('scanSaveBtn'); btn.disabled=true; btn.classList.remove('on'); btn.textContent='저장 중…';
             try{
-                const res=await fetch('/api/rocket/scan-detail/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxItems:box, stocks:stock})});
+                const res=await fetch('/api/rocket/scan-detail/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({shippingList:shipping, boxItems:box, stocks:stock})});
                 const d=await res.json();
                 if(!res.ok) throw new Error(d.error||'저장 실패');
-                toast(`저장 완료 (박스 ${d.boxUpdated||0} · 재고 ${d.stockUpdated||0})`);
+                toast(`저장 완료 (예정 ${d.shippingUpdated||0} · 박스 ${d.boxUpdated||0} · 재고 ${d.stockUpdated||0})`);
                 await openScanDetail(scanCtx.orderNumber, scanCtx.barcode, scanCtx.name); // 최신값 재조회
                 loadData();  // 목록 스캔수량 갱신
             }catch(e){ btn.textContent='저장'; updateScanSaveBtn(); toast('저장 실패: '+e.message); }
@@ -709,7 +710,7 @@
                     <td class="c">${r.source==='재고'?'<span class="type-pill jaego">재고</span>':'<span class="type-pill ipgo">입고</span>'}</td>
                     <td class="c">${esc(dateOnly(r.createdAt))}</td>
                     <td class="c">${r.batchNo?esc(r.batchNo):'–'}</td>
-                    <td class="r">${Number(r.qty)||0}</td></tr>`).join('')
+                    <td class="r qty-edit" contenteditable="true" data-kind="shipping" data-id="${esc(r.id)}" data-orig="${Number(r.qty)||0}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" oninput="updateScanSaveBtn()" onblur="sanitizeQty(this)">${Number(r.qty)||0}</td></tr>`).join('')
                 : `<tr><td colspan="4" class="hempty">출고예정 내역이 없습니다.</td></tr>`;
             // 2) 출고스캔 박스: 박스(📦N번) · 크기 · 수량(편집)
             const biRows = bi.length

@@ -312,7 +312,7 @@ router.get('/api/rocket/scan-detail', async (req, res) => {
     res.json({
       img,
       shippingList: (sl || []).map(r => ({
-        source: r.source, status: r.status, orderNumber: r.order_number, center: r.center,
+        id: r.id, source: r.source, status: r.status, orderNumber: r.order_number, center: r.center,
         location: r.location, qty: r.qty, shippingDate: r.shipping_date, batchNo: r.batch_no, createdAt: r.created_at,
       })),
       boxItems: (bi || []).map(r => { const b = boxById.get(r.box_id) || {}; return { id: r.id, orderNumber: r.order_number, boxNo: b.box_no, boxSize: b.box_size, qty: r.qty }; })
@@ -333,6 +333,17 @@ router.post('/api/rocket/scan-detail/save', async (req, res) => {
   try {
     const boxItems = Array.isArray(req.body.boxItems) ? req.body.boxItems : [];
     const stocks = Array.isArray(req.body.stocks) ? req.body.stocks : [];
+    const shippingList = Array.isArray(req.body.shippingList) ? req.body.shippingList : [];
+
+    // 0) 출고예정 내역 수량 (rk_shipping_list) — 수량만 수정 (재고 자동 조정 없음)
+    let shippingUpdated = 0;
+    for (const s of shippingList) {
+      const id = parseInt(s.id, 10); const qty = parseInt(s.qty, 10);
+      if (!Number.isFinite(id) || !Number.isFinite(qty) || qty < 0) continue;
+      const { error } = await sb.from('rk_shipping_list').update({ qty }).eq('id', id);
+      if (error) throw error;
+      shippingUpdated++;
+    }
 
     // 1) 출고스캔 박스 수량
     let boxUpdated = 0;
@@ -371,7 +382,7 @@ router.post('/api/rocket/scan-detail/save', async (req, res) => {
       if (error) console.error('[rk] scan-detail/save 이력 실패(계속):', error.message);
     }
 
-    res.json({ boxUpdated, stockUpdated });
+    res.json({ shippingUpdated, boxUpdated, stockUpdated });
   } catch (e) {
     console.error('[rk] rocket/scan-detail/save:', e);
     res.status(500).json({ error: '스캔 상세 저장 실패: ' + e.message });
