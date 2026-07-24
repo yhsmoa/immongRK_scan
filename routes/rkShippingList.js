@@ -305,7 +305,12 @@ router.get('/api/rocket/scan-detail', async (req, res) => {
     const { data: st, error: e3 } = await sb.from('rk_stocks').select('location, qty, item_name').eq('barcode', barcode);
     if (e3) throw e3;
 
+    // 4) 상품 이미지 (rk_inventories.img)
+    const { data: inv } = await sb.from('rk_inventories').select('img').eq('barcode', barcode).limit(1);
+    const img = (inv && inv.length && inv[0].img) ? inv[0].img : null;
+
     res.json({
+      img,
       shippingList: (sl || []).map(r => ({
         source: r.source, status: r.status, orderNumber: r.order_number, center: r.center,
         location: r.location, qty: r.qty, shippingDate: r.shipping_date, batchNo: r.batch_no, createdAt: r.created_at,

@@ -81,36 +81,48 @@
         td.dt{cursor:pointer;}
         td.dt:hover{background:#f1f5ff;}
 
-        /* 스캔 상세 — 오른쪽 슬라이드 패널 */
+        /* 스캔 상세 — 오른쪽 슬라이드 패널 (카드형) */
         .scan-back{position:fixed;inset:0;background:rgba(15,23,42,.28);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10000;}
         .scan-back.show{opacity:1;pointer-events:auto;}
-        .scan-modal{position:fixed;top:0;right:0;height:100vh;width:440px;max-width:96vw;background:#fff;box-shadow:-10px 0 40px rgba(15,23,42,.14);transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:10001;display:flex;flex-direction:column;}
+        .scan-modal{position:fixed;top:0;right:0;height:100vh;width:460px;max-width:96vw;background:#fff;box-shadow:-10px 0 40px rgba(15,23,42,.14);transform:translateX(100%);transition:transform .25s cubic-bezier(.4,0,.2,1);z-index:10001;display:flex;flex-direction:column;}
         .scan-back.show .scan-modal{transform:translateX(0);}
-        .scan-head{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;}
-        .scan-head button{flex:none;border:none;background:transparent;width:30px;height:30px;border-radius:8px;font-size:16px;cursor:pointer;color:#9aa1b0;line-height:1;transition:background .12s,color .12s;}
-        .scan-head button:hover{background:#f1f3f7;color:#475569;}
-        /* 다크 알약 라벨 */
-        .pill-label{display:inline-block;background:#3f4657;color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:8px;}
-        .scan-scroll{overflow-y:auto;overflow-x:hidden;padding:0 20px 30px;flex:1;min-height:0;}
-        /* 상단 상품 정보 */
-        .item-detail{padding-bottom:16px;border-bottom:1px solid #f0f2f6;}
-        .item-detail .iname{margin-top:13px;font-size:15.5px;font-weight:700;color:#111827;line-height:1.45;word-break:break-word;}
-        .item-detail .icode{margin-top:7px;font-size:12.5px;color:#9aa1b0;font-variant-numeric:tabular-nums;line-height:1.6;word-break:break-all;}
-        /* 섹션 */
-        .scan-sec{margin-top:24px;}
-        .scan-sec .pill-label{margin-bottom:6px;}
+        /* 상단 흰색 고정 (헤더 + 상품정보) */
+        .scan-top{flex:none;background:#fff;border-bottom:1px solid #eef0f4;}
+        .scan-head{padding:16px 20px 8px;display:flex;align-items:center;justify-content:space-between;}
+        .scan-head .lbl{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;color:#8b93a5;letter-spacing:.06em;}
+        .scan-head .lbl::before{content:'';width:7px;height:7px;border-radius:50%;background:#6366f1;}
+        .scan-head button{flex:none;border:none;background:#f1f3f7;width:32px;height:32px;border-radius:10px;font-size:15px;cursor:pointer;color:#94a3b8;line-height:1;transition:background .12s,color .12s;}
+        .scan-head button:hover{background:#e7eaf0;color:#475569;}
+        .item-detail{display:flex;gap:14px;padding:8px 20px 18px;}
+        .item-detail .thumb{flex:none;width:76px;height:76px;border-radius:13px;border:1px solid #e6e9ef;overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;line-height:1.3;color:#b4bac6;background:repeating-linear-gradient(45deg,#f3f4f7,#f3f4f7 7px,#eceef3 7px,#eceef3 14px);}
+        .item-detail .thumb img{width:100%;height:100%;object-fit:cover;}
+        .item-detail .idinfo{min-width:0;flex:1;}
+        .item-detail .iname{font-size:15px;font-weight:700;color:#111827;line-height:1.4;word-break:break-word;}
+        .item-detail .ibadges{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;}
+        .ibadge{display:inline-flex;align-items:center;gap:5px;background:#eef1f6;color:#475569;border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600;white-space:nowrap;}
+        .ibadge.model{background:#eef2ff;color:#4f46e5;}
+        .ibadge .sq{width:9px;height:9px;border-radius:2px;background:#334155;display:inline-block;}
+        .item-detail .icode{margin-top:10px;font-size:12px;color:#9aa1b0;font-variant-numeric:tabular-nums;word-break:break-all;}
+        /* 스크롤 영역(연회색) + 카드 */
+        .scan-scroll{overflow-y:auto;overflow-x:hidden;padding:16px 18px 26px;flex:1;min-height:0;background:#f5f6f8;}
+        .scard{background:#fff;border:1px solid #eceef3;border-radius:14px;padding:14px 16px 6px;margin-bottom:14px;box-shadow:0 1px 2px rgba(15,23,42,.03);}
+        .scard:last-child{margin-bottom:0;}
+        .scard-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+        .scard-h .t{font-size:13px;font-weight:700;color:#1f2937;padding-left:9px;border-left:3px solid #6366f1;line-height:1.15;}
+        .scard-h .cnt{font-size:11px;font-weight:600;color:#64748b;background:#f1f3f7;border-radius:999px;padding:3px 11px;}
+        .scard-h .cnt.green{background:#e7f7ec;color:#16a34a;}
         .htable{width:100%;min-width:0;border-collapse:collapse;font-size:12.5px;table-layout:fixed;}
-        .htable th{color:#9aa1b0;font-size:11.5px;font-weight:600;padding:8px 4px 10px;border-bottom:1px solid #eef1f5;text-align:left;white-space:nowrap;}
+        .htable th{color:#9aa1b0;font-size:11px;font-weight:600;padding:3px 4px 9px;text-align:left;white-space:nowrap;}
         .htable th.c{text-align:center;} .htable th.r{text-align:right;}
-        .htable td{padding:12px 4px;border-bottom:1px solid #f4f5f9;color:#374151;font-variant-numeric:tabular-nums;word-break:break-word;}
-        .htable td.c{text-align:center;} .htable td.r{text-align:right;font-weight:600;color:#111827;}
-        .htable tbody tr:last-child td{border-bottom:none;}
-        .htable .sumrow td{font-weight:700;color:#111827;border-top:1px solid #e6e9ef;padding-top:11px;}
-        .type-pill{display:inline-block;background:#eef0f4;color:#475569;border-radius:999px;padding:3px 12px;font-size:12px;font-weight:600;}
+        .htable td{padding:11px 4px;border-top:1px solid #f2f4f8;color:#374151;font-variant-numeric:tabular-nums;word-break:break-word;}
+        .htable td.c{text-align:center;} .htable td.r{text-align:right;font-weight:700;color:#111827;}
+        .htable tbody tr:first-child td{border-top:1px solid #eef1f5;}
+        .htable .sumrow td{font-weight:700;color:#111827;border-top:1px solid #e6e9ef;}
+        .type-pill{display:inline-block;background:#eef0f4;color:#475569;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:600;}
         .type-pill.jaego{background:#e8f0ff;color:#2563eb;}
         .type-pill.ipgo{background:#fff1e6;color:#ea580c;}
-        .type-pill.box{background:#eef2ff;color:#4f46e5;}
-        .hempty{color:#a9b0bd;font-size:12.5px;padding:16px 2px;text-align:center;}
+        .box-emoji{font-weight:600;color:#374151;}
+        .hempty{color:#a9b0bd;font-size:12px;padding:14px 0;text-align:center;}
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         .scan-zero{color:#cbd5e1;}
         .scan-pos{color:#1e293b;}
@@ -609,42 +621,61 @@
             w.document.close();
         }
 
-        // ── 상품명 클릭 → 스캔·재고·입고 상세 (오른쪽 슬라이드) ──
+        // ── 발주값 클릭 → 스캔·재고·입고 상세 (오른쪽 슬라이드) ──
+        function parseProduct(fullName){
+            const s=String(fullName||'').trim();
+            const parts=s.split(',').map(x=>x.trim()).filter(x=>x!=='');
+            const head=parts[0]||s;
+            const words=head.split(/\s+/);
+            let model='';
+            for(let i=words.length-1;i>=0;i--){ const w=words[i]; if(/^[A-Za-z0-9]+$/.test(w)&&/[A-Za-z]/.test(w)&&/\d/.test(w)){ model=w; break; } }
+            const baseName = model ? head.slice(0, head.lastIndexOf(model)).trim() : head;
+            return { baseName, model, color:(parts[1]||''), size:(parts[2]||'') };
+        }
         async function openScanDetail(orderNumber, barcode, name){
             if(!barcode) return;
-            document.getElementById('scanTitle').textContent=name||barcode;
-            document.getElementById('scanSub').textContent=`${orderNumber} · ${barcode}`;
-            document.getElementById('scanBody').innerHTML='<div class="scan-empty">불러오는 중…</div>';
+            const p=parseProduct(name);
+            document.getElementById('scanName').textContent=p.baseName||name||barcode;
+            const badges=[];
+            if(p.color) badges.push(`<span class="ibadge"><span class="sq"></span>${esc(p.color)}</span>`);
+            if(p.size) badges.push(`<span class="ibadge">사이즈 ${esc(p.size)}</span>`);
+            if(p.model) badges.push(`<span class="ibadge model">품번 ${esc(p.model)}</span>`);
+            document.getElementById('scanBadges').innerHTML=badges.join('');
+            document.getElementById('scanCode').textContent=`${orderNumber}  ·  ${barcode}`;
+            document.getElementById('scanThumb').innerHTML='<span>상품<br>이미지</span>';
+            document.getElementById('scanBody').innerHTML='<div class="hempty">불러오는 중…</div>';
             document.getElementById('scanBack').classList.add('show');
             try{
                 const res=await fetch(`/api/rocket/scan-detail?orderNumber=${encodeURIComponent(orderNumber)}&barcode=${encodeURIComponent(barcode)}`);
                 const d=await res.json();
                 if(!res.ok) throw new Error(d.error||'조회 실패');
+                if(d.img) document.getElementById('scanThumb').innerHTML=`<img src="${esc(d.img)}" alt="">`;
                 document.getElementById('scanBody').innerHTML=renderScanDetail(d);
             }catch(e){
-                document.getElementById('scanBody').innerHTML=`<div class="scan-empty">${esc(e.message)}</div>`;
+                document.getElementById('scanBody').innerHTML=`<div class="hempty">${esc(e.message)}</div>`;
             }
         }
         function closeScanDetail(){ document.getElementById('scanBack').classList.remove('show'); }
         function ymdDash(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}-${m[2]}-${m[3]}`:(String(s||'').slice(0,10)); }
+        function dateOnly(ts){ if(!ts)return '-'; const m=String(ts).match(/^(\d{4})-(\d{2})-(\d{2})/); return m?`${m[1]}-${m[2]}-${m[3]}`:'-'; }
         function renderScanDetail(d){
             const sl=d.shippingList||[], bi=d.boxItems||[], st=d.stocks||[];
-            // 1) 출고예정 내역: 구분(재고/입고) · 수량 · 출고예정일 · 회차
+            // 1) 출고예정 내역: 구분(재고/입고) · 생성일(created_at) · 회차 · 수량
             const slSum=sl.reduce((s,r)=>s+(Number(r.qty)||0),0);
             const slSorted=sl.slice().sort((a,b)=>String(a.source).localeCompare(String(b.source))||((b.batchNo||0)-(a.batchNo||0)));
             const slRows = sl.length
                 ? slSorted.map(r=>`<tr>
                     <td class="c">${r.source==='재고'?'<span class="type-pill jaego">재고</span>':'<span class="type-pill ipgo">입고</span>'}</td>
-                    <td class="c">${esc(ymdDash(r.shippingDate))||'-'}</td>
-                    <td class="c">${r.batchNo?esc(r.batchNo):'-'}</td>
+                    <td class="c">${esc(dateOnly(r.createdAt))}</td>
+                    <td class="c">${r.batchNo?esc(r.batchNo):'–'}</td>
                     <td class="r">${Number(r.qty)||0}</td></tr>`).join('')
                   +`<tr class="sumrow"><td>합계</td><td class="c"></td><td class="c"></td><td class="r">${slSum}</td></tr>`
                 : `<tr><td colspan="4" class="hempty">출고예정 내역이 없습니다.</td></tr>`;
-            // 2) 출고스캔 박스: 박스 · 크기 · 수량
+            // 2) 출고스캔 박스: 박스(📦N번) · 크기 · 수량
             const biSum=bi.reduce((s,r)=>s+(Number(r.qty)||0),0);
             const biRows = bi.length
                 ? bi.map(r=>`<tr>
-                    <td class="c"><span class="type-pill box">${esc(r.boxNo)}번</span></td>
+                    <td class="c"><span class="box-emoji">📦 ${esc(r.boxNo)}번</span></td>
                     <td class="c">${esc(r.boxSize||'-')}</td>
                     <td class="r">${Number(r.qty)||0}</td></tr>`).join('')
                   +`<tr class="sumrow"><td>합계</td><td class="c"></td><td class="r">${biSum}</td></tr>`
@@ -657,18 +688,18 @@
                   +`<tr class="sumrow"><td>합계</td><td class="r">${stSum}</td></tr>`
                 : `<tr><td colspan="2" class="hempty">재고가 없습니다.</td></tr>`;
             return `
-                <div class="scan-sec">
-                    <span class="pill-label">출고예정 내역</span>
-                    <table class="htable"><colgroup><col style="width:26%"><col style="width:34%"><col style="width:18%"><col style="width:22%"></colgroup>
-                        <thead><tr><th class="c">구분</th><th class="c">출고예정일</th><th class="c">회차</th><th class="r">수량</th></tr></thead><tbody>${slRows}</tbody></table>
+                <div class="scard">
+                    <div class="scard-h"><span class="t">출고예정 내역</span><span class="cnt">${sl.length}건</span></div>
+                    <table class="htable"><colgroup><col style="width:24%"><col style="width:36%"><col style="width:18%"><col style="width:22%"></colgroup>
+                        <thead><tr><th class="c">구분</th><th class="c">생성일</th><th class="c">회차</th><th class="r">수량</th></tr></thead><tbody>${slRows}</tbody></table>
                 </div>
-                <div class="scan-sec">
-                    <span class="pill-label">출고스캔 박스</span>
+                <div class="scard">
+                    <div class="scard-h"><span class="t">출고스캔 박스</span><span class="cnt">박스 ${bi.length}개</span></div>
                     <table class="htable"><colgroup><col style="width:34%"><col style="width:40%"><col style="width:26%"></colgroup>
                         <thead><tr><th class="c">박스</th><th class="c">크기</th><th class="r">수량</th></tr></thead><tbody>${biRows}</tbody></table>
                 </div>
-                <div class="scan-sec">
-                    <span class="pill-label">재고 (rk_stocks)</span>
+                <div class="scard">
+                    <div class="scard-h"><span class="t">재고 <span style="color:#9aa1b0;font-weight:600;font-size:11px;">rk_stocks</span></span><span class="cnt green">가용 ${stSum}</span></div>
                     <table class="htable"><colgroup><col style="width:70%"><col style="width:30%"></colgroup>
                         <thead><tr><th>위치</th><th class="r">수량</th></tr></thead><tbody>${stRows}</tbody></table>
                 </div>`;
@@ -703,17 +734,21 @@
     <!-- 스캔 상세 오른쪽 슬라이드 -->
     <div class="scan-back" id="scanBack" onclick="if(event.target.id==='scanBack')closeScanDetail()">
         <div class="scan-modal">
-            <div class="scan-head">
-                <span class="pill-label">ITEM DETAIL</span>
-                <button onclick="closeScanDetail()">✕</button>
-            </div>
-            <div class="scan-scroll">
-                <div class="item-detail">
-                    <div class="iname" id="scanTitle"></div>
-                    <div class="icode" id="scanSub"></div>
+            <div class="scan-top">
+                <div class="scan-head">
+                    <span class="lbl">ITEM DETAIL</span>
+                    <button onclick="closeScanDetail()">✕</button>
                 </div>
-                <div id="scanBody"></div>
+                <div class="item-detail">
+                    <div class="thumb" id="scanThumb"></div>
+                    <div class="idinfo">
+                        <div class="iname" id="scanName"></div>
+                        <div class="ibadges" id="scanBadges"></div>
+                        <div class="icode" id="scanCode"></div>
+                    </div>
+                </div>
             </div>
+            <div class="scan-scroll"><div id="scanBody"></div></div>
         </div>
     </div>
 </body>
