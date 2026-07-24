@@ -208,6 +208,73 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
   }
 });
 
+// 재고건 예정 취소 — rk_shipping_list(재고) 삭제 + rk_stocks 복원(+이력)
+// body: { ids: [rk_shipping_list.id, ...] }
+router.post('/api/shipping-list/stock-cancel', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(v => parseInt(v, 10)).filter(Number.isFinite);
+    if (!ids.length) return res.status(400).json({ error: '취소할 항목이 없습니다.' });
+
+    // 대상 예약 조회 (재고건만)
+    const rows = [];
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await sb.from('rk_shipping_list')
+        .select('id, source, stock_id, barcode, location, qty').in('id', ids.slice(i, i + 200));
+      if (error) throw error;
+      rows.push(...(data || []));
+    }
+    const targets = rows.filter(r => r.source === '재고');
+    if (!targets.length) return res.json({ canceled: 0, restored: 0 });
+
+    // 1) 예약 삭제
+    const delIds = targets.map(r => r.id);
+    for (let i = 0; i < delIds.length; i += 200) {
+      const { error } = await sb.from('rk_shipping_list').delete().in('id', delIds.slice(i, i + 200));
+      if (error) throw error;
+    }
+
+    // 2) 재고 복원 (stock_id별 합산 add) + 이력
+    const addByStock = new Map();
+    for (const r of targets) { if (r.stock_id != null) addByStock.set(r.stock_id, (addByStock.get(r.stock_id) || 0) + (r.qty || 0)); }
+    let restored = 0;
+    if (addByStock.size) {
+      const sids = [...addByStock.keys()];
+      const curById = new Map();
+      for (let i = 0; i < sids.length; i += 200) {
+        const { data, error } = await sb.from('rk_stocks').select('id, barcode, location, sku_id, qty').in('id', sids.slice(i, i + 200));
+        if (error) throw error;
+        for (const s of (data || [])) curById.set(s.id, s);
+      }
+      const histories = [];
+      const entries = [...addByStock.entries()];
+      const CONC = 40;
+      for (let i = 0; i < entries.length; i += CONC) {
+        const chunk = entries.slice(i, i + CONC);
+        await Promise.all(chunk.map(async ([stockId, add]) => {
+          const cur = curById.get(stockId);
+          if (!cur) return;
+          const before = parseInt(cur.qty) || 0;
+          const after = before + add;
+          const { error } = await sb.from('rk_stocks').update({ qty: after }).eq('id', stockId);
+          if (error) throw error;
+          restored += add;
+          histories.push({ stock_id: stockId, sku_id: cur.sku_id || null, barcode: cur.barcode, location: cur.location,
+            change_type: 'add', qty: add, qty_before: before, qty_after: after, note: '재고준비 취소 복원' });
+        }));
+      }
+      for (let i = 0; i < histories.length; i += 500) {
+        const { error } = await sb.from('rk_stock_histories').insert(histories.slice(i, i + 500));
+        if (error) console.error('[rk] stock-cancel 이력 기록 실패(계속):', error.message);
+      }
+    }
+
+    res.json({ canceled: targets.length, restored });
+  } catch (e) {
+    console.error('[rk] shipping-list/stock-cancel:', e);
+    res.status(500).json({ error: '예정 취소 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
 // 통합 출고리스트 조회 (추후 통합 화면/스캔용)
 router.get('/api/shipping-list', async (req, res) => {
   try {
