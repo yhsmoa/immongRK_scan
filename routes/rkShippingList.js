@@ -95,8 +95,8 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
       // 표시용: 실제 재고값(0/양수/NULL 구분)
       if (!stockLocsByBarcode.has(s.barcode)) stockLocsByBarcode.set(s.barcode, []);
       stockLocsByBarcode.get(s.barcode).push({ location: loc, qty: (s.qty == null ? null : (parseInt(s.qty) || 0)) });
-      // 배정용 풀: 가용(재고−예약)>0 인 위치만
-      const avail = (parseInt(s.qty) || 0) - (stockReservedByLoc.get(`${s.barcode}|${loc}`) || 0);
+      // 배정용 풀: 가용 = 실재고 qty (준비 시 rk_stocks 에서 즉시 차감하므로 예약 재차감 안 함)
+      const avail = (parseInt(s.qty) || 0);
       if (avail <= 0) continue;
       if (!poolByBarcode.has(s.barcode)) poolByBarcode.set(s.barcode, []);
       poolByBarcode.get(s.barcode).push({ stockId: s.id, location: loc, avail });
@@ -163,112 +163,48 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
         if (error) throw error;
       }
       saved = insertRows.length;
+
+      // ── 준비된 만큼 rk_stocks 즉시 차감 (+ 이력 기록). stock_id별 합산, 0 미만 클램프 ──
+      const takeByStock = new Map();
+      for (const r of insertRows) {
+        if (r.stock_id == null) continue;
+        takeByStock.set(r.stock_id, (takeByStock.get(r.stock_id) || 0) + (r.qty || 0));
+      }
+      if (takeByStock.size) {
+        const ids = [...takeByStock.keys()];
+        const curById = new Map();
+        for (let i = 0; i < ids.length; i += 200) {
+          const { data, error } = await sb.from('rk_stocks').select('id, barcode, location, sku_id, item_name, qty').in('id', ids.slice(i, i + 200));
+          if (error) throw error;
+          for (const s of (data || [])) curById.set(s.id, s);
+        }
+        const histories = [];
+        const CONC = 40;
+        const entries = [...takeByStock.entries()];
+        for (let i = 0; i < entries.length; i += CONC) {
+          const chunk = entries.slice(i, i + CONC);
+          await Promise.all(chunk.map(async ([stockId, take]) => {
+            const cur = curById.get(stockId);
+            if (!cur) return;
+            const before = parseInt(cur.qty) || 0;
+            const after = Math.max(0, before - take);
+            const { error } = await sb.from('rk_stocks').update({ qty: after }).eq('id', stockId);
+            if (error) throw error;
+            histories.push({ stock_id: stockId, sku_id: cur.sku_id || null, barcode: cur.barcode, location: cur.location,
+              change_type: 'deduct', qty: before - after, qty_before: before, qty_after: after, note: '재고준비 출고배정' });
+          }));
+        }
+        for (let i = 0; i < histories.length; i += 500) {
+          const { error } = await sb.from('rk_stock_histories').insert(histories.slice(i, i + 500));
+          if (error) console.error('[rk] stock-allocate 이력 기록 실패(계속):', error.message);
+        }
+      }
     }
 
     res.json({ results, saved, batch: batchNo });
   } catch (e) {
     console.error('[rk] shipping-list/stock-allocate:', e);
     res.status(500).json({ error: '재고 출고배정 중 오류가 발생했습니다: ' + e.message });
-  }
-});
-
-/**
- * 재고준비 실행 — 존재하는 발주서 전체를 대상으로 재고 출고배정 → rk_shipping_list(source='재고') 저장
- * - needed = 발주수량 − 이미 예약된 수량(같은 발주번호+바코드, status='출고예정', source 무관) → 재실행해도 중복배정 없음
- * - 이번 실행에서 새로 배정된 행에만 새 회차(batch_no = 재고건 max+1)와 prepared_at(출고일 기준값) 부여
- */
-router.post('/api/stock-prepare/run', async (req, res) => {
-  try {
-    // 1) 발주서 원본 상품 → 요청 행
-    const orders = await S.listOrdersFull('rk_orders', 'rk_order_items');
-    const reqRows = [];
-    for (const o of orders) {
-      for (const p of (o.상품정보 || [])) {
-        if (p.박스정보 || !p.상품바코드) continue; // 원본 상품만
-        reqRows.push({
-          orderNumber: o.발주번호, center: o.물류센터, shippingDate: o.입고예정일 || '',
-          barcode: p.상품바코드, productName: p.상품이름 || '', qty: parseInt(p.발주수량) || 0,
-        });
-      }
-    }
-    if (!reqRows.length) return res.json({ saved: 0, batch: null, message: '대상 발주 상품이 없습니다.' });
-
-    const barcodes = [...new Set(reqRows.map(r => r.barcode))];
-
-    // 2) 재고 풀 + 기존 예약 (stock-allocate 와 동일 규칙)
-    const stocks = await fetchIn('rk_stocks', 'id, barcode, location, qty', 'barcode', barcodes);
-    const reserved = await fetchIn('rk_shipping_list', 'source, status, barcode, order_number, location, qty', 'barcode', barcodes);
-    const activeReserved = reserved.filter(r => r.status === '출고예정');
-    const stockReservedByLoc = new Map();
-    const reservedByOrder = new Map();
-    for (const r of activeReserved) {
-      if (r.source === '재고' && r.location) {
-        const k = `${r.barcode}|${r.location}`;
-        stockReservedByLoc.set(k, (stockReservedByLoc.get(k) || 0) + (r.qty || 0));
-      }
-      if (r.order_number) {
-        const k = `${r.order_number}|${r.barcode}`;
-        reservedByOrder.set(k, (reservedByOrder.get(k) || 0) + (r.qty || 0));
-      }
-    }
-    const poolByBarcode = new Map();
-    for (const s of stocks) {
-      const loc = String(s.location || '').trim();
-      if (!loc || loc === '-') continue;
-      const avail = (parseInt(s.qty) || 0) - (stockReservedByLoc.get(`${s.barcode}|${loc}`) || 0);
-      if (avail <= 0) continue;
-      if (!poolByBarcode.has(s.barcode)) poolByBarcode.set(s.barcode, []);
-      poolByBarcode.get(s.barcode).push({ stockId: s.id, location: loc, avail });
-    }
-    for (const list of poolByBarcode.values()) list.sort((a, b) => a.location.localeCompare(b.location, 'ko', { numeric: true }));
-
-    // 3) 다음 회차 번호 (재고건 전체 기준 max+1)
-    const { data: mb, error: eMb } = await sb.from('rk_shipping_list')
-      .select('batch_no').eq('source', '재고').not('batch_no', 'is', null)
-      .order('batch_no', { ascending: false }).limit(1);
-    if (eMb) throw eMb;
-    const nextBatch = ((mb && mb.length ? mb[0].batch_no : 0) || 0) + 1;
-    const runAt = new Date().toISOString();
-
-    // 4) 그리디 배정 → 새로 배정된 것만 insert
-    const insertRows = [];
-    for (const row of reqRows) {
-      const already = reservedByOrder.get(`${row.orderNumber}|${row.barcode}`) || 0;
-      let needed = row.qty - already;
-      if (needed <= 0) continue;
-      const pool = poolByBarcode.get(row.barcode) || [];
-      for (const p of pool) {
-        if (needed <= 0) break;
-        const take = Math.min(needed, p.avail);
-        if (take > 0) {
-          insertRows.push({
-            source: '재고', status: '출고예정',
-            barcode: row.barcode, product_name: row.productName || null,
-            order_number: row.orderNumber || null, center: row.center || null,
-            shipping_date: row.shippingDate || null,
-            qty: take, location: p.location, stock_id: p.stockId,
-            batch_no: nextBatch, prepared_at: runAt,
-          });
-          p.avail -= take;
-          needed -= take;
-        }
-      }
-    }
-
-    let saved = 0;
-    if (insertRows.length) {
-      const BATCH = 500;
-      for (let i = 0; i < insertRows.length; i += BATCH) {
-        const { error } = await sb.from('rk_shipping_list').insert(insertRows.slice(i, i + BATCH));
-        if (error) throw error;
-      }
-      saved = insertRows.length;
-    }
-    const totalQty = insertRows.reduce((s, r) => s + r.qty, 0);
-    res.json({ saved, totalQty, batch: saved ? nextBatch : null, preparedAt: saved ? runAt : null });
-  } catch (e) {
-    console.error('[rk] stock-prepare/run:', e);
-    res.status(500).json({ error: '재고준비 실행 중 오류가 발생했습니다: ' + e.message });
   }
 });
 
