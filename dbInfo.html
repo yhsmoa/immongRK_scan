@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DB 정보 · 아이엠몽 로켓</title>
+    <style>
+        :root{
+            --bg:#FBFAF9; --ink:#1C1B1A; --accent:#F0492F; --accent-soft:#FDEBE6;
+            --line:#EEECE9; --line2:#EBE8E4; --muted:#6E6A67; --muted2:#918D89; --muted3:#78736F;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+            font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;
+            -webkit-font-smoothing:antialiased;}
+        main{max-width:1200px;margin:0 auto;padding:48px 32px 80px;}
+
+        .hero{margin-bottom:32px;max-width:720px;}
+        .badge{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--line2);
+            border-radius:999px;background:#fff;margin-bottom:18px;}
+        .badge .d{width:6px;height:6px;border-radius:50%;background:var(--accent);}
+        .badge span{font-size:11px;font-weight:700;letter-spacing:.14em;color:#8A8683;}
+        .hero h1{margin:0;font-size:34px;line-height:1.1;font-weight:800;letter-spacing:-.035em;}
+        .hero p{margin:12px 0 0;font-size:15px;line-height:1.6;color:var(--muted);font-weight:500;}
+
+        .legend{display:flex;flex-wrap:wrap;gap:16px;margin:20px 0 8px;font-size:12.5px;color:var(--muted3);font-weight:600;}
+        .legend .item{display:inline-flex;align-items:center;gap:7px;}
+
+        .chip{display:inline-flex;align-items:center;font-family:ui-monospace,Menlo,"SF Mono",monospace;
+            font-size:12px;font-weight:600;padding:3px 9px;border-radius:8px;line-height:1.5;white-space:nowrap;}
+        .chip.primary{background:var(--accent-soft);color:#C13A24;border:1px solid #F7C9BE;}
+        .chip.secondary{background:#F5F3F1;color:#6E6A67;border:1px solid var(--line2);}
+        .chip.legacy{background:#EEF3F8;color:#4A6B86;border:1px solid #D5E2ED;}
+
+        .section{margin-top:40px;}
+        .section h2{margin:0 0 4px;font-size:13px;font-weight:800;letter-spacing:.06em;color:var(--accent);text-transform:uppercase;}
+        .section .desc{margin:0 0 16px;font-size:13px;color:var(--muted2);font-weight:500;}
+
+        .table-wrap{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;}
+        .row{display:grid;grid-template-columns:230px 1fr;gap:0;border-top:1px solid var(--line);}
+        .row:first-child{border-top:none;}
+        .row-head{padding:16px 18px;border-right:1px solid var(--line);background:#FCFBFA;}
+        .row-head a{text-decoration:none;color:inherit;display:block;}
+        .row-head .pg{font-size:14.5px;font-weight:700;letter-spacing:-.01em;color:var(--ink);}
+        .row-head .rt{margin-top:3px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:var(--muted2);font-weight:600;}
+        .row-body{padding:15px 18px;display:flex;flex-direction:column;gap:10px;}
+        .grp{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+        .grp .lbl{font-size:11px;font-weight:700;color:var(--muted3);letter-spacing:.03em;min-width:56px;}
+        .note{font-size:12px;color:var(--muted2);font-weight:500;padding-left:62px;margin-top:-4px;}
+
+        @media (max-width:820px){
+            main{padding:36px 18px 60px;}
+            .hero h1{font-size:28px;}
+            .row{grid-template-columns:1fr;}
+            .row-head{border-right:none;border-bottom:1px solid var(--line);}
+            .note{padding-left:0;}
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <main>
+        <section class="hero">
+            <div class="badge"><div class="d"></div><span>DATABASE REFERENCE</span></div>
+            <h1>DB 정보</h1>
+            <p>각 페이지의 데이터 표(그리드)가 어떤 <b>Supabase 테이블</b>에서 값을 가져오는지 정리한 문서입니다.
+               주요 테이블은 화면의 핵심 목록을, 보조 테이블은 추가 컬럼·집계·저장(쓰기) 용도로 함께 사용됩니다.</p>
+        </section>
+
+        <div class="legend">
+            <span class="item"><span class="chip primary">rk_주요</span> 화면 그리드 핵심 데이터</span>
+            <span class="item"><span class="chip secondary">rk_보조</span> 보조 컬럼 · 집계 · 쓰기</span>
+            <span class="item"><span class="chip legacy">coupang_·yiwu_</span> 레거시/외부 테이블</span>
+        </div>
+
+        <!-- 발주 · 스캔 · 출고 -->
+        <section class="section">
+            <h2>발주 · 스캔 · 출고</h2>
+            <p class="desc">쿠팡 발주서(rk_orders)를 중심으로 스캔·박스·출고 데이터가 연결됩니다.</p>
+            <div class="table-wrap" id="grp-order"></div>
+        </section>
+
+        <!-- 재고 -->
+        <section class="section">
+            <h2>재고</h2>
+            <p class="desc">상품 마스터(rk_inventories)와 재고 수량(rk_stocks)을 기준으로 동작합니다.</p>
+            <div class="table-wrap" id="grp-stock"></div>
+        </section>
+
+        <!-- 중국입고 -->
+        <section class="section">
+            <h2>중국입고 · 입고정리</h2>
+            <p class="desc">중국 출고코드(rk_cn_*) 단위로 입고·정리·배정이 이뤄집니다.</p>
+            <div class="table-wrap" id="grp-cn"></div>
+        </section>
+
+        <!-- 쿠팡 / 기타 -->
+        <section class="section">
+            <h2>쿠팡 물류센터 · 상품부족</h2>
+            <p class="desc">쿠팡 물류센터·예측·발주이력 등 레거시 coupang_* / 외부 테이블을 사용합니다.</p>
+            <div class="table-wrap" id="grp-cp"></div>
+        </section>
+    </main>
+
+    <script>
+        // 각 페이지 → Supabase 테이블 매핑 (실제 fetch → 라우트 → .from() 추적 결과)
+        const DATA = {
+            'grp-order': [
+                { page:'발주서 관리', route:'/rocket',
+                  primary:['rk_orders','rk_order_items'],
+                  secondary:['rk_shipping_list','rk_ship_box_items','rk_inventories'],
+                  note:'처리완료 시 rk_orders.status = DONE (삭제 아님)' },
+                { page:'바코드 스캔', route:'/scan',
+                  primary:['rk_orders','rk_order_items'],
+                  secondary:['rk_ship_boxes','rk_ship_box_items'],
+                  note:'스캔 시 rk_ship_box_* 에 기록' },
+                { page:'쉽먼트', route:'/shipment',
+                  primary:['rk_ship_boxes','rk_ship_box_items'],
+                  secondary:['rk_orders','rk_order_items','coupang_centers'],
+                  note:'스캔된 박스 기준, 발주서(rk_orders)를 기반으로 구성' },
+                { page:'출고스캔', route:'/shipScan',
+                  primary:['rk_ship_boxes','rk_ship_box_items'],
+                  secondary:['rk_orders','rk_order_items'], note:'' },
+                { page:'발주요약', route:'/summary',
+                  primary:['rk_orders','rk_order_items'],
+                  secondary:['rk_ship_box_items'], note:'처리완료(status=DONE) 관리 페이지' },
+                { page:'신규발주서', route:'/newOrder',
+                  primary:['rk_new_orders','rk_new_order_items'],
+                  secondary:['rk_shipping_list','rk_inventories','rk_stocks'], note:'' },
+            ],
+            'grp-stock': [
+                { page:'재고관리', route:'/stock',
+                  primary:['rk_stocks'], secondary:['rk_stock_histories'], note:'' },
+                { page:'상품관리(마스터)', route:'/inventory',
+                  primary:['rk_inventories'], secondary:['rk_stocks'], note:'' },
+                { page:'재고스캔', route:'/stockScan',
+                  primary:['rk_inventories','rk_stocks'], secondary:['rk_stocks'],
+                  note:'조회는 inventories+stocks, 저장은 stocks' },
+                { page:'재고준비/출고준비', route:'/stockPrepare',
+                  primary:['rk_shipping_list'],
+                  secondary:['rk_orders','rk_order_items','rk_stocks','rk_stock_histories','rk_ship_box_items'], note:'' },
+            ],
+            'grp-cn': [
+                { page:'중국입고', route:'/importChina',
+                  primary:['rk_china_imports'], secondary:['rk_orders','rk_order_items'],
+                  note:'그리드는 rk_china_imports 전용, rk_orders는 정리(배정) 시에만 사용' },
+                { page:'입고리스트', route:'/inboundList',
+                  primary:['rk_cn_shipments','rk_cn_shipment_items'],
+                  secondary:['rk_inventories'], note:'' },
+                { page:'입고정리', route:'/inboundArrange',
+                  primary:['rk_cn_shipping'],
+                  secondary:['rk_cn_shipments','rk_orders','rk_order_items','rk_shipping_list','rk_ship_box_items','rk_stocks'], note:'' },
+                { page:'재고정리', route:'/stockArrange',
+                  primary:['rk_cn_stock_arranges','rk_cn_shipping'],
+                  secondary:['rk_cn_shipment_items','rk_stocks','rk_inventories'], note:'' },
+            ],
+            'grp-cp': [
+                { page:'쿠팡 물류센터', route:'/warehouse',
+                  primary:['coupang_centers'], secondary:[], note:'' },
+                { page:'상품부족', route:'/shortage',
+                  primary:['rk_orders','rk_order_items','rk_inventories'],
+                  secondary:['rk_ship_box_items','coupang_weekly_forecast','yiwu_br_orders','rk_stocks','rk_shipping_list','coupang_order_history','coupang_order_save_temp'], note:'' },
+            ],
+        };
+
+        const isLegacy = (t) => /^(coupang_|yiwu_)/.test(t);
+        const chip = (t, kind) => `<span class="chip ${isLegacy(t)?'legacy':kind}">${t}</span>`;
+
+        function render(){
+            for(const [id, rows] of Object.entries(DATA)){
+                const el = document.getElementById(id);
+                if(!el) continue;
+                el.innerHTML = rows.map(r => `
+                    <div class="row">
+                        <div class="row-head">
+                            <a href="${r.route}">
+                                <div class="pg">${r.page}</div>
+                                <div class="rt">${r.route}</div>
+                            </a>
+                        </div>
+                        <div class="row-body">
+                            <div class="grp"><span class="lbl">주요</span>${r.primary.map(t=>chip(t,'primary')).join('')}</div>
+                            ${r.secondary.length ? `<div class="grp"><span class="lbl">보조</span>${r.secondary.map(t=>chip(t,'secondary')).join('')}</div>` : ''}
+                            ${r.note ? `<div class="note">${r.note}</div>` : ''}
+                        </div>
+                    </div>`).join('');
+            }
+        }
+
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+        render();
+    </script>
+</body>
+</html>

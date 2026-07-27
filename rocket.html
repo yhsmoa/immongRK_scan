@@ -27,6 +27,17 @@
         .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
         .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
         .sep{width:1px;height:22px;background:#e2e8f0;margin:0 2px;}
+        /* 드롭다운 (변경 / 콘솔) */
+        .dd{position:relative;display:inline-flex;}
+        .dd>.btn .caret{opacity:.5;}
+        .dd-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:158px;background:#fff;
+            border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 28px -10px rgba(15,23,42,.3);
+            padding:5px;display:none;z-index:60;}
+        .dd-menu.show{display:block;}
+        .dd-menu button{display:block;width:100%;text-align:left;padding:9px 11px;border:0;background:none;
+            border-radius:7px;font-size:13.5px;font-weight:500;color:#334155;cursor:pointer;
+            white-space:nowrap;font-family:inherit;}
+        .dd-menu button:hover{background:var(--hover);}
         .search{position:relative;margin:0 auto 16px;width:66.67%;}
         .tabletop{display:flex;align-items:center;justify-content:flex-start;margin-bottom:8px;}
         .page-size select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
@@ -167,12 +178,31 @@
                     <span class="subtitle">전체 <b id="rowCount">0</b>행 · <span id="selCount">0</span>개 선택</span>
                 </div>
                 <div class="actions">
-                    <button class="btn" onclick="openOrderPanel()">전체보기</button>
-                    <button class="btn" onclick="loadLocations()">위치 불러오기</button>
-                    <button class="btn" onclick="changeCenter()">센터변경</button>
-                    <button class="btn" onclick="changeDate()">입고일 변경</button>
+                    <button class="btn" onclick="openOrderPanel()">요약</button>
+                    <button class="btn" onclick="loadLocations()">위치</button>
+
+                    <div class="dd">
+                        <button class="btn" onclick="toggleDd(event,'ddChange')">변경
+                            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="dd-menu" id="ddChange">
+                            <button onclick="ddRun(changeCenter)">센터변경</button>
+                            <button onclick="ddRun(changeDate)">입고일 변경</button>
+                        </div>
+                    </div>
+
+                    <div class="dd">
+                        <button class="btn" onclick="toggleDd(event,'ddConsole')">콘솔
+                            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="dd-menu" id="ddConsole">
+                            <button onclick="ddRun(copyOrderConsoleScript)">콘솔 복사</button>
+                            <button onclick="ddRun(pickConsoleFile)">엑셀 저장</button>
+                        </div>
+                    </div>
+
                     <button class="btn" onclick="printRows()">인쇄</button>
-                    <button class="btn danger" onclick="deleteRows()">삭제</button>
+                    <button class="btn" onclick="completeRows()">처리완료</button>
                     <span class="sep"></span>
                     <button class="btn" onclick="saveOrders()">저장</button>
                     <button class="btn primary" onclick="document.getElementById('fileInput').click()">
@@ -180,6 +210,7 @@
                         Excel 업로드
                     </button>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="uploadExcel(this)">
+                    <input type="file" id="consoleFileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleConsoleUpload(this)">
                 </div>
             </div>
 
@@ -300,6 +331,7 @@
                 }
                 allRows=[];
                 for(const o of orders){
+                    if(o.상태==='DONE') continue;   // 처리완료 발주서는 목록에서 숨김 (데이터는 유지)
                     for(const p of (o.상품정보||[])){
                         const sl=slMap.get(`${o.발주번호}|${p.상품바코드}`);
                         allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
@@ -543,19 +575,223 @@
             }catch(e){toast('저장 실패: '+e.message);}
         }
 
-        // ── 삭제(비밀번호) ──
-        async function deleteRows(){
+        // ── 처리완료(비밀번호) : rk_orders.status = 'DONE' 로 변경 (삭제 아님) ──
+        async function completeRows(){
             const orderNumbers=selectedOrderNumbers();
-            if(!orderNumbers.length){toast('삭제할 발주서를 선택해주세요.');return;}
-            const password=await openModal({title:'발주서 삭제',desc:`${orderNumbers.length}건 삭제. 비밀번호를 입력하세요.`,password:true});
+            if(!orderNumbers.length){toast('처리완료할 발주서를 선택해주세요.');return;}
+            const password=await openModal({title:'발주서 처리완료',desc:`${orderNumbers.length}건을 처리완료로 변경합니다. 비밀번호를 입력하세요.`,password:true});
             if(password===null)return;
+            if(String(password).trim()!=='cheoqkr1!'){toast('패스워드가 올바르지 않습니다.');return;}
             try{
-                const res=await fetch('/api/orders/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers,password})});
+                const res=await fetch('/api/orders/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
                 const data=await res.json();
-                if(!res.ok){toast(data.error||'삭제 실패');return;}
-                toast(data.message||'삭제되었습니다.');
+                if(!res.ok||data.success===false){toast(data.message||'처리완료 실패');return;}
+                toast(`처리완료 (${data.updatedCount??orderNumbers.length}건)`);
                 await loadData();
-            }catch(e){toast('삭제 실패: '+e.message);}
+            }catch(e){toast('처리완료 실패: '+e.message);}
+        }
+
+        // ── 드롭다운 (변경 / 콘솔) ──
+        function toggleDd(e,id){
+            e.stopPropagation();
+            const m=document.getElementById(id);
+            const open=m.classList.contains('show');
+            closeDd();
+            if(!open) m.classList.add('show');
+        }
+        function closeDd(){document.querySelectorAll('.dd-menu.show').forEach(x=>x.classList.remove('show'));}
+        function ddRun(fn){closeDd();fn();}
+        document.addEventListener('click',closeDd);
+
+        // ── 콘솔 복사 ──
+        // status=PROCESSING 발주서 중, rk_inventories 에 sku/바코드/상품명/이미지가 완비되지 않은
+        // 상품이 있는 발주서만 서버에서 골라와 스크립트에 심는다(완비 발주서는 fetch 자체를 안 함).
+        async function copyOrderConsoleScript(){
+            try{
+                toast('추출 대상 조회 중…');
+                const res=await fetch('/api/orders/console-targets');
+                const d=await res.json();
+                if(!res.ok) throw new Error(d.error||'대상 조회 실패');
+                if(!d.orderNumbers||!d.orderNumbers.length){toast('보완이 필요한 발주서가 없습니다.');return;}
+                const script=buildOrderConsoleScript(d.orderNumbers,d.barcodes);
+                let copied=false;
+                try{await navigator.clipboard.writeText(script);copied=true;}catch(_){}
+                if(!copied){
+                    const ta=document.createElement('textarea');
+                    ta.value=script;ta.style.position='fixed';ta.style.opacity='0';
+                    document.body.appendChild(ta);ta.select();
+                    try{copied=document.execCommand('copy');}catch(_){}
+                    ta.remove();
+                }
+                const s=d.stats||{};
+                const mins=Math.ceil((d.orderNumbers.length*1.5)/60);
+                const msg=`이번 회차 발주서 ${s.batchOrders}건 · 보완 필요 상품 ${s.needItems}건`
+                    +`\n예상 소요 약 ${mins}분 (차단 방지를 위해 1.5초 간격 순차 요청)`
+                    +(s.remainingOrders?`\n남은 발주서 ${s.remainingOrders}건 — 업로드 후 다시 [콘솔 복사]`:'')
+                    +(s.skippedOrders?`\n(이미 완비된 발주서 ${s.skippedOrders}건은 제외)`:'');
+                if(copied) alert(`콘솔 스크립트를 복사했습니다.\n${msg}\n\nsupplier.coupang.com 로그인 탭 → F12 → Console 에 붙여넣어 실행하세요.\n실행이 끝나면 다운로드된 엑셀을 [콘솔 › 엑셀 저장] 으로 업로드하세요.`);
+                else prompt(`아래 스크립트를 복사해 콘솔에 붙여넣으세요.\n${msg}`,script);
+            }catch(e){toast('콘솔 스크립트 생성 실패: '+e.message);}
+        }
+
+        function buildOrderConsoleScript(ids,barcodes){
+            const IDS=JSON.stringify(ids);
+            const BCS=JSON.stringify(barcodes||[]);
+            return `/* 쿠팡 발주서 품목 추출 → 엑셀 다운로드
+   대상 발주서 ${ids.length}건 / 보완 필요 상품 ${(barcodes||[]).length}건
+   supplier.coupang.com 로그인 탭 → F12 → Console 에 붙여넣어 실행 */
+(async () => {
+  const IDS = ${IDS};
+  const NEED = new Set(${BCS});
+  const BASE = 'https://supplier.coupang.com/scm/purchase/order/get/';
+  const DELAY_MS = 1500;   // 요청 간 간격. 짧게 줄이면 봇 차단(Akamai)에 걸릴 수 있음
+  const THUMB = '492x492ex';
+  const sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  const clean = function (s) { return (s || '').replace(/\\s+/g, ' ').trim(); };
+  const toOriginal = function (u) {
+    if (!u) return '';
+    var i = u.indexOf('/image/');
+    return i === -1 ? u : 'https://img1.coupangcdn.com' + u.slice(i);
+  };
+  const toThumb = function (u) {
+    if (!u) return '';
+    var m = u.indexOf('/thumbnails/remote/');
+    if (m === -1) return u;
+    var rest = u.slice(m + 19), sl = rest.indexOf('/');
+    return sl === -1 ? u : u.slice(0, m) + '/thumbnails/remote/' + THUMB + rest.slice(sl);
+  };
+
+  var AUTH_FAIL = false;
+
+  async function parsePO(poId) {
+    var res;
+    try {
+      res = await fetch(BASE + poId, { credentials: 'include' });
+    } catch (e) {
+      // 로그인/차단 페이지로 리다이렉트되면 교차 출처가 되어 CORS 로 fetch 자체가 실패한다.
+      AUTH_FAIL = true;
+      throw new Error('요청 차단 또는 세션 만료 (' + e.message + ')');
+    }
+    if (res.redirected && res.url.indexOf('/scm/purchase/order/') === -1) {
+      AUTH_FAIL = true;
+      throw new Error('로그인 페이지로 리다이렉트됨');
+    }
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403 || res.status === 429) AUTH_FAIL = true;
+      throw new Error('HTTP ' + res.status);
+    }
+    const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+    if (!/발주상세/.test(doc.title || '')) {
+      AUTH_FAIL = true;
+      throw new Error('발주상세 페이지가 아님 — 로그인 상태를 확인하세요');
+    }
+    const hidden = doc.querySelectorAll('input[name="skuName"]');
+    const rows = [];
+    doc.querySelectorAll('tr[data-sku-seq]').forEach(function (tr, i) {
+      const a = tr.querySelector('a.sku-seq');
+      const sku = tr.getAttribute('data-sku-seq') || clean(a ? a.textContent : '');
+      const im = tr.querySelector('img[src*="coupangcdn"]');
+      const rawImg = im ? im.getAttribute('src') : '';
+      var barcode = '', name = '';
+      tr.querySelectorAll('td ul.list-group').forEach(function (ul) {
+        const li = Array.prototype.slice.call(ul.querySelectorAll('li')).map(function (x) { return clean(x.textContent); });
+        if (!li.length) return;
+        if (/^(직매입|위탁|특약|판매자|무한)/.test(li[0])) return;   // 매입유형/과세여부 칸
+        barcode = li[0]; name = li[1] || '';
+      });
+      if (!name && hidden[i]) name = clean(hidden[i].value);
+      if (NEED.size && barcode && !NEED.has(barcode)) return;        // 이미 완비된 상품은 건너뜀
+      rows.push({ 발주서: String(poId), sku: String(sku || ''), barcode: String(barcode || ''),
+                  상품명: name, 이미지: toOriginal(rawImg), 썸네일: toThumb(rawImg) });
+    });
+    console.log('[' + poId + '] 추출 ' + rows.length + '건');
+    return rows;
+  }
+
+  // 한 번에 하나씩, 간격을 두고 순차 요청한다. 실패가 차단/세션만료면 즉시 중단하고
+  // 그때까지 모은 데이터라도 파일로 저장한다(계속 두드리면 차단이 더 길어짐).
+  const all = [];
+  var okCount = 0;
+  for (var i = 0; i < IDS.length; i++) {
+    if (i > 0) await sleep(DELAY_MS);
+    try {
+      const rows = await parsePO(IDS[i]);
+      all.push.apply(all, rows);
+      okCount++;
+      console.log('진행 ' + (i + 1) + '/' + IDS.length + ' · 누적 ' + all.length + '건');
+    } catch (e) {
+      console.error('[' + IDS[i] + '] 실패: ' + e.message);
+      if (AUTH_FAIL) {
+        console.warn('%c⚠ 접근 차단/세션 만료 감지 — 즉시 중단합니다 (' + okCount + '/' + IDS.length + '건 완료)',
+                     'background:#c00;color:#fff;padding:3px 10px;font-weight:bold');
+        console.warn('브라우저에서 supplier.coupang.com 이 정상적으로 열리는지 먼저 확인하고, 잠시 후 다시 실행하세요.');
+        break;
+      }
+    }
+  }
+  if (!all.length) { console.warn('추출된 데이터가 없어 파일을 만들지 않습니다.'); return; }
+
+  const uniq = new Map();
+  all.forEach(function (r) { const k = r.barcode || r.sku; if (k && !uniq.has(k)) uniq.set(k, r); });
+  const data = Array.from(uniq.values());
+  console.log('%c총 ' + data.length + '건 (중복 제거 후)', 'background:#06c;color:#fff;padding:3px 10px;font-weight:bold');
+  console.table(data.slice(0, 50));
+
+  const bad = data.filter(function (r) { return !r.sku || !r.barcode || !r.상품명 || !r.이미지; });
+  if (bad.length) { console.warn('필드 누락 ' + bad.length + '건 — 아래 확인'); console.table(bad.slice(0, 30)); }
+  else console.log('%c✔ 모든 행에 sku/barcode/상품명/이미지 채워짐', 'color:#0a0;font-weight:bold');
+
+  // 값은 모두 문자열로 기록 (Supabase 가 text 컬럼이라 숫자 변환 방지)
+  const header = ['SKU ID', '상품명', '바코드', '이미지URL', '발주서'];
+  const aoa = [header].concat(data.map(function (d) {
+    return [String(d.sku || ''), String(d.상품명 || ''), String(d.barcode || ''), String(d.이미지 || ''), String(d.발주서 || '')];
+  }));
+  function dl(blob, name) {
+    const u = URL.createObjectURL(blob); const a = document.createElement('a');
+    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+  }
+  try {
+    if (!window.XLSX) {
+      await new Promise(function (ok, ng) {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = ok; s.onerror = ng; document.head.appendChild(s);
+      });
+    }
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '발주서추출');
+    XLSX.writeFile(wb, 'console_orders.xlsx');
+    console.log('%c✔ 엑셀 다운로드 완료: console_orders.xlsx', 'color:#0a0;font-weight:bold');
+  } catch (e) {
+    console.warn('xlsx 생성 실패 → CSV 로 대체', e);
+    const esc = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    const csv = '\\ufeff' + aoa.map(function (r) { return r.map(esc).join(','); }).join('\\r\\n');
+    dl(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'console_orders.csv');
+    console.log('%c✔ CSV 다운로드 완료: console_orders.csv', 'color:#0a0;font-weight:bold');
+  }
+  window.PO_ROWS = data;
+  console.log('%cwindow.PO_ROWS 로 원본 확인 가능', 'background:#222;color:#fff;padding:2px 6px');
+})();`;
+        }
+
+        // ── 엑셀 저장: 콘솔로 내려받은 파일 → rk_inventories upsert ──
+        function pickConsoleFile(){document.getElementById('consoleFileInput').click();}
+
+        async function handleConsoleUpload(input){
+            const file=input.files&&input.files[0];
+            if(!file)return;
+            try{
+                toast(`업로드 중… (${file.name})`);
+                const fd=new FormData();fd.append('file',file);
+                const res=await fetch('/api/inventory/upload-console-file',{method:'POST',body:fd});
+                const d=await res.json();
+                if(!res.ok) throw new Error(d.error||'업로드 실패');
+                alert(`콘솔 업로드 완료 (총 ${(d.total||0).toLocaleString()}건)\n`
+                    +`신규 ${d.added||0} · 갱신 ${d.updated||0} · 변경없음 ${d.unchanged||0}`
+                    +(d.skipped?` · 건너뜀 ${d.skipped}`:''));
+            }catch(e){toast('업로드 실패: '+e.message);}
+            finally{input.value='';}
         }
 
         // ── 센터변경 ──
@@ -717,7 +953,7 @@
                 ? bi.map(r=>`<tr>
                     <td class="c"><span class="box-emoji">📦 ${esc(r.boxNo)}번</span></td>
                     <td class="c">${esc(r.boxSize||'-')}</td>
-                    <td class="r qty-edit" contenteditable="true" data-kind="box" data-id="${esc(r.id)}" data-orig="${Number(r.qty)||0}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" oninput="updateScanSaveBtn()" onblur="sanitizeQty(this)">${Number(r.qty)||0}</td></tr>`).join('')
+                    <td class="r">${Number(r.qty)||0}</td></tr>`).join('')
                 : `<tr><td colspan="3" class="hempty">스캔된 박스가 없습니다.</td></tr>`;
             // 3) 재고 (rk_stocks): 위치 · 수량(편집)
             const stRows = st.length

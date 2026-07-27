@@ -113,6 +113,94 @@ module.exports = (io) => {
     }
   });
 
+  // ⚠️ /console-targets 도 /:orderNumber 보다 먼저 등록
+  // 콘솔 추출 대상: status=PROCESSING 발주서 중, rk_inventories 에 sku/barcode/상품명/이미지가
+  // 모두 채워지지 "않은" 상품이 하나라도 있는 발주서만 반환.
+  // → 이미 완비된 발주서는 콘솔 스크립트가 아예 fetch/DOM 파싱조차 하지 않는다(최대 절감).
+  router.get('/api/orders/console-targets', async (req, res) => {
+    try {
+      const PAGE = 1000;
+      const filled = (v) => v != null && String(v).trim() !== '';
+
+      const { data: headers, error: hErr } = await S.supabase
+        .from('rk_orders').select('id, order_number').eq('status', 'PROCESSING');
+      if (hErr) throw hErr;
+      if (!headers || !headers.length) {
+        return res.json({ orderNumbers: [], barcodes: [],
+          stats: { processingOrders: 0, targetOrders: 0, skippedOrders: 0, totalItems: 0, needItems: 0 } });
+      }
+
+      // 대상 발주서의 상품(원본행) 조회
+      const orderIds = headers.map((h) => h.id);
+      const items = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await S.supabase
+          .from('rk_order_items').select('order_id, barcode, box_info')
+          .in('order_id', orderIds)
+          .order('order_id', { ascending: true }).order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || !data.length) break;
+        items.push(...data);
+        if (data.length < PAGE) break;
+      }
+
+      // rk_inventories 에서 4개 필드가 모두 채워진 바코드 집합
+      const complete = new Set();
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await S.supabase
+          .from('rk_inventories').select('barcode, sku_id, name, img').range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || !data.length) break;
+        for (const r of data) {
+          if (filled(r.barcode) && filled(r.sku_id) && filled(r.name) && filled(r.img)) {
+            complete.add(String(r.barcode).trim());
+          }
+        }
+        if (data.length < PAGE) break;
+      }
+
+      const orderNoById = new Map(headers.map((h) => [h.id, String(h.order_number)]));
+      const needByOrder = new Map();                     // 발주번호 → Set(보완 필요 바코드)
+      let totalItems = 0;
+      for (const it of items) {
+        if (it.box_info) continue;                       // 박스행 제외
+        const bc = it.barcode == null ? '' : String(it.barcode).trim();
+        if (!bc) continue;
+        totalItems++;
+        if (complete.has(bc)) continue;                  // 이미 완비 → 추출 불필요
+        const on = orderNoById.get(it.order_id);
+        if (!on) continue;
+        if (!needByOrder.has(on)) needByOrder.set(on, new Set());
+        needByOrder.get(on).add(bc);
+      }
+
+      // 한 회차에 너무 많이 요청하면 쿠팡 측 봇 차단에 걸리므로 기본 20건씩 나눠 처리한다.
+      const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 20, 100));
+      const allTargets = [...needByOrder.keys()].sort();
+      const orderNumbers = allTargets.slice(0, limit);
+      const barcodes = new Set();
+      for (const on of orderNumbers) for (const bc of needByOrder.get(on)) barcodes.add(bc);
+
+      res.json({
+        orderNumbers,
+        barcodes: [...barcodes],
+        stats: {
+          processingOrders: headers.length,
+          targetOrders: allTargets.length,               // 보완 필요 발주서 총계
+          batchOrders: orderNumbers.length,              // 이번 회차 대상
+          remainingOrders: allTargets.length - orderNumbers.length,
+          skippedOrders: headers.length - allTargets.length,
+          totalItems,
+          needItems: barcodes.size,
+        },
+      });
+    } catch (e) {
+      console.error('[rk] orders/console-targets:', e);
+      res.status(500).json({ error: '콘솔 추출 대상 조회에 실패했습니다.' });
+    }
+  });
+
   // 발주서 목록
   router.get('/api/orders', async (req, res) => {
     try {
@@ -146,10 +234,17 @@ module.exports = (io) => {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const data = xlsx.utils.sheet_to_json(worksheet, { header: 'A' });
       const dataRows = data.slice(1);
+      // 발주번호/상품번호(sku)/바코드: 엑셀에서 숫자 타입으로 와도 Supabase 는 text 컬럼이므로
+      // 항상 문자열로 저장한다. raw 값을 그대로 문자열화해 과학적 표기·천단위 콤마 훼손을 피한다.
+      const txt = (v) => {
+        if (v == null) return '';
+        if (typeof v === 'number') return Number.isInteger(v) ? v.toFixed(0) : String(v);
+        return String(v).trim();
+      };
 
       const groupedData = {};
       dataRows.forEach((row) => {
-        const orderNumber = row['A'];
+        const orderNumber = txt(row['A']);
         if (!orderNumber) return;
         if (!groupedData[orderNumber]) {
           groupedData[orderNumber] = {
@@ -161,7 +256,7 @@ module.exports = (io) => {
         groupedData[orderNumber].발주수량 += parseInt(row['H']) || 0;
         groupedData[orderNumber].확정수량 += parseInt(row['I']) || 0;
         groupedData[orderNumber].상품정보.push({
-          상품번호: row['E'] || '', 상품바코드: row['F'] || '', 상품이름: row['G'] || '',
+          상품번호: txt(row['E']), 상품바코드: txt(row['F']), 상품이름: row['G'] || '',
           발주수량: parseInt(row['H']) || 0, 확정수량: parseInt(row['I']) || 0, 스캔수량: 0,
           '유통(소비)기한': row['J'] || '', 제조일자: row['K'] || '', 생산년도: row['L'] || '',
           납품부족사유: row['M'] || '', 회송담당자: row['N'] || '', '회송담당자 연락처': row['O'] || '',

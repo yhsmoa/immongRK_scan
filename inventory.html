@@ -21,6 +21,17 @@
         .title .flag{font-size:1.05em;}
         .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
         .sep{width:1px;height:22px;background:#e2e8f0;margin:0 2px;}
+        /* 드롭다운 (콘솔) — 발주서 페이지와 동일 */
+        .dd{position:relative;display:inline-flex;}
+        .dd>button .caret{opacity:.5;margin-left:5px;}
+        .dd-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:158px;background:#fff;
+            border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 28px -10px rgba(15,23,42,.3);
+            padding:5px;display:none;z-index:60;}
+        .dd-menu.show{display:block;}
+        .dd-menu button{display:block;width:100%;text-align:left;padding:9px 11px;border:0;background:none;
+            border-radius:7px;font-size:13.5px;font-weight:500;color:#334155;cursor:pointer;
+            white-space:nowrap;font-family:inherit;height:auto;}
+        .dd-menu button:hover{background:var(--hover,#f8fafc);}
 
         /* 버튼 (발주서 스타일) */
         .upload-section{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -333,8 +344,15 @@
                 <div class="actions upload-section">
                     <button id="registerBtn" class="upload-btn" onclick="openRegisterModal()">직접 등록</button>
                     <button id="locationSaveBtn" class="upload-btn" onclick="saveSelectedLocations()">위치저장</button>
-                    <button id="consoleCopyBtn" class="upload-btn" onclick="copyConsoleScript()">콘솔 복사</button>
-                    <button id="consoleUploadBtn" class="upload-btn" onclick="document.getElementById('consoleFileInput').click()">콘솔 업로드</button>
+                    <div class="dd">
+                        <button class="upload-btn" onclick="toggleDd(event,'ddConsole')">콘솔
+                            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="dd-menu" id="ddConsole">
+                            <button onclick="ddRun(copyConsoleScript)">콘솔 복사</button>
+                            <button onclick="ddRun(pickConsoleFile)">엑셀 저장</button>
+                        </div>
+                    </div>
                     <button id="uploadBtn" class="upload-btn primary" onclick="document.getElementById('fileInput').click()">엑셀 업로드</button>
                     <button id="discontinueBtn" class="discontinue-btn" onclick="generateDiscontinueDoc()">단종</button>
                     <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
@@ -834,6 +852,20 @@
             }
         }
 
+        // ── 드롭다운 (콘솔) ──
+        function toggleDd(e, id) {
+            e.stopPropagation();
+            const m = document.getElementById(id);
+            const open = m.classList.contains('show');
+            closeDd();
+            if (!open) m.classList.add('show');
+        }
+        function closeDd() { document.querySelectorAll('.dd-menu.show').forEach(x => x.classList.remove('show')); }
+        function ddRun(fn) { closeDd(); fn(); }
+        document.addEventListener('click', closeDd);
+
+        function pickConsoleFile() { document.getElementById('consoleFileInput').click(); }
+
         // ── 콘솔 복사: 현재 최대 SKU를 기준으로 추출 스크립트 생성 → 클립보드 복사 ──
         async function copyConsoleScript() {
             try {
@@ -950,8 +982,19 @@
             if (wrap) wrap.style.display = 'none';
             if (ov) ov.classList.add('active');
             try {
-                const buf = await file.arrayBuffer();
-                const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
+                const u8 = new Uint8Array(await file.arrayBuffer());
+                // xlsx(PK…) / 구형 xls(D0CF11E0) 는 바이너리로, 그 외(csv)는 UTF-8 텍스트로 읽는다.
+                // CSV 를 array 로 넘기면 SheetJS 가 latin1 으로 해석해 한글 헤더가 깨진다.
+                const isZip = u8.length > 1 && u8[0] === 0x50 && u8[1] === 0x4B;
+                const isOle = u8.length > 3 && u8[0] === 0xD0 && u8[1] === 0xCF && u8[2] === 0x11 && u8[3] === 0xE0;
+                let wb;
+                if (isZip || isOle) {
+                    wb = XLSX.read(u8, { type: 'array' });
+                } else {
+                    let text = new TextDecoder('utf-8').decode(u8);
+                    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);   // BOM 제거
+                    wb = XLSX.read(text, { type: 'string' });
+                }
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const raw = XLSX.utils.sheet_to_json(ws, { defval: '' }); // 첫 행을 헤더로
                 const pick = (o, keys) => { for (const k of keys) { if (o[k] != null && String(o[k]).trim() !== '') return String(o[k]).trim(); } return ''; };
@@ -960,7 +1003,7 @@
                     name: pick(o, ['상품명', '상품이름', 'name']),
                     barcode: pick(o, ['바코드', 'barcode']),
                     orderStatus: pick(o, ['발주가능상태', '발주상태', 'orderStatus']),
-                    img: pick(o, ['이미지URL', '이미지 URL', 'imageUrl', 'img']),
+                    img: pick(o, ['이미지URL', '이미지 URL', '이미지원본', '이미지썸네일', 'imageUrl', 'img']),
                 })).filter(r => r.skuId || r.barcode);
                 if (!rows.length) { if (ov) ov.classList.remove('active'); alert('업로드할 데이터가 없습니다.'); return; }
                 if (tx) tx.textContent = '콘솔 업로드 중… (' + file.name + ')';

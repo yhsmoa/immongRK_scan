@@ -419,9 +419,7 @@ router.get('/api/inventory/max-sku', async (req, res) => {
 
 // 콘솔 추출 데이터 업로드 (웹-콘솔로 뽑은 엑셀). 엑셀보다 정보는 적지만 이미지 URL 포함.
 // body: { rows:[{skuId, name, barcode, orderStatus, img}] } → 있는 값만 upsert (기존 값 미보존 덮어쓰기 방지: 빈 값은 갱신 안 함)
-router.post('/api/inventory/upload-console', async (req, res) => {
-  try {
-    const rowsIn = Array.isArray(req.body.rows) ? req.body.rows : [];
+async function upsertConsoleRows(rowsIn) {
     const now = new Date().toISOString();
     // 정리 + 파일 내 SKU 중복 제거(첫 행 우선)
     const items = [];
@@ -439,7 +437,7 @@ router.post('/api/inventory/upload-console', async (req, res) => {
         img: String(r.img == null ? '' : r.img).trim(),
       });
     }
-    if (!items.length) return res.json({ added: 0, updated: 0, unchanged: 0, skipped: 0 });
+    if (!items.length) return { added: 0, updated: 0, unchanged: 0, skipped: 0 };
 
     // 기존 매칭 조회 (SKU·바코드 in)
     const skus = items.map((i) => i.skuId).filter(Boolean);
@@ -513,10 +511,63 @@ router.post('/api/inventory/upload-console', async (req, res) => {
       skipped += results.filter((x) => x === 'err').length;
     }
 
-    res.json({ added, updated, unchanged, skipped });
+    return { added, updated, unchanged, skipped };
+}
+
+// 콘솔 추출 헤더 → 표준 필드 매핑 (rocket PO 추출본 / inventory 목록 추출본 모두 허용)
+function mapConsoleRow(o) {
+  const pick = (keys) => {
+    for (const k of keys) {
+      if (o[k] != null && String(o[k]).trim() !== '') return String(o[k]).trim();
+    }
+    return '';
+  };
+  return {
+    skuId: pick(['SKU ID', 'SKU', 'sku', 'skuId', '상품번호']),
+    name: pick(['상품명', '상품이름', 'name']),
+    barcode: pick(['바코드', 'barcode']),
+    orderStatus: pick(['발주가능상태', '발주상태', 'orderStatus']),
+    img: pick(['이미지URL', '이미지 URL', '이미지원본', '이미지썸네일', 'imageUrl', 'img']),
+  };
+}
+
+// rows(JSON) 업로드 — inventory 페이지(클라이언트에서 XLSX 파싱 후 전송)
+router.post('/api/inventory/upload-console', async (req, res) => {
+  try {
+    const rowsIn = Array.isArray(req.body.rows) ? req.body.rows : [];
+    res.json(await upsertConsoleRows(rowsIn));
   } catch (e) {
     console.error('[rk] inventory/upload-console:', e);
     res.status(500).json({ error: '콘솔 업로드 오류: ' + e.message });
+  }
+});
+
+// 파일(xlsx/csv) 업로드 — rocket 페이지(서버에서 파싱, 클라이언트 XLSX 의존 없음)
+router.post('/api/inventory/upload-console-file', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
+    const buf = req.file.buffer;
+    // xlsx(PK…) / 구형 xls(D0CF11E0) 는 바이너리로, 그 외(csv 등)는 UTF-8 텍스트로 읽는다.
+    // CSV 를 buffer 로 넘기면 SheetJS 가 latin1 으로 해석해 한글 헤더가 깨진다.
+    const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
+    const isOle = buf.length > 3 && buf[0] === 0xd0 && buf[1] === 0xcf && buf[2] === 0x11 && buf[3] === 0xe0;
+    let wb;
+    if (isZip || isOle) {
+      wb = xlsx.read(buf, { type: 'buffer' });
+    } else {
+      let text = buf.toString('utf8');
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);   // BOM 제거
+      wb = xlsx.read(text, { type: 'string' });
+    }
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const raw = xlsx.utils.sheet_to_json(ws, { defval: '' });
+    const rows = raw.map(mapConsoleRow).filter((r) => r.skuId || r.barcode);
+    if (!rows.length) return res.status(400).json({ error: '업로드할 데이터가 없습니다.' });
+    const result = await upsertConsoleRows(rows);
+    res.json({ ...result, total: rows.length });
+  } catch (e) {
+    console.error('[rk] inventory/upload-console-file:', e);
+    res.status(500).json({ error: '콘솔 파일 업로드 오류: ' + e.message });
   }
 });
 
