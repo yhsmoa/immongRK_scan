@@ -117,14 +117,11 @@
         .qty-badge{font-size:15px;font-weight:700;color:#F0492F;white-space:nowrap;font-variant-numeric:tabular-nums;}
         .row .nm{font-size:13px;color:#5a6178;line-height:1.45;word-break:break-word;}
         /* 준비값: 2줄 레이아웃과 무관하게 행 전체 기준 세로 중앙 (파란 동그라미) */
-        .prep-dot{flex:none;align-self:center;width:46px;height:46px;border-radius:50%;
+        .prep-dot{flex:none;align-self:center;width:46px;height:46px;
             display:flex;align-items:center;justify-content:center;
             font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;
-            background:var(--primary);color:#fff;}
-        .prep-dot.empty{background:#f0f1f6;color:#c4c8d6;}   /* 미입력 */
-        .prep-dot.full{background:#16a34a;}                  /* 발주수량과 일치 */
-        .prep-dot.partial{background:#eab308;}               /* 0 < 준비 < 발주수량 */
-        .prep-dot.zero{background:#F0492F;}                  /* 0 */
+            color:var(--primary);}                           /* 값이 있으면 파란 숫자만 */
+        .prep-dot.empty{color:#c4c8d6;}                      /* 미입력 */
         .empty-row{padding:40px 12px;text-align:center;color:var(--muted);font-size:14px;}
         .listwrap::-webkit-scrollbar{width:10px;}
         .listwrap::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
@@ -423,9 +420,6 @@
             }
             el.innerHTML=o.items.map((it,i)=>{
                 const prep=it.준비!=null;
-                // 준비수량 색: 발주수량과 일치=초록 / 일부=노랑 / 0=주황 / 미입력=회색
-                const need=Number(it.수량)||0, pv=Number(it.준비)||0;
-                const dotCls=!prep?'empty':(pv===0?'zero':(pv>=need?'full':'partial'));
                 return `<div class="row ${i===curIdx?'cur':''}" onclick="curIdx=${i};renderCur();">
                     <div class="idx">${i+1}</div>
                     <div class="info">
@@ -436,7 +430,7 @@
                         </div>
                         <div class="nm">${modelBadge(it.상품명)}</div>
                     </div>
-                    <div class="prep-dot ${dotCls}">${prep?it.준비:''}</div>
+                    <div class="prep-dot ${prep?'':'empty'}">${prep?it.준비:''}</div>
                 </div>`;
             }).join('');
         }
