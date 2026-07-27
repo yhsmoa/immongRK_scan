@@ -322,6 +322,28 @@ module.exports = (io) => {
     }
   });
 
+  // 준비수량 저장 (출고준비 화면) — null 이면 미입력으로 되돌림
+  router.post('/api/orders/update-prepared', async (req, res) => {
+    try {
+      const { orderNumber, barcode, prepared } = req.body;
+      if (!orderNumber || !barcode)
+        return res.status(400).json({ success: false, error: '발주번호와 바코드가 필요합니다.' });
+      const orderId = await S.getOrderId('rk_orders', orderNumber);
+      if (!orderId) return res.status(404).json({ success: false, error: '발주서를 찾을 수 없습니다.' });
+      const value = prepared === null || prepared === undefined || prepared === '' ? null : S.toInt(prepared);
+      const { data, error } = await S.supabase.from('rk_order_items')
+        .update({ prepared_qty: value })
+        .eq('order_id', orderId).eq('barcode', barcode).is('box_info', null)
+        .select('id');
+      if (error) throw error;
+      if (!data || !data.length) return res.status(404).json({ success: false, error: '상품을 찾을 수 없습니다.' });
+      res.json({ success: true, prepared: value });
+    } catch (e) {
+      console.error('[rk] update-prepared:', e);
+      res.status(500).json({ success: false, error: '준비수량 저장 중 오류가 발생했습니다.' });
+    }
+  });
+
   // 입고일 변경 (벌크)
   router.post('/api/orders/update-date', async (req, res) => {
     try {

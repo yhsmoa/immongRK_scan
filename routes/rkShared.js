@@ -82,6 +82,7 @@ function itemToKorean(it) {
     입고1: dash(it.receiving_1),
     입고2: dash(it.receiving_2),
     위치: dash(it.location),
+    준비: it.prepared_qty == null ? null : it.prepared_qty,   // 출고준비 입력값 (미입력=null)
   };
   if (it.box_info) obj.박스정보 = it.box_info;
   return obj;

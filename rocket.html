@@ -242,10 +242,10 @@
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>발주번호</th><th>물류센터</th><th>상품번호</th><th class="c-barcode">상품바코드</th><th>상품명</th>
-                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">준비</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th>입고예정일</th><th class="c-created">created_at</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="14">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="15">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
@@ -337,6 +337,7 @@
                         allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
                             상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
                             발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:scanMap[`${o.발주번호}|${p.상품바코드}`]||0,
+                            준비:(p.준비==null?null:p.준비),
                             재고:(sl&&sl.재고>0)?sl.재고:null,입고V2:(sl&&sl.입고>0)?sl.입고:null,
                             재고위치:(sl&&sl.재고위치&&sl.재고위치.length)?sl.재고위치:null,
                             입고1:p.입고1,위치:p.위치,created_at:o.created_at});
@@ -344,7 +345,7 @@
                 }
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="14">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="15">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -355,7 +356,7 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(pageRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="14">표시할 발주 상품이 없습니다.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="15">표시할 발주 상품이 없습니다.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map((r,li)=>{
                     const i=start+li;
@@ -371,6 +372,7 @@
                         <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
                         <td class="num dt">${esc(r.발주수량)}</td><td class="num dt">${esc(r.확정수량)}</td>
                         <td class="num dt">${scanHtml}</td>
+                        <td class="ctr dt">${r.준비==null?'':esc(r.준비)}</td>
                         <td class="ctr dt">${dashCell(r.재고)}</td>
                         <td class="ctr dt">${dashCell(r.입고V2)}</td><td>${stockLocCell(r)}</td><td>${esc(r.입고예정일)}</td><td class="c-created">${esc(fmtCreatedAt(r.created_at))}</td>
                     </tr>`;
