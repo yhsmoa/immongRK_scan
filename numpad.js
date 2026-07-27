@@ -19,6 +19,11 @@
   .np-btns{display:flex;gap:8px;margin-top:12px;}
   .np-btns button{flex:1;height:46px;border-radius:9px;border:1px solid #e2e8f0;background:#fff;font-size:14px;font-weight:600;color:#334155;cursor:pointer;}
   .np-btns .np-ok{background:#4f46e5;color:#fff;border-color:#4f46e5;}
+  .np-btns .np-ok:disabled{background:#c7c9e8;border-color:#c7c9e8;color:#fff;cursor:default;}
+  /* 상한 초과 — 값을 임의로 깎지 않고 그대로 보여주되 확인을 막는다 */
+  .np-display.np-over{border-color:#fca5a5;color:#dc2626;}
+  .np-hint{display:none;font-size:12px;font-weight:600;color:#dc2626;margin:-8px 0 10px;}
+  .np-hint.show{display:block;}
   `;
   function init() {
     if (window.NumPad) return;
@@ -27,6 +32,7 @@
     back.innerHTML = `<div class="np">
       <p class="np-title" id="__npTitle"></p>
       <div class="np-display" id="__npDisplay">0</div>
+      <p class="np-hint" id="__npHint"></p>
       <div class="np-grid">
         <button data-d="1">1</button><button data-d="2">2</button><button data-d="3">3</button>
         <button data-d="4">4</button><button data-d="5">5</button><button data-d="6">6</button>
@@ -38,15 +44,27 @@
     document.body.appendChild(back);
     const disp = back.querySelector('#__npDisplay');
     const titleEl = back.querySelector('#__npTitle');
+    const hintEl = back.querySelector('#__npHint');
+    const okEl = back.querySelector('.np-ok');
     const np = back.querySelector('.np');
     let val = '', fresh = false, min = 1, max = null, onConfirm = null;
-    const upd = () => { disp.textContent = val || '0'; };
+    // 상한을 넘으면 값을 상한으로 깎지 않는다(잘못 입력한 걸 모르고 저장하는 실수 방지).
+    // 입력한 값을 그대로 보여주고 '확인'만 막는다.
+    const upd = () => {
+      disp.textContent = val || '0';
+      const n = parseInt(val, 10);
+      const over = (max != null && Number.isFinite(n) && n > max);
+      const invalid = !Number.isFinite(n) || n < min || over;
+      disp.classList.toggle('np-over', over);
+      hintEl.classList.toggle('show', over);
+      hintEl.textContent = over ? `최대 ${max} 까지 입력할 수 있습니다.` : '';
+      okEl.disabled = invalid;
+    };
     function tap(d) {
       if (d === 'C') { val = ''; fresh = false; upd(); return; }
       if (d === 'back') { fresh = false; val = val.slice(0, -1); upd(); return; }
       if (fresh) { val = ''; fresh = false; }           // 첫 숫자 입력 → 기존값 초기화
       val = (val + d).replace(/^0+(?=\d)/, '').slice(0, 6);
-      if (max != null && parseInt(val, 10) > max) val = String(max); // 상한 초과 시 상한으로 고정
       upd();
     }
     back.querySelectorAll('.np-grid button').forEach(b => b.onclick = () => tap(b.dataset.d));
@@ -54,9 +72,10 @@
     back.querySelector('.np-cancel').onclick = close;
     np.onclick = e => e.stopPropagation();
     back.onclick = close; // 배경 클릭 닫기
-    back.querySelector('.np-ok').onclick = () => {
+    okEl.onclick = () => {
       const n = parseInt(val, 10);
-      if (!Number.isFinite(n) || n < min) { return; }
+      if (!Number.isFinite(n) || n < min) return;
+      if (max != null && n > max) return;              // 상한 초과는 확정 불가
       const cb = onConfirm; close(); if (cb) cb(n);
     };
     window.NumPad = {
