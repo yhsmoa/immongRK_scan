@@ -52,7 +52,7 @@
         .need-row .k{font-size:14px;color:#7a8199;font-weight:600;}
         .need-row .v{font-size:44px;font-weight:800;color:#F0492F;line-height:1;margin-left:auto;font-variant-numeric:tabular-nums;}
 
-        /* 준비 / 재고 입력 */
+        /* 예정 / 준비 입력 */
         .inputs{display:flex;gap:14px;margin-bottom:12px;}
         .inputbtn{flex:1;text-align:left;cursor:pointer;border:2px solid var(--line);background:#fff;
             border-radius:18px;padding:16px 20px;font-family:inherit;transition:transform .08s,border-color .12s;}
@@ -64,7 +64,7 @@
         .inputbtn.filled-stock{border-color:#f0c98a;background:#fff7ed;}
         .inputbtn.filled-stock .num{color:var(--ink);}
 
-        /* 이전 / 없음 / 다음 — 준비·재고 바로 아래 */
+        /* 이전 / 없음 / 다음 — 예정·준비 바로 아래 */
         .nav-row{display:flex;gap:12px;}
         .nav-btn{flex:1;height:64px;border-radius:16px;font-family:inherit;font-size:20px;font-weight:700;
             cursor:pointer;border:2px solid var(--line);background:#fff;color:#5a6178;transition:transform .08s;}
@@ -169,19 +169,19 @@
                         </div>
                     </div>
 
-                    <!-- 준비 / 재고 -->
+                    <!-- 예정 / 준비 -->
                     <div class="inputs">
+                        <button class="inputbtn" id="stockBtn" onclick="editVal('stock')">
+                            <div class="k">예정</div>
+                            <div class="num" id="valStock">—</div>
+                        </button>
                         <button class="inputbtn" id="prepBtn" onclick="editVal('prep')">
                             <div class="k">준비</div>
                             <div class="num" id="valPrep">—</div>
                         </button>
-                        <button class="inputbtn" id="stockBtn" onclick="editVal('stock')">
-                            <div class="k">재고</div>
-                            <div class="num" id="valStock">—</div>
-                        </button>
                     </div>
 
-                    <!-- 이전 / 없음 / 다음 (준비·재고 바로 아래) -->
+                    <!-- 이전 / 없음 / 다음 (예정·준비 바로 아래) -->
                     <div class="nav-row">
                         <button class="nav-btn" id="prevBtn" onclick="movePrev()">← 이전</button>
                         <button class="nav-btn none" id="noneBtn" onclick="markNone()">없음</button>
@@ -227,17 +227,33 @@
 
         // URL ?orders=a,b,c → 선택 발주번호
         const selNos=(new URLSearchParams(location.search).get('orders')||'').split(',').map(s=>s.trim()).filter(Boolean);
-        let orders=[];         // [{발주번호,물류센터,발주수량,스캔수량,items:[{위치,바코드,상품명,수량,준비,재고}]}]
+        let orders=[];         // [{발주번호,물류센터,발주수량,스캔수량,items:[{위치,바코드,상품명,수량,준비,예정}]}]
         let activeNo=null;     // 현재 발주서
         let curIdx=0;          // 현재 품목 인덱스
 
         async function loadData(){
             try{
                 // 발주서 + 출고스캔(rk_ship_box_items) 병렬 — 스캔수량은 출고스캔 기준
-                const [res,scRes]=await Promise.all([fetch('/api/orders'), fetch('/api/ship-scan/scanned-map')]);
+                // 발주서 + 출고스캔 + 출고예정(newOrder 의 [준비] 로 저장된 rk_shipping_list)
+                const [res,scRes,slRes]=await Promise.all([
+                    fetch('/api/orders'),
+                    fetch('/api/ship-scan/scanned-map'),
+                    fetch('/api/shipping-list?source='+encodeURIComponent('재고')+'&status='+encodeURIComponent('출고예정'))
+                ]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const data=await res.json();
                 const scanMap=scRes.ok?await scRes.json():{};
+                // 발주번호|바코드 → [{location,qty}] (출고예정 저장분)
+                const slMap=new Map();
+                if(slRes.ok){
+                    for(const s of await slRes.json()){
+                        const k=`${s.orderNumber}|${s.barcode}`;
+                        if(!slMap.has(k)) slMap.set(k,[]);
+                        slMap.get(k).push({location:s.location||'', qty:Number(s.qty)||0});
+                    }
+                    for(const v of slMap.values())
+                        v.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
+                }
                 const scanByOrder=new Map();
                 for(const k in scanMap){ const on=k.split('|')[0]; scanByOrder.set(on,(scanByOrder.get(on)||0)+(Number(scanMap[k])||0)); }
                 orders=data.filter(o=>selNos.includes(o.발주번호)).map(o=>{
@@ -247,21 +263,54 @@
                         if(p.박스정보) continue;
                         if(seen.has(p.상품바코드)) continue;
                         seen.add(p.상품바코드);
-                        items.push({위치:p.위치||'-', 바코드:p.상품바코드, 상품명:p.상품이름, 수량:Number(p.확정수량)||0,
-                            준비:(p.준비==null?null:Number(p.준비)), 재고:null});
+                        // 출고예정 저장분이 있으면 그 수량·위치를 쓰고, 없으면 아래에서 재고 위치로 대체
+                        const sl=slMap.get(`${o.발주번호}|${p.상품바코드}`);
+                        const slLocs=(sl||[]).map(x=>x.location).filter(Boolean);
+                        items.push({
+                            위치: slLocs.length?slLocs.join(' · '):(p.위치||'-'),
+                            바코드:p.상품바코드, 상품명:p.상품이름, 수량:Number(p.확정수량)||0,
+                            준비:(p.준비==null?null:Number(p.준비)),
+                            예정: sl?sl.reduce((s,x)=>s+x.qty,0):null,
+                            위치확정: slLocs.length>0,   // 출고예정 저장분 위치 → 재고위치로 덮어쓰지 않음
+                            원위치: p.위치||'-'
+                        });
                     }
-                    // 작업 동선에 맞춰 위치 오름차순 정렬 (위치 없는 건 뒤로)
-                    items.sort((a,b)=>{
+                    return {발주번호:o.발주번호, 물류센터:o.물류센터||'', 발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0, items};
+                });
+                // 출고예정 저장분이 없는 품목은 rk_stocks 위치로 채운다 (정렬 전에 수행)
+                await fillStockLocations();
+                // 작업 동선에 맞춰 위치 오름차순 정렬 (위치 없는 건 뒤로)
+                for(const o of orders){
+                    o.items.sort((a,b)=>{
                         const an=(a.위치||'-')==='-', bn=(b.위치||'-')==='-';
                         if(an!==bn) return an?1:-1;
                         return String(a.위치).localeCompare(String(b.위치),'ko',{numeric:true});
                     });
-                    return {발주번호:o.발주번호, 물류센터:o.물류센터||'', 발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0, items};
-                });
+                }
                 document.getElementById('ordCount').textContent=orders.length;
                 renderOrders();
                 if(orders.length){ selectOrder(orders[0].발주번호); }
             }catch(e){ toast('데이터 로드 실패: '+e.message); }
+        }
+
+        // 출고예정 저장분이 없는 품목 → rk_stocks 의 위치로 채운다.
+        // 재고가 0 이거나 NULL 이어도 위치가 등록돼 있으면 그 위치를 잡아준다.
+        async function fillStockLocations(){
+            const need=[];
+            for(const o of orders) for(const it of o.items) if(!it.위치확정) need.push(it.바코드);
+            const barcodes=[...new Set(need.filter(Boolean))];
+            if(!barcodes.length) return;
+            try{
+                const res=await fetch('/api/stocks/locations',{method:'POST',
+                    headers:{'Content-Type':'application/json'},body:JSON.stringify({barcodes})});
+                if(!res.ok) return;
+                const map=await res.json();
+                for(const o of orders) for(const it of o.items){
+                    if(it.위치확정) continue;
+                    const locs=map[it.바코드];
+                    if(locs&&locs.length) it.위치=locs.map(x=>x.location).join(' · ');
+                }
+            }catch(_){ /* 재고 위치 조회 실패 시 기존 위치 유지 */ }
         }
 
         function renderOrders(){
@@ -298,11 +347,11 @@
             // 진행률
             document.getElementById('progVal').textContent=`${total?curIdx+1:0} / ${total}`;
             document.getElementById('progFill').style.width=total?`${Math.round((curIdx+1)/total*100)}%`:'0%';
-            // 준비 / 재고
+            // 예정 / 준비
             const vp=document.getElementById('valPrep'), vs=document.getElementById('valStock');
-            const hasPrep=!!(it&&it.준비!=null), hasStock=!!(it&&it.재고!=null);
+            const hasPrep=!!(it&&it.준비!=null), hasStock=!!(it&&it.예정!=null);
             vp.textContent=hasPrep?it.준비:'—';
-            vs.textContent=hasStock?it.재고:'—';
+            vs.textContent=hasStock?it.예정:'—';
             document.getElementById('prepBtn').classList.toggle('filled-prep',hasPrep);
             document.getElementById('stockBtn').classList.toggle('filled-stock',hasStock);
             // 이동 버튼
@@ -314,25 +363,25 @@
 
         function movePrev(){ if(curIdx>0){ curIdx--; renderCur(); } }
         function moveNext(){ const o=activeOrder(); if(o&&curIdx<o.items.length-1){ curIdx++; renderCur(); } }
-        // 없음: 현재 상품 재고=0 표시 후 다음으로
+        // 없음: 현재 상품 예정=0 표시 후 다음으로
         function markNone(){
             const o=activeOrder(); const it=o&&o.items[curIdx];
             if(!it){ toast('품목이 없습니다.'); return; }
-            it.재고=0; renderCur(); renderItems();
+            it.예정=0; renderCur(); renderItems();
             moveNext();
         }
 
-        // 준비/재고 입력 (공용 숫자패드 numpad.js)
+        // 예정/준비 입력 (공용 숫자패드 numpad.js)
         function editVal(kind){
             const o=activeOrder(); const it=o&&o.items[curIdx];
             if(!it){ toast('품목이 없습니다.'); return; }
-            const cap=kind==='prep'?'준비':'재고';
-            const cur=kind==='prep'?it.준비:it.재고;
-            // 준비는 수량(확정수량)을 초과할 수 없음. 재고는 상한 없음.
+            const cap=kind==='prep'?'준비':'예정';
+            const cur=kind==='prep'?it.준비:it.예정;
+            // 준비는 수량(확정수량)을 초과할 수 없음. 예정은 상한 없음.
             const opts={ title:`${cap} 수량 · <b>${esc(it.바코드)}</b>`, value:cur==null?0:cur, min:0,
                 onConfirm:(n)=>{
                     if(kind==='prep'){ it.준비=n; savePrepared(o.발주번호,it,n); }
-                    else it.재고=n;
+                    else it.예정=n;
                     renderCur(); renderItems();
                 } };
             if(kind==='prep') opts.max=Number(it.수량)||0;

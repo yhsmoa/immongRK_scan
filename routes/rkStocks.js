@@ -246,6 +246,42 @@ router.post('/api/stocks/lookup', async (req, res) => {
 });
 
 // 재고스캔 저장 — 같은 위치+바코드가 있으면 수량 합산, 없으면 신규
+// 바코드별 재고 위치 목록 (수량이 0/NULL 이어도 위치가 있으면 포함).
+// 출고준비 화면에서 출고예정 저장분이 없을 때 '재고 위치'를 잡아주는 용도.
+// 반환: { "바코드": [{ location, qty }] }  — location 오름차순
+router.post('/api/stocks/locations', async (req, res) => {
+  try {
+    const barcodes = [...new Set((Array.isArray(req.body.barcodes) ? req.body.barcodes : [])
+      .map(b => String(b || '').trim()).filter(Boolean))];
+    if (!barcodes.length) return res.json({});
+    const out = {};
+    const BATCH = 200;
+    for (let i = 0; i < barcodes.length; i += BATCH) {
+      const chunk = barcodes.slice(i, i + BATCH);
+      let from = 0; const PAGE = 1000;
+      while (true) {
+        const { data, error } = await sb.from('rk_stocks')
+          .select('barcode, location, qty').in('barcode', chunk).range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || !data.length) break;
+        for (const s of data) {
+          const loc = String(s.location || '').trim();
+          if (!loc || loc === '-') continue;
+          if (!out[s.barcode]) out[s.barcode] = [];
+          out[s.barcode].push({ location: loc, qty: (s.qty == null ? null : (parseInt(s.qty, 10) || 0)) });
+        }
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+    }
+    for (const k in out) out[k].sort((a, b) => a.location.localeCompare(b.location, 'ko', { numeric: true }));
+    res.json(out);
+  } catch (e) {
+    console.error('[rk] stocks/locations:', e);
+    res.status(500).json({ error: '재고 위치 조회 실패: ' + e.message });
+  }
+});
+
 router.post('/api/stocks/scan-save', async (req, res) => {
   try {
     const items = Array.isArray(req.body.items) ? req.body.items : [];
