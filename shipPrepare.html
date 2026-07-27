@@ -38,9 +38,9 @@
         .sec-head .sub{font-size:13px;color:var(--muted);}
 
         /* 위치 대형 카드 */
-        .loc-card{background:#9b9ef5;border-radius:20px;padding:20px 26px;color:#fff;
-            box-shadow:0 12px 28px rgba(79,70,229,.14);margin-bottom:14px;}
-        .loc-card .lbl{font-size:15px;font-weight:600;opacity:.8;letter-spacing:2px;}
+        .loc-card{background:#fff;border:1px solid #e4e7f0;border-radius:20px;padding:20px 26px;color:var(--primary);
+            box-shadow:0 2px 8px rgba(30,34,51,.05);margin-bottom:14px;}
+        .loc-card .lbl{font-size:15px;font-weight:600;color:#7a8199;letter-spacing:2px;}
         .loc-card .big{font-size:72px;font-weight:700;line-height:1.05;letter-spacing:1px;margin-top:4px;word-break:break-all;}
 
         /* 상품 카드 — 바코드 배지 → 상품명 → 담아야 할 수량 */
@@ -57,6 +57,9 @@
         .inputbtn{flex:1;text-align:left;cursor:pointer;border:2px solid var(--line);background:#fff;
             border-radius:18px;padding:16px 20px;font-family:inherit;transition:transform .08s,border-color .12s;}
         .inputbtn:active{transform:scale(.98);}
+        /* 표시 전용(예정) — 클릭/입력 불가 */
+        .inputbtn.readonly{cursor:default;}
+        .inputbtn.readonly:active{transform:none;}
         .inputbtn .k{font-size:15px;font-weight:600;color:#7a8199;margin-bottom:4px;}
         .inputbtn .num{font-size:42px;font-weight:700;line-height:1;color:#c4c8d6;font-variant-numeric:tabular-nums;}
         .inputbtn.filled-prep{border-color:#86d5a3;background:#f0fdf4;}
@@ -105,11 +108,10 @@
         .row .info{flex:1;min-width:0;}
         /* 상단: 위치배지 · 바코드배지 · 수량 */
         .row .top{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:5px;}
-        /* 위치=파란 배경+흰 글씨(좌측 위치카드와 동일 톤) · 바코드/수량=배지 없이 파란 글씨 · 폰트 크기 통일 */
-        /* 위치 배경·바코드 폰트는 왼쪽(loc-card / bc-badge)과 동일 톤으로 맞춤 */
-        .loc-badge{font-size:15px;font-weight:700;color:#fff;background:#9b9ef5;
+        /* 위치=진한 파란 배경+흰 글씨(가독성) · 바코드=상품명과 같은 색 · 수량=주황 */
+        .loc-badge{font-size:15px;font-weight:700;color:#fff;background:var(--primary);
             padding:2px 10px;border-radius:7px;white-space:nowrap;}
-        .bc-badge-sm{font-size:18px;font-weight:700;color:#4f46e5;font-variant-numeric:tabular-nums;white-space:nowrap;}
+        .bc-badge-sm{font-size:18px;font-weight:700;color:#5a6178;font-variant-numeric:tabular-nums;white-space:nowrap;}
         .qty-badge{font-size:15px;font-weight:700;color:#F0492F;white-space:nowrap;font-variant-numeric:tabular-nums;}
         .row .nm{font-size:13px;color:#5a6178;line-height:1.45;word-break:break-word;}
         /* 준비값: 2줄 레이아웃과 무관하게 행 전체 기준 세로 중앙 (파란 동그라미) */
@@ -171,10 +173,11 @@
 
                     <!-- 예정 / 준비 -->
                     <div class="inputs">
-                        <button class="inputbtn" id="stockBtn" onclick="editVal('stock')">
+                        <!-- 예정: 출고예정/재고에서 잡힌 값이라 직접 입력하지 않는다 (표시 전용) -->
+                        <div class="inputbtn readonly" id="stockBtn">
                             <div class="k">예정</div>
                             <div class="num" id="valStock">—</div>
-                        </button>
+                        </div>
                         <button class="inputbtn" id="prepBtn" onclick="editVal('prep')">
                             <div class="k">준비</div>
                             <div class="num" id="valPrep">—</div>
