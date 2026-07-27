@@ -73,7 +73,7 @@
         .search input::placeholder{color:var(--muted);}
         .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
         .table-scroll{overflow:auto;max-height:calc(100vh - 250px);}
-        table{width:100%;border-collapse:collapse;min-width:1270px;table-layout:fixed;}
+        table{width:100%;border-collapse:collapse;min-width:1322px;table-layout:fixed;}
         thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 8px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
         thead th.num,thead th.ctr{text-align:center;}
         tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
@@ -235,8 +235,24 @@
 
             <div class="table-scroll">
                 <table>
+                    <!-- ⚠ table-layout:fixed — col 개수와 th 개수가 반드시 같아야 한다.
+                         col 이 없는 열은 남은 폭을 전부 가져가 레이아웃이 깨진다. -->
                     <colgroup>
-                        <col style="width:40px"><col style="width:82px"><col style="width:78px"><col style="width:82px"><col style="width:120px"><col><col style="width:46px"><col style="width:46px"><col style="width:52px"><col style="width:52px"><col style="width:50px"><col style="width:84px"><col style="width:76px"><col style="width:99px">
+                        <col style="width:40px">   <!-- 체크 -->
+                        <col style="width:82px">   <!-- 발주번호 -->
+                        <col style="width:78px">   <!-- 물류센터 -->
+                        <col style="width:82px">   <!-- 상품번호 -->
+                        <col style="width:120px">  <!-- 상품바코드 -->
+                        <col>                      <!-- 상품명 (남은 폭) -->
+                        <col style="width:46px">   <!-- 발주 -->
+                        <col style="width:46px">   <!-- 확정 -->
+                        <col style="width:52px">   <!-- 스캔 -->
+                        <col style="width:52px">   <!-- 준비 -->
+                        <col style="width:52px">   <!-- 재고 -->
+                        <col style="width:50px">   <!-- 입고 -->
+                        <col style="width:84px">   <!-- 위치 -->
+                        <col style="width:76px">   <!-- 입고예정일 -->
+                        <col style="width:99px">   <!-- created_at -->
                     </colgroup>
                     <thead>
                         <tr>
