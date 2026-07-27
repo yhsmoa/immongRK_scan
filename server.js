@@ -3051,8 +3051,12 @@ app.get('/api/shortage', async (req, res) => {
 
         // 2단계: 상품바코드 기준으로 그룹화 (기간 필터 적용)
         const barcodeMap = new Map();
+        // 집계 대상이 된 (발주번호|바코드) 조합. 출고스캔 합산을 이 범위로 제한한다.
+        // 바코드만으로 합치면 삭제된 발주서에 남은 스캔까지 섞여 FAIL 이 음수가 된다.
+        const validPairs = new Set();
 
-        orders.forEach(orderObj => {
+        // 처리완료(DONE) 발주서는 집계에서 제외 — 발주수량·출고스캔 양쪽 모두 빠진다
+        orders.filter(o => (o.상태 || 'PROCESSING') !== 'DONE').forEach(orderObj => {
             const processedBarcodes = new Set();
 
             // 박스정보 없는 원본 상품만 대상 (중복 방지 - /api/orders와 동일한 로직)
@@ -3060,6 +3064,7 @@ app.get('/api/shortage', async (req, res) => {
                 const barcode = product.상품바코드;
                 if (!barcode || processedBarcodes.has(barcode)) return;
                 processedBarcodes.add(barcode);
+                validPairs.add(orderObj.발주번호 + '|' + barcode);
 
                 if (barcodeMap.has(barcode)) {
                     const existing = barcodeMap.get(barcode);
@@ -3089,6 +3094,7 @@ app.get('/api/shortage', async (req, res) => {
                 const barcode = product.상품바코드;
                 if (!barcode || processedBarcodes.has(barcode)) return;
                 processedBarcodes.add(barcode);
+                validPairs.add(orderObj.발주번호 + '|' + barcode);
 
                 if (barcodeMap.has(barcode)) {
                     const existing = barcodeMap.get(barcode);
@@ -3121,10 +3127,15 @@ app.get('/api/shortage', async (req, res) => {
             const batch = bcAll.slice(i, i + 200);
             let from = 0; const PAGE = 1000;
             while (true) {
-                const { data, error } = await supabase.from('rk_ship_box_items').select('barcode, qty').in('barcode', batch).range(from, from + PAGE - 1);
+                const { data, error } = await supabase.from('rk_ship_box_items').select('order_number, barcode, qty').in('barcode', batch).range(from, from + PAGE - 1);
                 if (error) { console.error('rk_ship_box_items 조회 오류:', error); break; }
                 if (!data || data.length === 0) break;
-                data.forEach(r => { if (r.barcode) shipScanMap.set(r.barcode, (shipScanMap.get(r.barcode) || 0) + (parseInt(r.qty) || 0)); });
+                data.forEach(r => {
+                    if (!r.barcode || !r.order_number) return;
+                    // 집계 대상 발주서의 스캔만 반영 (삭제/기간외 발주서의 잔여 스캔 제외)
+                    if (!validPairs.has(r.order_number + '|' + r.barcode)) return;
+                    shipScanMap.set(r.barcode, (shipScanMap.get(r.barcode) || 0) + (parseInt(r.qty) || 0));
+                });
                 if (data.length < PAGE) break;
                 from += PAGE;
             }
