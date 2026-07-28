@@ -227,11 +227,11 @@
             font-size: 11px; font-weight: 700; line-height: 1.6; white-space: nowrap;
             font-variant-numeric: tabular-nums; border: 1px solid transparent; }
         .cp-badge i { font-style: normal; font-weight: 600; opacity: .75; }
-        .cp-star   { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
-        .cp-price  { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
-        .cp-stock  { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
-        .cp-stock0 { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
-        .cp-dim    { background: #f5f6f8; color: #94a3b8; border-color: #e5e9f0; }
+        /* 가격=회색 · 재고>0=파랑/0=회색 · 평점>=3=초록/미만=주황 (평점없음=회색) */
+        .cp-gray   { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+        .cp-blue   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        .cp-green  { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+        .cp-orange { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
 
         td.name-cell {
             text-align: left;
@@ -1153,22 +1153,23 @@
             if (!c) return '';
             const n = (v) => (v == null ? null : Number(v));
             const out = [];
-            // 평점(리뷰수) — 리뷰 없으면 회색
+            // 평점(리뷰수) — 3점 이상 초록 / 3점 미만 주황 / 평점 없으면 회색
             const rating = n(c.rating), review = n(c.review);
             if (rating != null || review != null) {
-                const has = (review || 0) > 0;
-                out.push('<span class="cp-badge ' + (has ? 'cp-star' : 'cp-dim') + '">★ '
+                const has = (review || 0) > 0 && rating != null;
+                const cls = !has ? 'cp-gray' : (rating >= 3 ? 'cp-green' : 'cp-orange');
+                out.push('<span class="cp-badge ' + cls + '">★ '
                     + (rating != null ? rating.toFixed(1) : '-')
                     + ' <i>(' + (review != null ? review.toLocaleString() : 0) + ')</i></span>');
             }
-            // 가격
+            // 가격 — 항상 회색
             const price = n(c.price);
-            if (price != null) out.push('<span class="cp-badge cp-price">' + price.toLocaleString() + '원</span>');
-            // 재고 — 0 이거나 품절이면 빨강
+            if (price != null) out.push('<span class="cp-badge cp-gray">' + price.toLocaleString() + '원</span>');
+            // 재고 — 0 초과 파랑 / 0 이하 회색
             const stock = n(c.stock);
             if (stock != null) {
-                const zero = stock <= 0 || c.soldOut === true;
-                out.push('<span class="cp-badge ' + (zero ? 'cp-stock0' : 'cp-stock') + '">재고 ' + stock.toLocaleString() + '</span>');
+                out.push('<span class="cp-badge ' + (stock > 0 ? 'cp-blue' : 'cp-gray') + '">재고 '
+                    + stock.toLocaleString() + '</span>');
             }
             return out.length ? '<span class="cp-wrap">' + out.join('') + '</span>' : '';
         }
