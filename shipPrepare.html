@@ -349,9 +349,10 @@
             document.getElementById('curBc').textContent=it?it.바코드:'-';
             document.getElementById('curQtyBig').textContent=it?it.수량:'-';
             document.getElementById('curName').innerHTML=it?modelBadge(it.상품명):'품목이 없습니다.';
-            // 진행률
-            document.getElementById('progVal').textContent=`${total?curIdx+1:0} / ${total}`;
-            document.getElementById('progFill').style.width=total?`${Math.round((curIdx+1)/total*100)}%`:'0%';
+            // 진행률 = 준비수량이 입력된 품목 수 (현재 보고 있는 위치가 아님)
+            const done=o?o.items.filter(x=>x.준비!=null).length:0;
+            document.getElementById('progVal').textContent=`${done} / ${total}`;
+            document.getElementById('progFill').style.width=total?`${Math.round(done/total*100)}%`:'0%';
             // 예정 / 준비
             const vp=document.getElementById('valPrep'), vs=document.getElementById('valStock');
             const hasPrep=!!(it&&it.준비!=null), hasStock=!!(it&&it.예정!=null);
@@ -368,11 +369,12 @@
 
         function movePrev(){ if(curIdx>0){ curIdx--; renderCur(); } }
         function moveNext(){ const o=activeOrder(); if(o&&curIdx<o.items.length-1){ curIdx++; renderCur(); } }
-        // 없음: 현재 상품 예정=0 표시 후 다음으로
+        // 없음: 못 찾은 상품 → 준비 0 으로 저장하고 다음으로.
+        // (예정은 출고예정/재고에서 계산되는 값이라 저장 대상이 아니다)
         function markNone(){
             const o=activeOrder(); const it=o&&o.items[curIdx];
             if(!it){ toast('품목이 없습니다.'); return; }
-            it.예정=0; renderCur(); renderItems();
+            setPrepared(o.발주번호,it,0);
             moveNext();
         }
 
@@ -385,17 +387,21 @@
             // 준비는 수량(확정수량)을 초과할 수 없음. 예정은 상한 없음.
             const opts={ title:`${cap} 수량 · <b>${esc(it.바코드)}</b>`, value:cur==null?0:cur, min:0,
                 onConfirm:(n)=>{
-                    if(kind==='prep'){ it.준비=n; savePrepared(o.발주번호,it,n); }
-                    else it.예정=n;
-                    renderCur(); renderItems();
+                    if(kind==='prep') setPrepared(o.발주번호,it,n);   // 화면 반영 + 저장은 내부에서 처리
+                    else { it.예정=n; renderCur(); renderItems(); }
                 } };
             if(kind==='prep') opts.max=Number(it.수량)||0;
             NumPad.open(opts);
         }
 
-        // 준비수량 → rk_order_items.prepared_qty 저장. 실패 시 이전 값으로 되돌린다.
-        async function savePrepared(orderNo,it,n){
+        // 준비수량 변경 → 화면에 먼저 반영하고 rk_order_items.prepared_qty 에 저장.
+        // ⚠ 이전 값(prev)은 반드시 바꾸기 "전"에 잡아야 한다.
+        //    (예전에는 호출부에서 먼저 it.준비=n 을 해버려 prev 가 항상 새 값이었고,
+        //     저장 실패 시 원래 값 대신 null 로 지워졌다.)
+        async function setPrepared(orderNo,it,n){
             const prev=it.준비;
+            it.준비=n;
+            renderCur(); renderItems();
             try{
                 const res=await fetch('/api/orders/update-prepared',{method:'POST',
                     headers:{'Content-Type':'application/json'},
@@ -403,9 +409,9 @@
                 const d=await res.json();
                 if(!res.ok||d.success===false) throw new Error(d.error||'저장 실패');
             }catch(e){
-                it.준비=(prev===n?null:prev);
+                it.준비=prev;                     // 원래 값으로 복원
                 renderCur(); renderItems();
-                toast('준비수량 저장 실패: '+e.message);
+                toast('준비수량 저장 실패: '+e.message+'\n이전 값으로 되돌렸습니다.');
             }
         }
 
