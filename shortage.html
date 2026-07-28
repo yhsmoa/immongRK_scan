@@ -698,6 +698,10 @@
   const rnd = (a, b) => Math.floor(a + Math.random() * (b - a));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const now = () => new Date().toTimeString().slice(0, 8);
+  const fmt = (ms) => {
+    const s = Math.max(0, Math.round(ms / 1000));
+    return s >= 60 ? Math.floor(s / 60) + '분 ' + String(s % 60).padStart(2, '0') + '초' : s + '초';
+  };
 
   const load = () => { try { return JSON.parse(localStorage.getItem(KEY)) || null; } catch (e) { return null; } };
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { console.warn('저장 실패(용량?)', e); } };
@@ -765,6 +769,9 @@
     RUNNING = true; STOP = false;
     const end = limit ? Math.min(S.idx + limit, S.skus.length) : S.skus.length;
     let consecFail = 0, consecRate = 0, totalFail = 0, backoffLv = 0;
+    // 진행률(10% 단위) · 실측 기반 남은시간
+    const startedAt = Date.now(), startIdx = S.idx;
+    let lastPct = Math.floor(S.idx / S.skus.length * 10) * 10;
 
     console.log('%c▶ 시작: ' + (S.idx + 1) + ' ~ ' + end + ' / 전체 ' + S.skus.length, 'color:#06c;font-weight:bold');
 
@@ -776,7 +783,20 @@
         S.idx++;
         consecFail = 0; consecRate = 0; backoffLv = 0;
 
-        if (S.idx % 10 === 0 || S.idx === end) {
+        // 10% 단위 진행률 — 남은시간은 실제 걸린 속도로 계산(휴식·응답지연 자동 반영)
+        const pct = Math.floor(S.idx / S.skus.length * 10) * 10;
+        if (pct > lastPct) {
+          lastPct = pct;
+          const doneThisRun = S.idx - startIdx;
+          const elapsed = Date.now() - startedAt;
+          const perItem = doneThisRun > 0 ? elapsed / doneThisRun : 0;
+          const remain = (S.skus.length - S.idx) * perItem;
+          const ok = S.rows.filter((r) => r.status === 'OK').length;
+          console.log('%c▓ ' + String(pct).padStart(3) + '%  ' + S.idx + '/' + S.skus.length
+            + '  · 정상 ' + ok + '  · 경과 ' + fmt(elapsed) + '  · 남은시간 약 ' + fmt(remain),
+            'background:#06c;color:#fff;padding:3px 10px;font-weight:bold');
+          save(S);
+        } else if (S.idx % 10 === 0 || S.idx === end) {
           const ok = S.rows.filter((r) => r.status === 'OK').length;
           console.log('[' + now() + '] ' + S.idx + '/' + S.skus.length + '  (정상 ' + ok + ' / 미조회 ' + (S.rows.length - ok) + ')');
           save(S);
@@ -818,7 +838,10 @@
     save(S);
     RUNNING = false;
     const ok = S.rows.filter((r) => r.status === 'OK').length;
-    console.log('%c■ 종료  진행 ' + S.idx + '/' + S.skus.length + '  정상 ' + ok + '건', 'color:#06c;font-weight:bold');
+    const el = Date.now() - startedAt, cnt = S.idx - startIdx;
+    console.log('%c■ 종료  진행 ' + S.idx + '/' + S.skus.length + '  정상 ' + ok + '건'
+      + '  · 이번 실행 ' + cnt + '건 / ' + fmt(el) + (cnt > 0 ? ' (건당 ' + (el / cnt / 1000).toFixed(1) + '초)' : ''),
+      'color:#06c;font-weight:bold');
     if (S.idx >= S.skus.length) console.log('%c🎉 전체 완료 — __csv() 로 다운로드하세요', 'color:#0a0;font-size:14px;font-weight:bold');
     return { done: S.idx, total: S.skus.length, ok };
   };
@@ -1183,8 +1206,11 @@
                 ta.remove();
             }
 
-            const mins = Math.round((skus.length * 2400) / 60000);
-            const msg = 'SKU ' + skus.length.toLocaleString() + '건\n예상 소요 약 ' + mins + '분 (건당 1.3~2.7초)'
+            // 실측 기준 건당 약 4초(대기 1.3~2.7초 + 응답 1~2초) + 50건마다 8~15초 휴식
+            const est = skus.length * 4000 + Math.floor(skus.length / 50) * 11500;
+            const mins = Math.max(1, Math.round(est / 60000));
+            const msg = 'SKU ' + skus.length.toLocaleString() + '건\n예상 소요 약 ' + mins + '분'
+                + ' (건당 약 4초 + 50건마다 휴식)\n실행 중 10%마다 실제 속도로 남은시간을 다시 알려줍니다.'
                 + '\n\n1) advertising.coupang.com 광고 상품선택 화면 열기'
                 + '\n2) F12 → Console 에 붙여넣기'
                 + '\n3) __run(10) 으로 먼저 시험 → 정상이면 __run() 전체 실행'
