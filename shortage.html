@@ -607,6 +607,8 @@
                     <button class="btn btn-order-history" onclick="document.getElementById('orderHistoryFileInput').click()">쿠팡발주내역 xlsx</button>
                     <input type="file" id="orderHistoryFileInput" accept=".xlsx" style="display: none">
                     <button class="btn" onclick="copyAdConsole()">추출 콘솔(광고)</button>
+                    <button class="btn" onclick="document.getElementById('adResultFileInput').click()">광고결과 업로드</button>
+                    <input type="file" id="adResultFileInput" accept=".csv,.xlsx,.xls" style="display: none" onchange="uploadAdResult(this)">
                     <span class="btn-separator"></span>
                     <button class="btn btn-input-list" onclick="openInputPanel()">입력목록</button>
                     <button class="btn btn-save" onclick="handleSave()">저장</button>
@@ -667,32 +669,28 @@
          [추출 콘솔(광고)] 버튼이 이 텍스트에 SKU 목록만 붙여 클립보드로 복사한다.
          (템플릿 리터럴/정규식이 많아 JS 문자열로 감싸면 이스케이프가 깨지므로 원문 보관) -->
     <script type="text/plain" id="adConsoleTpl">
+
 /* ============================================================
- *  쿠팡 광고 상품정보 수집기 — 가격 / 재고 / 리뷰 / 아이템위너
+ *  쿠팡 광고 상품 전체 덤프  (searchBy=all · size=1000)
  *  ▶ advertising.coupang.com 광고 상품선택 화면에서 실행
  *
- *  __run(10)  시험 실행(앞 10개)   __run()  전체 실행
- *  __stop()   중단(지금까지 저장)  __status()  진행 확인
- *  __csv()    CSV 받기             __reset()   처음부터
+ *  __run()    전체 수집 (약 16요청 / 2분)
+ *  __stop()   중단      __status()  진행 확인
+ *  __csv()    CSV 받기  __reset()   처음부터
  *
- *  [차단 방지] 요청 간 1.3~2.7초 대기 · 50건마다 8~15초 휴식
- *             429 는 Retry-After 를 지켜 대기
- *             연속 3회 / 누적 10회 실패 시 자동 정지
- *             자동 정지 후 10분 안에 다시 돌리면 경고
+ *  [차단 방지] 요청 간 1.5~3초 대기 · 429 는 Retry-After 준수
+ *             연속 3회 / 누적 8회 실패 시 자동 정지
  * ============================================================ */
 (() => {
-  const KEY = 'cpq_sku_dump_v2';
+  const KEY = 'cpq_ad_dump_v1';
   const STOP_KEY = KEY + '_stoppedAt';
   const API = '/marketing/cmg-api/vendoritems';
-
+  const SIZE = 1000;
   const CFG = {
-    delayMin: 1300, delayMax: 2700,
-    restEvery: 50, restMin: 8000, restMax: 15000,
+    delayMin: 1500, delayMax: 3000,
     backoff: [30000, 60000, 120000],
-    maxConsecFail: 3,
-    maxConsecRate: 2,        // 429 가 연속 이 횟수면 즉시 정지
-    maxTotalFail: 10,        // 연속이 아니어도 누적 실패가 이만큼이면 정지
-    cooldownMs: 10 * 60 * 1000,
+    maxConsecFail: 3, maxConsecRate: 2, maxTotalFail: 8,
+    maxPages: 60, cooldownMs: 10 * 60 * 1000,
   };
 
   const rnd = (a, b) => Math.floor(a + Math.random() * (b - a));
@@ -707,159 +705,100 @@
   const save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { console.warn('저장 실패(용량?)', e); } };
   const markStopped = () => { try { localStorage.setItem(STOP_KEY, String(Date.now())); } catch (e) {} };
 
-  let S = load() || { skus: [], rows: [], idx: 0 };
+  let S = load() || { rows: [], page: 1, total: null, done: false };
   let RUNNING = false, STOP = false;
 
-  window.__setSkus = (text) => {
-    const list = String(text).split(/[\s,;|\t\r\n]+/).map((s) => s.trim()).filter(Boolean);
-    const uniq = [...new Set(list)];
-    S = { skus: uniq, rows: [], idx: 0 };
-    save(S);
-    console.log('%c✅ SKU ' + uniq.length + '건 등록 (중복 ' + (list.length - uniq.length) + '건 제거)', 'color:#0a0;font-weight:bold');
-    // 건당 약 4초(대기 1.3~2.7초 + API 응답 1~2초) + restEvery 마다 휴식
-    const est = uniq.length * 4000 + Math.floor(uniq.length / CFG.restEvery) * ((CFG.restMin + CFG.restMax) / 2);
-    console.log('예상 소요: 약 ' + Math.max(1, Math.round(est / 60000)) + '분  (실행 중 10%마다 실제 속도로 다시 계산)');
-    return uniq.length;
-  };
-
-  async function fetchOne(sku) {
-    const url = API + '?page=1&size=100&keyword=' + encodeURIComponent(sku) + '&searchBy=sku'
-      + '&showNpiFilter=false&showRecommendVendorItems=false&showRecommendVendorItemsWithReasonTag=false'
-      + '&showColdStartVendorItems=false&showBestVendorItems=false&isColdStartItem=true';
-
-    const res = await fetch(url, { method: 'GET', credentials: 'include', headers: { accept: 'application/json, text/plain, */*' } });
-
-    if (res.status === 401 || res.status === 403) throw Object.assign(new Error('AUTH'), { code: res.status, fatal: true });
+  async function fetchPage(page) {
+    const url = API + '?searchBy=all&isColdStartItem=true&page=' + page + '&size=' + SIZE;
+    const res = await fetch(url, { credentials: 'include', headers: { accept: 'application/json, text/plain, */*' } });
+    if (res.status === 401 || res.status === 403) throw Object.assign(new Error('AUTH'), { fatal: true });
     if (res.status === 429) {
       const ra = parseInt(res.headers.get('Retry-After'), 10);
-      throw Object.assign(new Error('RATE_LIMIT'), { code: 429, rate: true, retryAfter: Number.isFinite(ra) ? ra * 1000 : null });
+      throw Object.assign(new Error('RATE_LIMIT'), { rate: true, retryAfter: Number.isFinite(ra) ? ra * 1000 : null });
     }
-    if (!res.ok) throw Object.assign(new Error('HTTP_' + res.status), { code: res.status });
-
-    const text = await res.text();
-    try { return JSON.parse(text); }
-    catch (e) { throw Object.assign(new Error('로그인 페이지 등 비-JSON 응답 (세션 만료 의심)'), { fatal: true }); }
+    if (!res.ok) throw new Error('HTTP_' + res.status);
+    const t = await res.text();
+    try { return JSON.parse(t); }
+    catch (e) { throw Object.assign(new Error('비-JSON 응답 (세션 만료 의심)'), { fatal: true }); }
   }
 
-  function toRow(sku, j) {
-    const total = j && typeof j.total === 'number' ? j.total : (j.products || []).length;
-    const p = (j.products || [])[0];
-    if (!p) return { sku_id: sku, total, status: 'NOT_FOUND' };
-    return {
-      sku_id: sku, total, status: total === 1 ? 'OK' : 'MULTI',
-      vendor_item_id: p.vendoritemid, product_id: p.productid, item_id: p.itemid, item_name: p.itemnm,
-      price: p.sales_price, stock_qty: p.stockQuantity, is_sold_out: p.isSoldOut,
-      review_count: p.review ? p.review.ratingCount : null,
-      rating_avg: p.review ? p.review.ratingAverage : null,
-      item_winner: p.buyboxStatus, is_invalid: p.isInvalid,
-    };
-  }
+  const toRow = (p) => ({
+    vendor_item_id: p.vendoritemid, product_id: p.productid, item_id: p.itemid,
+    item_name: p.itemnm, price: p.sales_price, stock_qty: p.stockQuantity,
+    is_sold_out: p.isSoldOut,
+    review_count: p.review ? p.review.ratingCount : null,
+    rating_avg: p.review ? p.review.ratingAverage : null,
+    item_winner: p.buyboxStatus, is_invalid: p.isInvalid,
+  });
 
-  window.__run = async (limit) => {
-    if (RUNNING) { console.warn('이미 실행 중입니다. __stop() 후 다시 실행하세요.'); return; }
-    if (!S.skus.length) { console.warn('먼저 __setSkus(`...`) 로 SKU 목록을 넣으세요.'); return; }
-
+  window.__run = async () => {
+    if (RUNNING) { console.warn('이미 실행 중입니다.'); return; }
     const stoppedAt = parseInt(localStorage.getItem(STOP_KEY) || '0', 10);
-    const since = Date.now() - stoppedAt;
-    if (stoppedAt && since < CFG.cooldownMs) {
-      const left = Math.ceil((CFG.cooldownMs - since) / 60000);
+    if (stoppedAt && Date.now() - stoppedAt < CFG.cooldownMs) {
+      const left = Math.ceil((CFG.cooldownMs - (Date.now() - stoppedAt)) / 60000);
       console.warn('%c⚠ 직전에 실패로 자동 정지했습니다. ' + left + '분 더 쉬는 것을 권합니다.\n그래도 진행하려면 __run() 을 한 번 더 호출하세요.', 'color:#c60;font-weight:bold');
       localStorage.removeItem(STOP_KEY);
       return;
     }
-
     RUNNING = true; STOP = false;
-    const end = limit ? Math.min(S.idx + limit, S.skus.length) : S.skus.length;
-    let consecFail = 0, consecRate = 0, totalFail = 0, backoffLv = 0;
-    // 진행률(10% 단위) · 실측 기반 남은시간
-    const startedAt = Date.now(), startIdx = S.idx;
-    let lastPct = Math.floor(S.idx / S.skus.length * 10) * 10;
+    let consecFail = 0, consecRate = 0, totalFail = 0, backoffLv = 0, lastPct = -1;
+    const startedAt = Date.now(), startRows = S.rows.length;
+    console.log('%c▶ 시작 (page ' + S.page + ' 부터, ' + SIZE + '건씩)', 'color:#06c;font-weight:bold');
 
-    console.log('%c▶ 시작: ' + (S.idx + 1) + ' ~ ' + end + ' / 전체 ' + S.skus.length, 'color:#06c;font-weight:bold');
-
-    while (S.idx < end && !STOP) {
-      const sku = S.skus[S.idx];
+    while (!STOP && !S.done && S.page <= CFG.maxPages) {
       try {
-        const j = await fetchOne(sku);
-        S.rows.push(toRow(sku, j));
-        S.idx++;
+        const j = await fetchPage(S.page);
+        const ps = j.products || [];
+        if (typeof j.total === 'number') S.total = j.total;
+        ps.forEach((p) => S.rows.push(toRow(p)));
         consecFail = 0; consecRate = 0; backoffLv = 0;
 
-        // 10% 단위 진행률 — 남은시간은 실제 걸린 속도로 계산(휴식·응답지연 자동 반영)
-        const pct = Math.floor(S.idx / S.skus.length * 10) * 10;
-        if (pct > lastPct) {
-          lastPct = pct;
-          const doneThisRun = S.idx - startIdx;
-          const elapsed = Date.now() - startedAt;
-          const perItem = doneThisRun > 0 ? elapsed / doneThisRun : 0;
-          const remain = (S.skus.length - S.idx) * perItem;
-          const ok = S.rows.filter((r) => r.status === 'OK').length;
-          console.log('%c▓ ' + String(pct).padStart(3) + '%  ' + S.idx + '/' + S.skus.length
-            + '  · 정상 ' + ok + '  · 경과 ' + fmt(elapsed) + '  · 남은시간 약 ' + fmt(remain),
-            'background:#06c;color:#fff;padding:3px 10px;font-weight:bold');
-          save(S);
-        } else if (S.idx % 10 === 0 || S.idx === end) {
-          const ok = S.rows.filter((r) => r.status === 'OK').length;
-          console.log('[' + now() + '] ' + S.idx + '/' + S.skus.length + '  (정상 ' + ok + ' / 미조회 ' + (S.rows.length - ok) + ')');
-          save(S);
+        if (ps.length < SIZE) { S.done = true; } else { S.page++; }
+        save(S);
+
+        if (S.total) {
+          const pct = Math.min(100, Math.floor(S.rows.length / S.total * 10) * 10);
+          if (pct > lastPct) {
+            lastPct = pct;
+            const got = S.rows.length - startRows, el = Date.now() - startedAt;
+            const remain = got > 0 ? (S.total - S.rows.length) * (el / got) : 0;
+            console.log('%c▓ ' + String(pct).padStart(3) + '%  ' + S.rows.length + '/' + S.total
+              + '  · 경과 ' + fmt(el) + '  · 남은시간 약 ' + fmt(remain),
+              'background:#06c;color:#fff;padding:3px 10px;font-weight:bold');
+          }
+        } else {
+          console.log('[' + now() + '] page ' + (S.page - 1) + ' · 누적 ' + S.rows.length + '건');
         }
-        if (S.idx % CFG.restEvery === 0 && S.idx < end) {
-          const rest = rnd(CFG.restMin, CFG.restMax);
-          console.log('%c… ' + Math.round(rest / 1000) + '초 휴식', 'color:#888');
-          await sleep(rest);
-        }
-        await sleep(rnd(CFG.delayMin, CFG.delayMax));
+        if (!S.done) await sleep(rnd(CFG.delayMin, CFG.delayMax));
 
       } catch (err) {
         consecFail++; totalFail++;
         if (err.rate) consecRate++; else consecRate = 0;
         save(S);
-
-        if (err.fatal) {
-          markStopped();
-          console.error('%c⛔ 치명적 오류: ' + err.message + '\n로그인이 풀렸을 수 있습니다. 재로그인 후 __run() 하면 ' + S.idx + '번째부터 이어집니다.', 'color:#c00;font-weight:bold');
-          break;
-        }
-        if (err.rate && consecRate >= CFG.maxConsecRate) {
-          markStopped();
-          console.error('%c⛔ 요청 제한(429)이 연속 ' + consecRate + '회 → 즉시 정지.\n계속 두드리면 차단됩니다. 충분히 쉬었다가 __run() 하세요 (' + S.idx + '번째부터 이어짐).', 'color:#c00;font-weight:bold');
-          break;
-        }
-        if (consecFail >= CFG.maxConsecFail || totalFail >= CFG.maxTotalFail) {
-          markStopped();
-          console.error('%c⛔ 실패 누적(연속 ' + consecFail + ' / 누적 ' + totalFail + ') → 자동 정지.\n한참 쉬었다가 __run() 하면 ' + S.idx + '번째부터 이어집니다.', 'color:#c00;font-weight:bold');
-          break;
-        }
+        if (err.fatal) { markStopped(); console.error('%c⛔ ' + err.message + ' — 재로그인 후 __run() 하면 page ' + S.page + ' 부터 이어집니다.', 'color:#c00;font-weight:bold'); break; }
+        if (err.rate && consecRate >= CFG.maxConsecRate) { markStopped(); console.error('%c⛔ 요청제한(429) 연속 ' + consecRate + '회 → 즉시 정지. 충분히 쉬었다가 __run().', 'color:#c00;font-weight:bold'); break; }
+        if (consecFail >= CFG.maxConsecFail || totalFail >= CFG.maxTotalFail) { markStopped(); console.error('%c⛔ 실패 누적(연속 ' + consecFail + ' / 누적 ' + totalFail + ') → 자동 정지. page ' + S.page + ' 부터 이어집니다.', 'color:#c00;font-weight:bold'); break; }
         const wait = err.retryAfter || CFG.backoff[Math.min(backoffLv, CFG.backoff.length - 1)];
         backoffLv++;
-        console.warn('[' + now() + '] sku=' + sku + ' 실패(' + err.message + ') → ' + Math.round(wait / 1000) + '초 후 재시도 (연속 ' + consecFail + '/' + CFG.maxConsecFail + ', 누적 ' + totalFail + '/' + CFG.maxTotalFail + ')');
+        console.warn('[' + now() + '] page ' + S.page + ' 실패(' + err.message + ') → ' + Math.round(wait / 1000) + '초 후 재시도');
         await sleep(wait);
       }
     }
 
-    save(S);
-    RUNNING = false;
-    const ok = S.rows.filter((r) => r.status === 'OK').length;
-    const el = Date.now() - startedAt, cnt = S.idx - startIdx;
-    console.log('%c■ 종료  진행 ' + S.idx + '/' + S.skus.length + '  정상 ' + ok + '건'
-      + '  · 이번 실행 ' + cnt + '건 / ' + fmt(el) + (cnt > 0 ? ' (건당 ' + (el / cnt / 1000).toFixed(1) + '초)' : ''),
-      'color:#06c;font-weight:bold');
-    if (S.idx >= S.skus.length) console.log('%c🎉 전체 완료 — __csv() 로 다운로드하세요', 'color:#0a0;font-size:14px;font-weight:bold');
-    return { done: S.idx, total: S.skus.length, ok };
+    save(S); RUNNING = false;
+    const el = Date.now() - startedAt;
+    console.log('%c■ 종료  누적 ' + S.rows.length + '건' + (S.total ? ' / 전체 ' + S.total : '') + '  · ' + fmt(el), 'color:#06c;font-weight:bold');
+    if (S.done) console.log('%c🎉 수집 완료 — __csv() 로 받은 뒤 상품부족 화면의 [광고결과 업로드] 하세요', 'color:#0a0;font-size:14px;font-weight:bold');
+    return { rows: S.rows.length, total: S.total, done: S.done };
   };
 
-  window.__stop = () => { STOP = true; save(S); return '정지 요청됨 (현재 요청 끝나면 멈춥니다)'; };
-
-  window.__status = () => {
-    const ok = S.rows.filter((r) => r.status === 'OK').length;
-    console.table({ 진행: S.idx + '/' + S.skus.length, 정상: ok, 미조회: S.rows.length - ok, 실행중: RUNNING });
-    return S.rows.slice(-3);
-  };
+  window.__stop = () => { STOP = true; save(S); return '정지 요청됨'; };
+  window.__status = () => { console.table({ 수집: S.rows.length, 전체: S.total, 다음페이지: S.page, 완료: S.done, 실행중: RUNNING }); return S.rows.slice(-2); };
 
   window.__csv = () => {
     if (!S.rows.length) { console.warn('결과가 없습니다.'); return; }
-    const cols = ['sku_id','status','total','vendor_item_id','product_id','item_id','item_name',
-                  'price','stock_qty','is_sold_out','review_count','rating_avg','item_winner','is_invalid'];
+    const cols = ['vendor_item_id','product_id','item_id','item_name','price','stock_qty',
+                  'is_sold_out','review_count','rating_avg','item_winner','is_invalid'];
     const esc = (v) => {
       if (v === null || v === undefined) return '';
       const s = String(v);
@@ -868,18 +807,18 @@
     const csv = '﻿' + [cols.join(','), ...S.rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = 'coupang_sku_' + S.rows.length + '.csv';
+    a.download = 'coupang_ad_' + S.rows.length + '.csv';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 3000);
     return S.rows.length + '행 다운로드';
   };
 
-  window.__json = () => { console.log(JSON.stringify(S.rows)); return S.rows.length + '행 (위 JSON 복사)'; };
-  window.__reset = () => { localStorage.removeItem(KEY); localStorage.removeItem(STOP_KEY); S = { skus: [], rows: [], idx: 0 }; return '초기화 완료'; };
+  window.__reset = () => { localStorage.removeItem(KEY); localStorage.removeItem(STOP_KEY); S = { rows: [], page: 1, total: null, done: false }; return '초기화 완료'; };
 
-  console.log('%c[수집기 준비 완료]\n' + (S.skus.length ? '이전 작업 발견: ' + S.idx + '/' + S.skus.length + ' 진행됨 → __run() 하면 이어서 진행\n' : '')
-    + '__run(10) 으로 먼저 시험한 뒤 __run() 전체 실행 → __csv()', 'color:#0a0;font-size:13px;font-weight:bold;line-height:1.7');
+  console.log('%c[전체 덤프 준비 완료]\n' + (S.rows.length ? '이전 작업 발견: ' + S.rows.length + '건 (page ' + S.page + ' 부터 이어서)\n' : '')
+    + '__run() 실행 → 끝나면 __csv()', 'color:#0a0;font-size:13px;font-weight:bold;line-height:1.7');
 })();
+
     </script>
 
     <script>
@@ -1185,19 +1124,12 @@
             return '';                                // 검정: 차이 10 이내
         }
 
-        /* ========== 추출 콘솔(광고) — 현재 테이블의 sku_id 를 심어 클립보드로 복사 ========== */
+        /* ========== 추출 콘솔(광고) — 전체 덤프 스크립트 복사 ==========
+           광고 응답에는 SKU 가 없어 SKU 로 1건씩 조회하면 1,275요청(90분)이 걸린다.
+           searchBy=all&size=1000 으로 전체를 16요청(2분)에 받고,
+           업로드 시 서버가 상품명으로 우리 SKU 에 매칭한다. */
         async function copyAdConsole() {
-            const skus = [...new Set(
-                filteredData.map(r => String(r.skuId || '').trim()).filter(Boolean)
-            )];
-            if (!skus.length) {
-                alert('현재 목록에 SKU 가 없습니다.\n먼저 [불러오기] 로 데이터를 조회하세요.');
-                return;
-            }
-            const tpl = document.getElementById('adConsoleTpl').textContent;
-            // 원문 끝에 SKU 등록 호출만 덧붙인다 (콤마 구분 — 수집기가 알아서 분리)
-            const script = tpl.trim() + '\n\n__setSkus(' + JSON.stringify(skus.join(',')) + ');\n';
-
+            const script = document.getElementById('adConsoleTpl').textContent.trim() + '\n';
             let copied = false;
             try { await navigator.clipboard.writeText(script); copied = true; } catch (_) {}
             if (!copied) {
@@ -1207,21 +1139,59 @@
                 try { copied = document.execCommand('copy'); } catch (_) {}
                 ta.remove();
             }
-
-            // 실측 기준 건당 약 4초(대기 1.3~2.7초 + 응답 1~2초) + 50건마다 8~15초 휴식
-            const est = skus.length * 4000 + Math.floor(skus.length / 50) * 11500;
-            const mins = Math.max(1, Math.round(est / 60000));
-            const msg = 'SKU ' + skus.length.toLocaleString() + '건\n예상 소요 약 ' + mins + '분'
-                + ' (건당 약 4초 + 50건마다 휴식)\n실행 중 10%마다 실제 속도로 남은시간을 다시 알려줍니다.'
+            const msg = '전체 상품(약 15,600건)을 요청 16번으로 받아옵니다. 예상 약 2분.'
                 + '\n\n1) advertising.coupang.com 광고 상품선택 화면 열기'
                 + '\n2) F12 → Console 에 붙여넣기'
-                + '\n3) __run(10) 으로 먼저 시험 → 정상이면 __run() 전체 실행'
-                + '\n4) 끝나면 __csv()'
+                + '\n3) __run()   ← 실행 (10%마다 진행률 표시)'
+                + '\n4) __csv()   ← 끝나면 CSV 다운로드'
+                + '\n5) 이 화면의 [광고결과 업로드] 로 그 파일을 올리면'
+                + '\n   SKU 에 매칭된 엑셀이 내려받아집니다.'
                 + '\n\n※ 실패가 반복되면 스크립트가 스스로 멈춥니다.'
-                + '\n   그때는 바로 다시 돌리지 말고 충분히 쉬었다가 __run() 하세요.'
-                + '\n   (이어서 진행되며 이미 받은 건은 다시 안 받습니다)';
+                + '\n   바로 다시 돌리지 말고 쉬었다가 __run() 하세요 (이어서 진행).';
             if (copied) alert('콘솔 스크립트를 복사했습니다.\n' + msg);
             else prompt('아래 스크립트를 복사해 콘솔에 붙여넣으세요.\n' + msg, script);
+        }
+
+        /* ========== 광고결과 업로드 → 서버에서 SKU 매칭 → 엑셀 다운로드 ========== */
+        async function uploadAdResult(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const ov = document.getElementById('uploadModal');
+            document.getElementById('modalTitle').textContent = '광고결과 매칭';
+            document.getElementById('modalProgressText').textContent = file.name;
+            document.getElementById('modalProgressBar').style.width = '60%';
+            document.getElementById('modalDetail').textContent = '상품명으로 SKU 매칭 중…';
+            ov.classList.add('active');
+            try {
+                const fd = new FormData();
+                fd.append('file', file);
+                const res = await fetch('/api/shortage/ad-match', { method: 'POST', body: fd });
+                if (!res.ok) {
+                    const d = await res.json().catch(() => ({}));
+                    throw new Error(d.error || ('HTTP ' + res.status));
+                }
+                const summary = JSON.parse(decodeURIComponent(res.headers.get('X-Match-Summary') || '%7B%7D'));
+                const blob = await res.blob();
+                const cd = res.headers.get('content-disposition') || '';
+                const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = m ? decodeURIComponent(m[1]) : '광고상품정보.xlsx';
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+                ov.classList.remove('active');
+                alert('매칭 완료 — 엑셀을 내려받았습니다.\n\n'
+                    + '광고 데이터 ' + (summary.adRows || 0).toLocaleString() + '건\n'
+                    + '우리 상품 ' + (summary.ourRows || 0).toLocaleString() + '건\n'
+                    + '매칭 성공 ' + (summary.matched || 0).toLocaleString() + '건'
+                    + ' (모델코드 ' + (summary.byModel || 0) + ' · 이름 ' + (summary.byName || 0) + ')\n'
+                    + '매칭 실패 ' + (summary.unmatched || 0).toLocaleString() + '건');
+            } catch (e) {
+                ov.classList.remove('active');
+                alert('광고결과 업로드 실패: ' + e.message);
+            } finally {
+                input.value = '';
+            }
         }
 
         /* ========== 테이블 렌더링 ========== */
