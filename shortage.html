@@ -716,7 +716,9 @@
     S = { skus: uniq, rows: [], idx: 0 };
     save(S);
     console.log('%c✅ SKU ' + uniq.length + '건 등록 (중복 ' + (list.length - uniq.length) + '건 제거)', 'color:#0a0;font-weight:bold');
-    console.log('예상 소요: 약 ' + Math.round((uniq.length * ((CFG.delayMin + CFG.delayMax) / 2 + 400)) / 60000) + '분');
+    // 건당 약 4초(대기 1.3~2.7초 + API 응답 1~2초) + restEvery 마다 휴식
+    const est = uniq.length * 4000 + Math.floor(uniq.length / CFG.restEvery) * ((CFG.restMin + CFG.restMax) / 2);
+    console.log('예상 소요: 약 ' + Math.max(1, Math.round(est / 60000)) + '분  (실행 중 10%마다 실제 속도로 다시 계산)');
     return uniq.length;
   };
 
