@@ -219,6 +219,20 @@
             color: var(--ink-soft);
             font-variant-numeric: tabular-nums;
         }
+        /* 쿠팡 광고정보 배지 — 상품명 옆. 이름은 말줄임, 배지는 항상 보이게 고정 */
+        .nm-row  { display: flex; align-items: center; gap: 6px; min-width: 0; }
+        .nm-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cp-wrap { flex: 0 0 auto; display: inline-flex; gap: 4px; }
+        .cp-badge { display: inline-flex; align-items: center; gap: 2px; padding: 1px 6px; border-radius: 5px;
+            font-size: 11px; font-weight: 700; line-height: 1.6; white-space: nowrap;
+            font-variant-numeric: tabular-nums; border: 1px solid transparent; }
+        .cp-badge i { font-style: normal; font-weight: 600; opacity: .75; }
+        .cp-star   { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+        .cp-price  { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
+        .cp-stock  { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+        .cp-stock0 { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+        .cp-dim    { background: #f5f6f8; color: #94a3b8; border-color: #e5e9f0; }
+
         td.name-cell {
             text-align: left;
             overflow: hidden;
@@ -831,7 +845,7 @@
 
         /* ========== 초기화 ========== */
         document.addEventListener('DOMContentLoaded', async () => {
-            await loadSavedInputs();
+            await Promise.all([loadSavedInputs(), loadCoupangInfo()]);   // 광고정보(배지)도 함께 로드
             // Enter 키로 검색
             document.getElementById('searchInput').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') applyFilter();
@@ -1124,6 +1138,41 @@
             return '';                                // 검정: 차이 10 이내
         }
 
+        /* ========== 쿠팡 광고정보 배지 (평점(리뷰) · 가격 · 재고) ========== */
+        let cpInfo = {};   // sku_id → {price, stock, review, rating, soldOut, winner}
+
+        async function loadCoupangInfo() {
+            try {
+                const res = await fetch('/api/coupang-info');
+                if (res.ok) cpInfo = await res.json();
+            } catch (_) { /* 광고정보 없으면 배지만 안 나옴 */ }
+        }
+
+        function cpBadges(skuId) {
+            const c = cpInfo[String(skuId || '')];
+            if (!c) return '';
+            const n = (v) => (v == null ? null : Number(v));
+            const out = [];
+            // 평점(리뷰수) — 리뷰 없으면 회색
+            const rating = n(c.rating), review = n(c.review);
+            if (rating != null || review != null) {
+                const has = (review || 0) > 0;
+                out.push('<span class="cp-badge ' + (has ? 'cp-star' : 'cp-dim') + '">★ '
+                    + (rating != null ? rating.toFixed(1) : '-')
+                    + ' <i>(' + (review != null ? review.toLocaleString() : 0) + ')</i></span>');
+            }
+            // 가격
+            const price = n(c.price);
+            if (price != null) out.push('<span class="cp-badge cp-price">' + price.toLocaleString() + '원</span>');
+            // 재고 — 0 이거나 품절이면 빨강
+            const stock = n(c.stock);
+            if (stock != null) {
+                const zero = stock <= 0 || c.soldOut === true;
+                out.push('<span class="cp-badge ' + (zero ? 'cp-stock0' : 'cp-stock') + '">재고 ' + stock.toLocaleString() + '</span>');
+            }
+            return out.length ? '<span class="cp-wrap">' + out.join('') + '</span>' : '';
+        }
+
         /* ========== 추출 콘솔(광고) — 전체 덤프 스크립트 복사 ==========
            광고 응답에는 SKU 가 없어 SKU 로 1건씩 조회하면 1,275요청(90분)이 걸린다.
            searchBy=all&size=1000 으로 전체를 16요청(2분)에 받고,
@@ -1179,13 +1228,16 @@
                 a.download = m ? decodeURIComponent(m[1]) : '광고상품정보.xlsx';
                 a.click();
                 setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+                await loadCoupangInfo();          // 저장된 광고정보 다시 읽어 배지 갱신
+                if (filteredData.length) renderTable();
                 ov.classList.remove('active');
                 alert('매칭 완료 — 엑셀을 내려받았습니다.\n\n'
                     + '광고 데이터 ' + (summary.adRows || 0).toLocaleString() + '건\n'
                     + '우리 상품 ' + (summary.ourRows || 0).toLocaleString() + '건\n'
                     + '매칭 성공 ' + (summary.matched || 0).toLocaleString() + '건'
                     + ' (모델코드 ' + (summary.byModel || 0) + ' · 이름 ' + (summary.byName || 0) + ')\n'
-                    + '매칭 실패 ' + (summary.unmatched || 0).toLocaleString() + '건');
+                    + '매칭 실패 ' + (summary.unmatched || 0).toLocaleString() + '건\n'
+                    + 'DB 저장 ' + (summary.saved || 0).toLocaleString() + '건 → 배지로 표시됩니다');
             } catch (e) {
                 ov.classList.remove('active');
                 alert('광고결과 업로드 실패: ' + e.message);
@@ -1224,7 +1276,7 @@
                     <td class="img-cell">${item.img ? `<span class="img-emoji" data-img="${String(item.img).replace(/"/g, '&quot;')}">🖼️</span>` : ''}</td>
                     <td>${item.skuId || ''}</td>
                     <td>${item.상품바코드}</td>
-                    <td class="name-cell" title="${item.상품이름}">${modelBadge(item.상품이름)}</td>
+                    <td class="name-cell" title="${item.상품이름}"><div class="nm-row"><span class="nm-text">${modelBadge(item.상품이름)}</span>${cpBadges(item.skuId)}</div></td>
                     <td class="col-narrow">${Number(item.총발주수량).toLocaleString()}</td>
                     <td class="col-narrow">${Number(item.총스캔수량).toLocaleString()}</td>
                     <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>

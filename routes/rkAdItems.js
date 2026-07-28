@@ -48,6 +48,17 @@ const pick = (o, keys) => {
   return '';
 };
 
+// CSV 는 전부 문자열로 들어오므로 타입을 맞춰 넣는다
+const str = (v) => { const s = String(v == null ? '' : v).trim(); return s === '' ? null : s; };
+const toNum = (v) => { const n = Number(String(v == null ? '' : v).replace(/,/g, '').trim()); return Number.isFinite(n) ? n : null; };
+const toInt = (v) => { const n = parseInt(String(v == null ? '' : v).replace(/,/g, '').trim(), 10); return Number.isFinite(n) ? n : null; };
+const toBool = (v) => {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'y') return true;
+  if (s === 'false' || s === '0' || s === 'n') return false;
+  return null;
+};
+
 router.post('/api/shortage/ad-match', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -91,12 +102,26 @@ router.post('/api/shortage/ad-match', upload.single('file'), async (req, res) =>
     }
 
     let matched = 0, mByModel = 0, mByName = 0;
+    const upserts = [];
     const out = ours.map((o) => {
       const mk = modelKey(o.name);
       let hit = mk ? byModel.get(mk) : null;
       let how = hit ? '모델코드' : '';
       if (!hit) { hit = byName.get(norm(o.name)) || null; if (hit) how = '이름'; }
-      if (hit) { matched++; if (how === '모델코드') mByModel++; else mByName++; }
+      if (hit) {
+        matched++;
+        if (how === '모델코드') mByModel++; else mByName++;
+        if (o.sku_id) upserts.push({
+          sku_id: String(o.sku_id), barcode: o.barcode || null,
+          item_name: hit.itemName || null,
+          price: toNum(hit.price), stock_qty: toInt(hit.stockQty),
+          is_sold_out: toBool(hit.isSoldOut),
+          review_count: toInt(hit.reviewCount), rating_avg: toNum(hit.ratingAvg),
+          item_winner: str(hit.itemWinner), is_invalid: toBool(hit.isInvalid),
+          vendor_item_id: str(hit.vendorItemId), product_id: str(hit.productId),
+          matched_by: how, updated_at: new Date().toISOString(),
+        });
+      }
       return {
         'SKU ID': o.sku_id || '',
         '바코드': o.barcode || '',
@@ -116,6 +141,15 @@ router.post('/api/shortage/ad-match', upload.single('file'), async (req, res) =>
       };
     });
 
+    // 매칭된 건만 rk_coupang_info 에 저장(sku_id 기준 덮어쓰기)
+    let saved = 0;
+    for (let i = 0; i < upserts.length; i += 500) {
+      const chunk = upserts.slice(i, i + 500);
+      const { error } = await sb.from('rk_coupang_info').upsert(chunk, { onConflict: 'sku_id' });
+      if (error) throw error;
+      saved += chunk.length;
+    }
+
     const ws = xlsx.utils.json_to_sheet(out);
     ws['!cols'] = [{ wch: 11 }, { wch: 15 }, { wch: 10 }, { wch: 52 }, { wch: 8 }, { wch: 52 },
       { wch: 9 }, { wch: 7 }, { wch: 7 }, { wch: 8 }, { wch: 7 }, { wch: 12 }, { wch: 9 }, { wch: 14 }, { wch: 13 }];
@@ -123,7 +157,7 @@ router.post('/api/shortage/ad-match', upload.single('file'), async (req, res) =>
     xlsx.utils.book_append_sheet(wb, ws, '광고상품정보');
     const buf = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-    const summary = { adRows: adRows.length, ourRows: ours.length, matched, byModel: mByModel, byName: mByName, unmatched: ours.length - matched };
+    const summary = { adRows: adRows.length, ourRows: ours.length, matched, byModel: mByModel, byName: mByName, unmatched: ours.length - matched, saved };
     res.setHeader('X-Match-Summary', encodeURIComponent(JSON.stringify(summary)));
     res.setHeader('Access-Control-Expose-Headers', 'X-Match-Summary, Content-Disposition');
     res.setHeader('Content-Disposition', "attachment; filename*=UTF-8''" + encodeURIComponent('광고상품정보.xlsx'));
@@ -132,6 +166,33 @@ router.post('/api/shortage/ad-match', upload.single('file'), async (req, res) =>
   } catch (e) {
     console.error('[rk] shortage/ad-match:', e);
     res.status(500).json({ error: '광고결과 매칭 중 오류: ' + e.message });
+  }
+});
+
+// 저장된 광고정보 조회 — 배지 표시용. { "sku_id": {price, stock, review, rating}, ... }
+router.get('/api/coupang-info', async (req, res) => {
+  try {
+    const map = {};
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from('rk_coupang_info')
+        .select('sku_id, price, stock_qty, review_count, rating_avg, is_sold_out, item_winner')
+        .range(from, from + 999);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      for (const r of data) {
+        if (!r.sku_id) continue;
+        map[r.sku_id] = {
+          price: r.price, stock: r.stock_qty,
+          review: r.review_count, rating: r.rating_avg,
+          soldOut: r.is_sold_out, winner: r.item_winner,
+        };
+      }
+      if (data.length < 1000) break;
+    }
+    res.json(map);
+  } catch (e) {
+    console.error('[rk] coupang-info:', e);
+    res.status(500).json({ error: '광고정보 조회 실패: ' + e.message });
   }
 });
 
