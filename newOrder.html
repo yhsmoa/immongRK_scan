@@ -156,9 +156,9 @@
             <div class="tabletop">
                 <div class="page-size">
                     <select id="pageSize" onchange="changePageSize()">
-                        <option value="100" selected>100개씩</option>
+                        <option value="100">100개씩</option>
                         <option value="200">200개씩</option>
-                        <option value="500">500개씩</option>
+                        <option value="500" selected>500개씩</option>
                     </select>
                 </div>
             </div>
@@ -208,7 +208,7 @@
         fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
 
         let allRows=[], viewRows=[];
-        let pageSize=100, currentPage=1;
+        let pageSize=500, currentPage=1;
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         // 상품명: 첫 콤마 앞 단어가 영어+숫자 조합(모델코드)이면 연한 파란 배지
         function modelBadge(name){
