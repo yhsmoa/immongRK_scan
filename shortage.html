@@ -230,6 +230,7 @@
         /* 가격=회색 · 재고>0=파랑/0=회색 */
         .cp-gray   { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
         .cp-blue   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        .cp-faint  { background: #f8fafc; color: #cbd5e1; border-color: #f1f5f9; }  /* 재고 0 — 평점 0.0 과 같은 톤 */
         /* 평점은 배지 없이 글씨만 — >=3 초록 / 미만 주황 / 리뷰없음 회색 */
         .cp-rate { font-size: 11.5px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .cp-rate i { font-style: normal; font-weight: 600; opacity: .7; }
@@ -1173,15 +1174,15 @@
                     + (rating != null ? rating.toFixed(1) : '-')
                     + ' <i>(' + (review != null ? review.toLocaleString() : 0) + ')</i></span>');
             }
+            // 재고 — 0 초과 파랑 / 0 이하는 평점 0.0 처럼 아주 연하게
+            const stock = n(c.stock);
+            if (stock != null) {
+                out.push('<span class="cp-badge ' + (stock > 0 ? 'cp-blue' : 'cp-faint') + '">재고 '
+                    + stock.toLocaleString() + '</span>');
+            }
             // 가격 — 항상 회색
             const price = n(c.price);
             if (price != null) out.push('<span class="cp-badge cp-gray">' + price.toLocaleString() + '원</span>');
-            // 재고 — 0 초과 파랑 / 0 이하 회색
-            const stock = n(c.stock);
-            if (stock != null) {
-                out.push('<span class="cp-badge ' + (stock > 0 ? 'cp-blue' : 'cp-gray') + '">재고 '
-                    + stock.toLocaleString() + '</span>');
-            }
             if (!out.length) return '';
             const url = 'https://www.coupang.com/vp/products/' + encodeURIComponent(pid)
                 + '?vendorItemId=' + encodeURIComponent(iid);
