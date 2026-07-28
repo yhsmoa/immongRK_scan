@@ -250,7 +250,7 @@ router.post('/api/inbound/prepare', async (req, res) => {
     }
 
     // 발주서 (선택된 것만)
-    let orders = await S.listOrdersFull('rk_orders', 'rk_order_items');
+    let orders = S.excludeDone(await S.listOrdersFull('rk_orders', 'rk_order_items'));
     if (orderNumbers && orderNumbers.length) orders = orders.filter(o => orderNumbers.includes(o.발주번호));
 
     const barcodesInItems = new Set(items.map(i => i.barcode).filter(Boolean));

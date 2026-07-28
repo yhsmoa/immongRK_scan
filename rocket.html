@@ -347,7 +347,6 @@
                 }
                 allRows=[];
                 for(const o of orders){
-                    if(o.상태==='DONE') continue;   // 처리완료 발주서는 목록에서 숨김 (데이터는 유지)
                     for(const p of (o.상품정보||[])){
                         const sl=slMap.get(`${o.발주번호}|${p.상품바코드}`);
                         allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,

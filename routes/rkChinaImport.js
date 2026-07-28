@@ -154,7 +154,7 @@ router.post('/api/importChina/organize', async (req, res) => {
     });
 
     const uniqueBarcodes = [...new Set(originalChinaImports.map((item) => item.barcode))];
-    const allOrders = await S.listOrdersFull('rk_orders', 'rk_order_items');
+    const allOrders = S.excludeDone(await S.listOrdersFull('rk_orders', 'rk_order_items'));
     const orders = allOrders.filter((o) => (o.상품정보 || []).some((p) => uniqueBarcodes.includes(p.상품바코드)));
 
     const orderProductMap = new Map();

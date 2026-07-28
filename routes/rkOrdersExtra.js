@@ -14,7 +14,8 @@ const router = express.Router();
 //   각 상품행: 박스정보=`${box_no}-${box_size}`, 스캔수량=qty, 상품메타(상품번호/이름/확정수량)는 원본 발주상품(바코드)에서.
 //   출고스캔 저장분이 있는 발주서만 반환. (scanned_qty·rk_order_items 박스정보 미사용)
 async function shipScanOrders(orderNumbers) {
-  const all = await S.listOrdersFull('rk_orders', 'rk_order_items');
+  // 처리완료(DONE) 발주서는 제외
+  const all = S.excludeDone(await S.listOrdersFull('rk_orders', 'rk_order_items'));
   const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
   const orders = all.filter((o) => !has || orderNumbers.includes(o.발주번호));
   const orderNos = [...new Set(orders.map((o) => o.발주번호).filter(Boolean))];
@@ -228,7 +229,8 @@ router.post('/api/shipment/export-cj', async (req, res) => {
 router.post('/api/orders/export', async (req, res) => {
   try {
     const { orderNumbers } = req.body;
-    const all = await S.listOrdersFull('rk_orders', 'rk_order_items');
+    // 처리완료(DONE) 발주서는 내보내기에서 제외
+    const all = S.excludeDone(await S.listOrdersFull('rk_orders', 'rk_order_items'));
     const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
     const orders = all.filter((o) => !has || orderNumbers.includes(o.발주번호));
 

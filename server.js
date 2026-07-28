@@ -369,23 +369,9 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     }
 });
 
-// 발주서 삭제 API
-app.post('/api/orders/delete', async (req, res) => {
-    try {
-        const { orderNumbers, password } = req.body;
-        
-        // 패스워드 검증
-        if (password !== 'cheoqkr1!') {
-            return res.status(403).json({ error: '패스워드가 올바르지 않습니다.' });
-        }
-
-        await Order.deleteMany({ 발주번호: { $in: orderNumbers } });
-        res.json({ message: '발주서가 성공적으로 삭제되었습니다.' });
-    } catch (error) {
-        console.error('발주서 삭제 실패:', error);
-        res.status(500).json({ error: '발주서 삭제에 실패했습니다.' });
-    }
-});
+// 발주서 삭제 API 제거됨 (구 MongoDB 경로).
+// routes/rkOrders.js 의 Supabase 버전과 함께 삭제 기능을 없앴다.
+// 발주서는 지우지 않고 /api/orders/complete 로 status 를 DONE 으로 바꾼다.
 
 // 바코드 스캔 API
 app.post('/api/scan', async (req, res) => {

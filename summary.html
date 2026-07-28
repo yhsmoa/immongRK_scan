@@ -140,8 +140,8 @@
                 // 발주번호|바코드 → 발주번호별 출고스캔 합
                 const scanByOrder=new Map();
                 for(const k in scanMap){ const on=k.split('|')[0]; scanByOrder.set(on,(scanByOrder.get(on)||0)+(Number(scanMap[k])||0)); }
-                // 처리완료(DONE) 발주서는 표시하지 않는다 (진행중=PROCESSING 만)
-                orders=data.filter(o=>(o.상태||'PROCESSING')!=='DONE').map(o=>({
+                // 처리완료(DONE)는 서버(/api/orders)에서 이미 제외되어 내려온다
+                orders=data.map(o=>({
                     발주번호:o.발주번호, 물류센터:o.물류센터||'(미정)', 입고예정일:o.입고예정일||'(미정)',
                     발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0, 상태:o.상태||'PROCESSING'
                 }));

@@ -151,6 +151,12 @@ async function getOrderFull(headerTable, itemTable, orderNumber) {
   return headerToKorean(h, items.map(itemToKorean));
 }
 
+// ── 처리완료(DONE) 발주서 판별 / 제외 ──
+// 예전에는 발주서를 삭제했지만 지금은 status 를 DONE 으로 바꾼다.
+// 진행중 업무 화면은 DONE 을 데이터에서 아예 제외한다.
+const isDoneOrder = (o) => String((o && o.상태) || '') === 'DONE';
+const excludeDone = (orders) => (orders || []).filter((o) => !isDoneOrder(o));
+
 // ── 헤더 id 조회 ──
 async function getOrderId(headerTable, orderNumber) {
   const { data, error } = await supabase.from(headerTable).select('id').eq('order_number', orderNumber).limit(1);
@@ -236,6 +242,7 @@ module.exports = {
   dateToYmd, tsToKst, dash, str, ymdToDate, kstToTs,
   emptyToNull, placeholderToNull, toInt, toNum,
   itemToKorean, headerToKorean, fetchAllItems,
+  isDoneOrder, excludeDone,
   listOrdersFull, getOrderFull, getOrderId, recalcHeaderAggregates,
   koreanItemToRow, koreanHeaderToRow,
 };

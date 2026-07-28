@@ -205,7 +205,8 @@ module.exports = (io) => {
   router.get('/api/orders', async (req, res) => {
     try {
       const referer = req.headers.referer || '';
-      const orders = await S.listOrdersFull('rk_orders', 'rk_order_items');
+      // 처리완료(DONE) 발주서는 목록에서 제외 (발주서·요약·입고정리·재고준비·출고준비 공통)
+      const orders = S.excludeDone(await S.listOrdersFull('rk_orders', 'rk_order_items'));
       res.json(orders.map((o) => processListOrder(o, referer)));
     } catch (e) {
       console.error('[rk] 발주서 목록:', e);
@@ -277,19 +278,10 @@ module.exports = (io) => {
     }
   });
 
-  // 발주서 삭제 (비밀번호)
-  router.post('/api/orders/delete', async (req, res) => {
-    try {
-      const { orderNumbers, password } = req.body;
-      if (password !== 'cheoqkr1!') return res.status(403).json({ error: '패스워드가 올바르지 않습니다.' });
-      const { error } = await S.supabase.from('rk_orders').delete().in('order_number', orderNumbers || []);
-      if (error) throw error;
-      res.json({ message: '발주서가 성공적으로 삭제되었습니다.' });
-    } catch (e) {
-      console.error('[rk] orders/delete:', e);
-      res.status(500).json({ error: '발주서 삭제에 실패했습니다.' });
-    }
-  });
+  // 발주서 삭제 API 제거됨.
+  // 삭제하면 rk_order_items 만 cascade 로 사라지고 rk_ship_box_items·rk_shipping_list 는
+  // 남아 집계가 틀어졌다(상품부족 FAIL 음수). 지금은 /api/orders/complete 로 status 를
+  // DONE 으로 바꾸고, 진행중 화면에서는 DONE 을 제외한다.
 
   // 발주서 등록 (parse-excel 미리보기 → 등록)
   router.post('/api/orders/register', async (req, res) => {

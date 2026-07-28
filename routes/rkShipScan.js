@@ -39,6 +39,8 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
     if (!orderId) return res.status(404).json({ valid: false, error: '존재하지 않는 발주서입니다.' });
 
     const { order, limit, name } = await orderBarcodeMeta(orderNumber);
+    // 처리완료(DONE) 발주서는 스캔 대상에서 제외
+    if (S.isDoneOrder(order)) return res.status(404).json({ valid: false, error: '처리완료된 발주서입니다.' });
     const products = [...limit.keys()].map(bc => ({ barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0 }));
 
     // 기존 박스 + 출고리스트
@@ -96,7 +98,9 @@ router.post('/api/ship-scan/save', async (req, res) => {
     const list = [...merged.values()];
 
     // 초과/미존재 검증 (바코드 단위, SET이므로 전체 = list 합)
-    const { limit, name } = await orderBarcodeMeta(orderNumber);
+    const { order, limit, name } = await orderBarcodeMeta(orderNumber);
+    // 처리완료(DONE) 발주서에는 저장하지 않는다
+    if (S.isDoneOrder(order)) return res.status(400).json({ error: '처리완료된 발주서에는 저장할 수 없습니다.' });
     const byBc = new Map();
     for (const it of list) byBc.set(it.barcode, (byBc.get(it.barcode) || 0) + it.qty);
     for (const [bc, q] of byBc) {
