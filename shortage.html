@@ -235,7 +235,7 @@
         .cp-rate i { font-style: normal; font-weight: 600; opacity: .7; }
         .cp-t-green  { color: #15803d; }
         .cp-t-orange { color: #c2410c; }
-        .cp-t-gray   { color: #94a3b8; }
+        .cp-t-gray   { color: #cbd5e1; font-weight: 600; }   /* 리뷰 없음(0.0) — 더 연하게 */
         /* 배지 묶음 클릭 → 쿠팡 상품페이지 */
         a.cp-link { text-decoration: none; cursor: pointer; }
         a.cp-link:hover .cp-badge { filter: brightness(.95); }
@@ -1158,7 +1158,10 @@
 
         function cpBadges(skuId) {
             const c = cpInfo[String(skuId || '')];
-            if (!c) return '';                     // 매칭 안 된 상품은 아무것도 표시하지 않음
+            if (!c) return '';
+            // 상품 링크를 만들 수 없으면(=제대로 매칭되지 않은 건) 배지를 아예 표시하지 않는다
+            const pid = String(c.pid || '').trim(), iid = String(c.iid || '').trim();
+            if (!pid || !iid) return '';
             const n = (v) => (v == null ? null : Number(v));
             const out = [];
             // 평점(리뷰수) — 배지 없이 글씨만. 3점 이상 초록 / 미만 주황 / 리뷰 없으면 회색
@@ -1180,15 +1183,10 @@
                     + stock.toLocaleString() + '</span>');
             }
             if (!out.length) return '';
-            // 상품 페이지로 이동 (노출 상품 + 옵션). id 가 없으면 링크 없이 표시만.
-            const pid = String(c.pid || '').trim(), iid = String(c.iid || '').trim();
-            if (pid && iid) {
-                const url = 'https://www.coupang.com/vp/products/' + encodeURIComponent(pid)
-                    + '?vendorItemId=' + encodeURIComponent(iid);
-                return '<a class="cp-wrap cp-link" href="' + url + '" target="_blank" rel="noopener noreferrer"'
-                    + ' title="쿠팡 상품페이지 열기" onclick="event.stopPropagation()">' + out.join('') + '</a>';
-            }
-            return '<span class="cp-wrap">' + out.join('') + '</span>';
+            const url = 'https://www.coupang.com/vp/products/' + encodeURIComponent(pid)
+                + '?vendorItemId=' + encodeURIComponent(iid);
+            return '<a class="cp-wrap cp-link" href="' + url + '" target="_blank" rel="noopener noreferrer"'
+                + ' title="쿠팡 상품페이지 열기" onclick="event.stopPropagation()">' + out.join('') + '</a>';
         }
 
         /* ========== 추출 콘솔(광고) — 전체 덤프 스크립트 복사 ==========

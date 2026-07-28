@@ -175,7 +175,7 @@ router.get('/api/coupang-info', async (req, res) => {
     const map = {};
     for (let from = 0; ; from += 1000) {
       const { data, error } = await sb.from('rk_coupang_info')
-        .select('sku_id, price, stock_qty, review_count, rating_avg, is_sold_out, item_winner, product_id, item_id')
+        .select('sku_id, price, stock_qty, review_count, rating_avg, is_sold_out, item_winner, product_id, vendor_item_id, item_id')
         .range(from, from + 999);
       if (error) throw error;
       if (!data || !data.length) break;
@@ -185,7 +185,9 @@ router.get('/api/coupang-info', async (req, res) => {
           price: r.price, stock: r.stock_qty,
           review: r.review_count, rating: r.rating_avg,
           soldOut: r.is_sold_out, winner: r.item_winner,
-          pid: r.product_id, iid: r.item_id,          // 상품 페이지 링크용
+          // 상품 페이지 링크용. vendorItemId 파라미터에는 vendor_item_id 를 쓰고,
+          // 없으면 item_id 로 대체한다.
+          pid: r.product_id, iid: r.vendor_item_id || r.item_id,
         };
       }
       if (data.length < 1000) break;
