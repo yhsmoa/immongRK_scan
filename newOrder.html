@@ -95,7 +95,6 @@
         .loc-v2{color:#F0492F;font-weight:600;}     /* 위치v2 계산(미저장) — 주황 */
         .loc-none{color:#94a3b8;font-weight:500;}   /* 재고 0·NULL 미배정 위치 — 회색 */
         .stock-v2{color:#F0492F;font-weight:600;}
-        .stock-real{color:#111827;font-weight:600;}  /* 위치별 실제 재고 — 미배정이어도 연하게 하지 않음 */
         .loc-v2s{color:#111827;font-weight:600;}    /* 준비v2 저장됨(불러옴) — 검정 */
         .stock-v2s{color:#111827;font-weight:600;}
         th.chk,td.chk{width:42px;text-align:center;padding-left:0;padding-right:0;}
@@ -543,14 +542,13 @@
             if(allocs.length===1) return `<span class="${cls}">${esc(allocs[0].location)}</span>`;
             return `<span class="${cls}">${allocs.map(a=>esc(a.location+'-'+a.qty)).join('<br>')}</span>`;
         }
-        // 재고 열: '위치' 계산 시 위치별 실제 재고(0→0, 값→그대로, NULL→빈칸), 아니면 기존
-        // 실제 재고 수량은 배정 여부와 무관하게 항상 진하게 (위치는 미배정이면 연하게 표시)
+        // 재고 열: 저장된 배정(v2Saved)만 숫자로 표시한다.
+        // '위치' 버튼의 계산 결과는 아직 확보된 게 아니므로 수량을 비워두고 위치만 연하게 보여준다.
+        // (계산 후 다른 발주서가 먼저 저장되면 그 수량은 무효가 되므로 숫자로 보여주면 오판을 부른다)
         function stockQtyHtml(r){
-            if(r.stockLocs && r.stockLocs.length && !r.v2Saved){
-                return r.stockLocs.map(sl=> sl.qty==null ? '&nbsp;'
-                    : `<span class="stock-real">${sl.qty}</span>`).join('<br>');
-            }
-            if(r.위치v2) return (Number(r.재고)||0)>0 ? `<span class="${r.v2Saved?'stock-v2s':'stock-v2'}">${Number(r.재고)}</span>` : '<span class="dash">-</span>';
+            const hasV2=!!((r.stockLocs&&r.stockLocs.length)||r.위치v2);
+            if(hasV2 && !r.v2Saved) return '';
+            if(r.위치v2) return (Number(r.재고)||0)>0 ? `<span class="stock-v2s">${Number(r.재고)}</span>` : '<span class="dash">-</span>';
             return dashCell(r.재고);
         }
         function v2TargetRows(){ return selectedRows().length?selectedRows():viewRows; }
@@ -685,7 +683,7 @@
                 return `<tr class="${groupEnd?'ge':''}">${cells.map(v=>`<td>${v}</td>`).join('')}</tr>`;
             }).join('');
             const w=window.open('','_blank');
-            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}th:nth-child(2),td:nth-child(2){white-space:nowrap;}th:nth-child(5),td:nth-child(5){word-break:break-word;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.loc-v2{color:#F0492F;font-weight:600;}.loc-none{color:#94a3b8;}.loc-v2s{color:#111827;font-weight:600;}.stock-v2{color:#F0492F;font-weight:600;}.stock-v2s{color:#111827;font-weight:600;}.stock-real{color:#111827;font-weight:600;}.dash{color:#cbd5e1;}.loc-disc{color:#e11d48;font-weight:600;}td:nth-child(8),td:nth-child(10){white-space:nowrap;}</style></head><body><h2>신규 발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}th:nth-child(2),td:nth-child(2){white-space:nowrap;}th:nth-child(5),td:nth-child(5){word-break:break-word;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.loc-v2{color:#F0492F;font-weight:600;}.loc-none{color:#94a3b8;}.loc-v2s{color:#111827;font-weight:600;}.stock-v2{color:#F0492F;font-weight:600;}.stock-v2s{color:#111827;font-weight:600;}.dash{color:#cbd5e1;}.loc-disc{color:#e11d48;font-weight:600;}td:nth-child(8),td:nth-child(10){white-space:nowrap;}</style></head><body><h2>신규 발주서 (${rows.length}건)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
             w.document.close();
         }
 
