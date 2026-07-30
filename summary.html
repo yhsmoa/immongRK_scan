@@ -30,7 +30,9 @@
 
         .list{padding:6px 12px 20px;}
         /* 처리방식 탭 */
-        .mode-tabs{display:flex;gap:6px;margin:6px 6px 4px;padding-bottom:14px;border-bottom:1px solid var(--line,#e2e8f0);}
+        /* 아래 센터/발주서 행과 좌우 여백을 맞춘다.
+           .mode-tabs 는 .card 직속이라 .list 의 padding(12px)을 받지 못하므로 12+8=20px 로 보정 */
+        .mode-tabs{display:flex;gap:6px;margin:10px 20px 0;padding-bottom:14px;border-bottom:1px solid var(--line,#e2e8f0);}
         .mode-tab{height:32px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#64748b;
             border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;
             transition:background .12s,border-color .12s,color .12s;}
@@ -87,6 +89,12 @@
             font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(240,73,47,.35);}
         #shipPrepBtn:hover{background:#d63d26;}
         #shipPrepBtn.show{display:inline-flex;align-items:center;gap:8px;}
+        /* 출고준비 버튼 바로 위 */
+        #tabletBtn{position:fixed;right:22px;bottom:88px;z-index:9998;display:none;
+            height:48px;padding:0 22px;border:1.5px solid #F0492F;border-radius:13px;background:#fff;color:#C13A24;
+            font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(240,73,47,.20);}
+        #tabletBtn:hover{background:#FFF5F2;}
+        #tabletBtn.show{display:inline-flex;align-items:center;gap:8px;}
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;
             padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);
             opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
@@ -127,6 +135,7 @@
         </div>
     </div>
 
+    <button id="tabletBtn" onclick="assignTablet()">태블릿 배정 <span id="tbCnt"></span></button>
     <button id="shipPrepBtn" onclick="goShipPrepare()">출고준비 <span id="spCnt"></span></button>
 
     <div id="toast"></div>
@@ -243,6 +252,28 @@
             updateSelectionUI();
         }
 
+        // 태블릿 배정 → 선택 발주서의 rk_orders.process_type = 'TABLET'
+        async function assignTablet(){
+            if(selected.size===0) return;
+            const nos=[...selected];
+            const ok=await openModal({title:'태블릿 배정',
+                descHtml:`선택한 ${nos.length}건을 <b>태블릿</b> 처리방식으로 지정합니다.<br>진행을 원하시면 <b style="color:#dc2626">패스워드</b>를 입력해주세요.`,
+                value:'',password:true});
+            if(ok==null) return;
+            if(String(ok).trim()!=='cheoqkr1!'){ toast('패스워드가 올바르지 않습니다.'); return; }
+            toast('처리 중…');
+            try{
+                const res=await fetch('/api/orders/update-process-type',{method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({orderNumbers:nos,processType:'TABLET'})});
+                const data=await res.json();
+                if(!res.ok||data.success===false) throw new Error(data.message||'배정 실패');
+                toast(`태블릿 배정 완료 (${data.updatedCount??nos.length}건)`);
+                clearSel();
+                await loadData();
+            }catch(e){ toast('오류: '+e.message); }
+        }
+
         // 플로팅 출고준비 → 선택 발주서를 가지고 출고준비 페이지로 이동
         function goShipPrepare(){
             if(selected.size===0) return;
@@ -257,6 +288,9 @@
             const sp=document.getElementById('shipPrepBtn');
             sp.classList.toggle('show',selected.size>0);
             document.getElementById('spCnt').textContent=selected.size>0?`(${selected.size})`:'';
+            const tb=document.getElementById('tabletBtn');
+            tb.classList.toggle('show',selected.size>0);
+            document.getElementById('tbCnt').textContent=selected.size>0?`(${selected.size})`:'';
             document.querySelectorAll('.order').forEach(el=>el.classList.toggle('sel',selected.has(el.dataset.no)));
             document.querySelectorAll('.date-badge').forEach(el=>{
                 const nos=viewOrders.filter(o=>o.입고예정일===el.dataset.date).map(o=>o.발주번호);

@@ -314,6 +314,25 @@ module.exports = (io) => {
     }
   });
 
+  // 처리방식 변경 (벌크) — 'TABLET' 또는 null(기존 방식)
+  router.post('/api/orders/update-process-type', async (req, res) => {
+    try {
+      const { orderNumbers, processType } = req.body;
+      if (!Array.isArray(orderNumbers) || orderNumbers.length === 0)
+        return res.status(400).json({ success: false, message: '변경할 발주서가 선택되지 않았습니다.' });
+      const t = processType == null || processType === '' ? null : String(processType).trim().toUpperCase();
+      if (t !== null && t !== 'TABLET')
+        return res.status(400).json({ success: false, message: '지원하지 않는 처리방식입니다.' });
+      const { data, error } = await S.supabase.from('rk_orders')
+        .update({ process_type: t }).in('order_number', orderNumbers).select('id');
+      if (error) throw error;
+      res.json({ success: true, updatedCount: data.length, processType: t });
+    } catch (e) {
+      console.error('[rk] update-process-type:', e);
+      res.status(500).json({ success: false, message: '처리방식 변경 중 오류가 발생했습니다.' });
+    }
+  });
+
   // 준비수량 저장 (출고준비 화면) — null 이면 미입력으로 되돌림
   router.post('/api/orders/update-prepared', async (req, res) => {
     try {
