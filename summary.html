@@ -44,13 +44,12 @@
         .center-row{display:flex;align-items:stretch;gap:10px;margin:0 8px 10px;}
         /* 센터 박스 — 상단 메뉴와 같은 주황색. 내용은 상하좌우 정중앙 */
         .center-box{flex:0 0 124px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-            border:1px solid #F0492F;border-radius:11px;background:#F0492F;color:#fff;cursor:pointer;user-select:none;
-            text-align:center;box-shadow:2px 2px 5px rgba(240,73,47,.20);
-            transition:background .12s,border-color .12s,box-shadow .12s;}
-        .center-box:hover{background:#D93E26;border-color:#D93E26;}
-        .center-box.sel{background:#B4301C;border-color:#B4301C;box-shadow:0 0 0 3px rgba(240,73,47,.35);}
+            border:1.5px solid #F0492F;border-radius:11px;background:#fff;color:#C13A24;cursor:pointer;user-select:none;
+            text-align:center;transition:background .12s,box-shadow .12s;}
+        .center-box:hover{background:#FFF5F2;}
+        .center-box.sel{background:#FDEBE6;box-shadow:0 0 0 3px rgba(240,73,47,.22);}
         .center-box .cname{font-size:13.5px;font-weight:700;line-height:1.3;word-break:keep-all;}
-        .center-box .ccnt{font-size:11.5px;opacity:.85;font-variant-numeric:tabular-nums;}
+        .center-box .ccnt{font-size:11.5px;opacity:.8;font-variant-numeric:tabular-nums;}
         .date-badge{display:inline-block;background:#2563eb;color:#fff;font-size:13.5px;font-weight:700;
             padding:6px 14px;border-radius:7px;cursor:pointer;user-select:none;}
         .date-badge:hover{background:#1d4ed8;}
