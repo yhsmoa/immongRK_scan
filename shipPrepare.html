@@ -405,10 +405,12 @@
             const o=activeOrder(); const it=o&&o.items[curIdx];
             if(!it){ toast('품목이 없습니다.'); return; }
             const cap=kind==='prep'?'준비':'예정';
-            // 준비는 아직 입력 전이면 '예정' 값을 미리 채워둔다 (확인만 누르면 되도록).
+            // 준비가 비어있거나 0 이면 '예정' 값을 미리 채워둔다 (확인만 누르면 되도록).
+            // 0 은 실질적인 입력값이 아니므로(없음 처리 등) 예정으로 덮어 보여준다.
             // 숫자패드를 누르면 numpad 가 기존값을 지우고 새로 입력받는다.
+            const prepared=Number(it.준비)||0;
             const cur=kind==='prep'
-                ? (it.준비!=null ? it.준비 : (it.예정!=null ? it.예정 : 0))
+                ? (prepared>0 ? prepared : (Number(it.예정)||0))
                 : it.예정;
             // 준비는 수량(확정수량)을 초과할 수 없음. 예정은 상한 없음.
             const opts={ title:`${cap} 수량 · <b>${esc(it.바코드)}</b>`, value:cur==null?0:cur, min:0,
