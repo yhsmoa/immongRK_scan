@@ -229,6 +229,7 @@
                     <select id="scanFilter" onchange="applySearch()">
                         <option value="all" selected>전체</option>
                         <option value="unscanned">미스캔</option>
+                        <option value="stockcheck">재고검사</option>
                     </select>
                 </div>
             </div>
@@ -440,11 +441,19 @@
                     return terms.some(t=>hay.some(h=>h.includes(t)));
                 });
             }
+            const mode=document.getElementById('scanFilter').value;
             // 미스캔 필터: (재고 + 입고V2) > 스캔 그리고 (재고 + 입고V2) > 0
-            if(document.getElementById('scanFilter').value==='unscanned'){
+            if(mode==='unscanned'){
                 viewRows=viewRows.filter(r=>{
                     const prep=(Number(r.재고)||0)+(Number(r.입고V2)||0);
                     return prep>0 && prep>(Number(r.스캔수량)||0);
+                });
+            }
+            // 재고검사: 준비가 입력된(NULL 아님) 건 중 재고 열과 값이 다른 것만
+            else if(mode==='stockcheck'){
+                viewRows=viewRows.filter(r=>{
+                    if(r.준비==null) return false;
+                    return (Number(r.준비)||0) !== (Number(r.재고)||0);
                 });
             }
             currentPage=1;
