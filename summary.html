@@ -30,7 +30,7 @@
 
         .list{padding:6px 12px 20px;}
         /* 처리방식 탭 */
-        .mode-tabs{display:flex;gap:6px;margin:0 6px 6px;}
+        .mode-tabs{display:flex;gap:6px;margin:6px 6px 4px;padding-bottom:14px;border-bottom:1px solid var(--line,#e2e8f0);}
         .mode-tab{height:32px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#64748b;
             border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;
             transition:background .12s,border-color .12s,color .12s;}
@@ -38,12 +38,18 @@
         .mode-tab.active{background:#2563eb;border-color:#2563eb;color:#fff;}
 
         /* 날짜 행 — 뒤로 선을 그어 구분 */
-        .date-row{display:flex;align-items:center;gap:8px;margin:18px 6px 10px;}
+        .date-row{display:flex;align-items:center;gap:8px;margin:22px 6px 12px;}
         .date-row .line{flex:1;height:1px;background:#e2e8f0;}
-        /* 센터 | 발주서들 — 한 줄에 가로 배치 */
-        .center-row{display:flex;align-items:flex-start;gap:10px;margin:0 8px 8px;}
-        .center-col{flex:0 0 116px;display:flex;align-items:center;gap:6px;padding-top:3px;}
-        .center-sep{flex:0 0 1px;align-self:stretch;background:#e2e8f0;}
+        /* 센터 박스 | 발주서들 — 한 줄에 가로 배치. 센터 박스는 발주서 줄 수만큼 늘어난다 */
+        .center-row{display:flex;align-items:stretch;gap:10px;margin:0 8px 10px;}
+        .center-box{flex:0 0 124px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+            border:1px solid #e4e7f0;border-radius:11px;background:#fff;cursor:pointer;user-select:none;
+            box-shadow:2px 2px 5px rgba(30,34,51,.06);transition:border-color .12s,box-shadow .12s,background .12s;}
+        .center-box:hover{border-color:#c7d2fe;background:#f8faff;}
+        .center-box.sel{border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 2px rgba(37,99,235,.25);}
+        .center-box .cname{font-size:13.5px;font-weight:700;color:#1e293b;text-align:center;line-height:1.3;word-break:keep-all;}
+        .center-box .ccnt{font-size:11.5px;color:#7a8199;font-variant-numeric:tabular-nums;}
+        .center-box.sel .cname{color:#1d4ed8;}
         .date-badge{display:inline-block;background:#2563eb;color:#fff;font-size:13.5px;font-weight:700;
             padding:6px 14px;border-radius:7px;cursor:pointer;user-select:none;}
         .date-badge:hover{background:#1d4ed8;}
@@ -217,13 +223,12 @@
                     byCenter.get(o.물류센터).push(o);
                 }
                 for(const [center,cOrders] of byCenter){
-                    // 센터 | 발주서, 발주서, … (한 줄)
+                    // 센터 박스 | 발주서, 발주서, … (한 줄. 박스는 발주서 줄 수만큼 늘어남)
                     html+=`<div class="center-row">
-                        <div class="center-col">
-                            <span class="center-name" data-date="${esc(date)}" data-center="${esc(center)}" onclick="toggleCenter('${esc(date)}','${esc(center)}')">${esc(center)}</span>
-                            <span class="center-meta">${cOrders.length}</span>
+                        <div class="center-box center-name" data-date="${esc(date)}" data-center="${esc(center)}" onclick="toggleCenter('${esc(date)}','${esc(center)}')">
+                            <span class="cname">${esc(center)}</span>
+                            <span class="ccnt">${cOrders.length}건</span>
                         </div>
-                        <div class="center-sep"></div>
                         <div class="orders">`;
                     html+=cOrders.map(o=>{
                         const sel=selected.has(o.발주번호)?'sel':'';
