@@ -449,11 +449,11 @@
                     return prep>0 && prep>(Number(r.스캔수량)||0);
                 });
             }
-            // 재고검사: 준비가 입력된(NULL 아님) 건 중 재고 열과 값이 다른 것만
+            // 재고검사: 재고가 있는데(>0) 준비가 그보다 적은 건 (준비 미입력은 0 으로 봄)
             else if(mode==='stockcheck'){
                 viewRows=viewRows.filter(r=>{
-                    if(r.준비==null) return false;
-                    return (Number(r.준비)||0) !== (Number(r.재고)||0);
+                    const stock=Number(r.재고)||0, prep=Number(r.준비)||0;
+                    return stock>0 && stock>prep;
                 });
             }
             currentPage=1;
