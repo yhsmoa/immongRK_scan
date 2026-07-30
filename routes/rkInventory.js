@@ -306,6 +306,30 @@ router.post('/api/inventory/locations', async (req, res) => {
   }
 });
 
+// 바코드별 상품 이미지 URL — { "바코드": "https://…" } (img 있는 것만)
+router.post('/api/inventory/images', async (req, res) => {
+  try {
+    const barcodes = [...new Set((Array.isArray(req.body.barcodes) ? req.body.barcodes : [])
+      .map((b) => String(b || '').trim()).filter(Boolean))];
+    if (!barcodes.length) return res.json({});
+    const out = {};
+    const BATCH = 200;
+    for (let i = 0; i < barcodes.length; i += BATCH) {
+      const chunk = barcodes.slice(i, i + BATCH);
+      const { data, error } = await sb.from('rk_inventories').select('barcode, img').in('barcode', chunk);
+      if (error) throw error;
+      for (const r of (data || [])) {
+        const img = String(r.img || '').trim();
+        if (r.barcode && img && !out[r.barcode]) out[r.barcode] = img;
+      }
+    }
+    res.json(out);
+  } catch (e) {
+    console.error('[rk] inventory/images:', e);
+    res.status(500).json({ error: '상품 이미지 조회 중 오류가 발생했습니다.' });
+  }
+});
+
 // 바코드-로케이션 일괄 업로드
 router.post('/api/inventory/upload-locations', async (req, res) => {
   try {

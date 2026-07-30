@@ -62,7 +62,8 @@
         .o-no{font-size:13.5px;font-weight:700;color:#1e293b;white-space:nowrap;}
         .o-center{font-size:11.5px;color:#475569;margin-top:2px;}
         .o-qty{font-size:11.5px;color:#334155;margin-top:3px;font-variant-numeric:tabular-nums;}
-        .o-qty b{color:#16a34a;}
+        .o-qty em{font-style:normal;color:#4f46e5;font-weight:700;}   /* 준비수량 */
+        .o-qty b{color:#16a34a;}                                     /* 스캔수량 */
         .o-done{position:absolute;top:-7px;right:-7px;background:#16a34a;color:#fff;font-size:10px;font-weight:700;
             padding:2px 6px;border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.15);z-index:2;}
         .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px;}
@@ -143,7 +144,10 @@
                 // 처리완료(DONE)는 서버(/api/orders)에서 이미 제외되어 내려온다
                 orders=data.map(o=>({
                     발주번호:o.발주번호, 물류센터:o.물류센터||'(미정)', 입고예정일:o.입고예정일||'(미정)',
-                    발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0, 상태:o.상태||'PROCESSING'
+                    발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0,
+                    // 준비수량 = 원본 상품행(박스정보 없음)의 prepared_qty 합
+                    준비수량:(o.상품정보||[]).reduce((s,p)=>s+(p.박스정보?0:(Number(p.준비)||0)),0),
+                    상태:o.상태||'PROCESSING'
                 }));
                 render();
             }catch(e){
@@ -191,7 +195,7 @@
                             <div class="o-body">
                                 <div class="o-no">${esc(o.발주번호)}</div>
                                 <div class="o-center">${esc(o.물류센터)}</div>
-                                <div class="o-qty">${o.발주수량} | <b>${o.스캔수량}</b></div>
+                                <div class="o-qty">${o.발주수량} | <em>${o.준비수량}</em> | <b>${o.스캔수량}</b></div>
                             </div></div>`;
                     }).join('');
                     html+=`</div></div>`;
