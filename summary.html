@@ -29,7 +29,21 @@
         .btn:disabled{opacity:.5;cursor:not-allowed;}
 
         .list{padding:6px 12px 20px;}
-        .date-row{display:flex;align-items:center;gap:8px;margin:16px 6px 10px;}
+        /* 처리방식 탭 */
+        .mode-tabs{display:flex;gap:6px;margin:0 6px 6px;}
+        .mode-tab{height:32px;padding:0 16px;border:1px solid #e2e8f0;background:#fff;color:#64748b;
+            border-radius:8px;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;
+            transition:background .12s,border-color .12s,color .12s;}
+        .mode-tab:hover{background:#f8fafc;}
+        .mode-tab.active{background:#2563eb;border-color:#2563eb;color:#fff;}
+
+        /* 날짜 행 — 뒤로 선을 그어 구분 */
+        .date-row{display:flex;align-items:center;gap:8px;margin:18px 6px 10px;}
+        .date-row .line{flex:1;height:1px;background:#e2e8f0;}
+        /* 센터 | 발주서들 — 한 줄에 가로 배치 */
+        .center-row{display:flex;align-items:flex-start;gap:10px;margin:0 8px 8px;}
+        .center-col{flex:0 0 116px;display:flex;align-items:center;gap:6px;padding-top:3px;}
+        .center-sep{flex:0 0 1px;align-self:stretch;background:#e2e8f0;}
         .date-badge{display:inline-block;background:#2563eb;color:#fff;font-size:13.5px;font-weight:700;
             padding:6px 14px;border-radius:7px;cursor:pointer;user-select:none;}
         .date-badge:hover{background:#1d4ed8;}
@@ -103,6 +117,11 @@
                     <button class="btn primary" id="btnComplete" onclick="completeOrders()">처리완료</button>
                 </div>
             </div>
+            <!-- 처리방식 필터: 전체 / 태블릿(process_type='TABLET') -->
+            <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="all" onclick="setMode('all')">전체</button>
+                <button class="mode-tab" data-mode="TABLET" onclick="setMode('TABLET')">태블릿</button>
+            </div>
             <div class="list" id="list">
                 <div class="empty">불러오는 중…</div>
             </div>
@@ -128,7 +147,20 @@
         fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
 
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-        let orders=[];              // [{발주번호,물류센터,입고예정일,발주수량,스캔수량,상태}]
+        let orders=[];              // [{발주번호,물류센터,입고예정일,발주수량,스캔수량,준비수량,상태,처리방식}]
+        let mode='all';             // 'all' | 'TABLET' (rk_orders.process_type)
+        let viewOrders=[];          // mode 로 걸러낸 표시 대상
+
+        // 처리방식 필터 적용 (NULL = 기존방식)
+        function applyMode(){
+            viewOrders = (mode==='all') ? orders.slice()
+                                        : orders.filter(o=>String(o.처리방식||'')===mode);
+        }
+        function setMode(m){
+            mode=m;
+            document.querySelectorAll('.mode-tab').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));
+            applyMode(); render();
+        }
         const selected=new Set();   // 선택된 발주번호
 
         async function loadData(){
@@ -147,9 +179,9 @@
                     발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0,
                     // 준비수량 = 원본 상품행(박스정보 없음)의 prepared_qty 합
                     준비수량:(o.상품정보||[]).reduce((s,p)=>s+(p.박스정보?0:(Number(p.준비)||0)),0),
-                    상태:o.상태||'PROCESSING'
+                    상태:o.상태||'PROCESSING', 처리방식:o.처리방식||null
                 }));
-                render();
+                applyMode(); render();
             }catch(e){
                 document.getElementById('list').innerHTML=`<div class="empty">데이터를 불러오지 못했습니다: ${esc(e.message)}</div>`;
             }
@@ -160,15 +192,15 @@
 
         function render(){
             const list=document.getElementById('list');
-            document.getElementById('orderCount').textContent=orders.length;
+            document.getElementById('orderCount').textContent=viewOrders.length;
             document.getElementById('selCount').textContent=selected.size;
             document.getElementById('btnCenter').disabled=selected.size===0;
             document.getElementById('btnComplete').disabled=selected.size===0;
-            if(orders.length===0){ list.innerHTML=`<div class="empty">표시할 발주서가 없습니다.</div>`; return; }
+            if(viewOrders.length===0){ list.innerHTML=`<div class="empty">표시할 발주서가 없습니다.</div>`; return; }
 
             // 입고예정일별 그룹 → 그 안에서 물류센터별 그룹
             const byDate=new Map();
-            for(const o of orders){
+            for(const o of viewOrders){
                 if(!byDate.has(o.입고예정일)) byDate.set(o.입고예정일,[]);
                 byDate.get(o.입고예정일).push(o);
             }
@@ -177,14 +209,22 @@
                 const dateSel=dOrders.length>0 && dOrders.every(o=>selected.has(o.발주번호));
                 html+=`<div class="date-row">
                     <span class="date-badge ${dateSel?'sel':''}" data-date="${esc(date)}" onclick="toggleDate('${esc(date)}')">${esc(date)}</span>
-                    <span class="date-meta">${dOrders.length}건</span></div>`;
+                    <span class="date-meta">${dOrders.length}건</span>
+                    <span class="line"></span></div>`;
                 const byCenter=new Map();
                 for(const o of dOrders){
                     if(!byCenter.has(o.물류센터)) byCenter.set(o.물류센터,[]);
                     byCenter.get(o.물류센터).push(o);
                 }
                 for(const [center,cOrders] of byCenter){
-                    html+=`<div class="center-group"><div class="center-head"><span class="center-name" data-date="${esc(date)}" data-center="${esc(center)}" onclick="toggleCenter('${esc(date)}','${esc(center)}')">${esc(center)}</span><span class="center-meta">${cOrders.length}건</span></div><div class="orders">`;
+                    // 센터 | 발주서, 발주서, … (한 줄)
+                    html+=`<div class="center-row">
+                        <div class="center-col">
+                            <span class="center-name" data-date="${esc(date)}" data-center="${esc(center)}" onclick="toggleCenter('${esc(date)}','${esc(center)}')">${esc(center)}</span>
+                            <span class="center-meta">${cOrders.length}</span>
+                        </div>
+                        <div class="center-sep"></div>
+                        <div class="orders">`;
                     html+=cOrders.map(o=>{
                         const sel=selected.has(o.발주번호)?'sel':'';
                         const done=isDone(o);
@@ -221,11 +261,11 @@
             document.getElementById('spCnt').textContent=selected.size>0?`(${selected.size})`:'';
             document.querySelectorAll('.order').forEach(el=>el.classList.toggle('sel',selected.has(el.dataset.no)));
             document.querySelectorAll('.date-badge').forEach(el=>{
-                const nos=orders.filter(o=>o.입고예정일===el.dataset.date).map(o=>o.발주번호);
+                const nos=viewOrders.filter(o=>o.입고예정일===el.dataset.date).map(o=>o.발주번호);
                 el.classList.toggle('sel',nos.length>0&&nos.every(n=>selected.has(n)));
             });
             document.querySelectorAll('.center-name').forEach(el=>{
-                const nos=orders.filter(o=>o.입고예정일===el.dataset.date&&o.물류센터===el.dataset.center).map(o=>o.발주번호);
+                const nos=viewOrders.filter(o=>o.입고예정일===el.dataset.date&&o.물류센터===el.dataset.center).map(o=>o.발주번호);
                 el.classList.toggle('sel',nos.length>0&&nos.every(n=>selected.has(n)));
             });
         }
@@ -234,7 +274,7 @@
             updateSelectionUI();
         }
         function toggleDate(date){
-            const nos=orders.filter(o=>o.입고예정일===date).map(o=>o.발주번호);
+            const nos=viewOrders.filter(o=>o.입고예정일===date).map(o=>o.발주번호);
             const allSel=nos.length>0 && nos.every(n=>selected.has(n));
             if(allSel) nos.forEach(n=>selected.delete(n));
             else nos.forEach(n=>selected.add(n));
@@ -242,7 +282,7 @@
         }
         // 센터 배지 클릭 → 그 날짜+센터의 발주서 전부 토글
         function toggleCenter(date,center){
-            const nos=orders.filter(o=>o.입고예정일===date&&o.물류센터===center).map(o=>o.발주번호);
+            const nos=viewOrders.filter(o=>o.입고예정일===date&&o.물류센터===center).map(o=>o.발주번호);
             const allSel=nos.length>0 && nos.every(n=>selected.has(n));
             if(allSel) nos.forEach(n=>selected.delete(n));
             else nos.forEach(n=>selected.add(n));

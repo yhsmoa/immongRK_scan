@@ -98,6 +98,7 @@ function headerToKorean(h, items) {
     확정수량: h.confirmed_qty,
     스캔수량: h.scanned_qty,
     상태: str(h.status),
+    처리방식: h.process_type == null ? null : str(h.process_type),   // NULL=기존방식 / 'TABLET'
     created_at: h.created_at,
     상품정보: items,
   };
