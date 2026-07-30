@@ -84,15 +84,17 @@
         .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px;}
 
         /* 플로팅 출고준비 버튼 (화면 우하단 고정, 태블릿 대응) */
+        /* 크기·폰트는 태블릿 배정 버튼과 동일. 색만 다르게 유지 */
         #shipPrepBtn{position:fixed;right:22px;bottom:22px;z-index:9998;display:none;
-            height:56px;padding:0 26px;border:none;border-radius:14px;background:var(--primary);color:#fff;
-            font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 8px 24px rgba(240,73,47,.35);}
+            height:48px;padding:0 22px;border:1.5px solid var(--primary);border-radius:13px;
+            background:var(--primary);color:#fff;font-family:inherit;
+            font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(240,73,47,.30);}
         #shipPrepBtn:hover{background:#d63d26;}
         #shipPrepBtn.show{display:inline-flex;align-items:center;gap:8px;}
         /* 출고준비 버튼 바로 위 */
-        #tabletBtn{position:fixed;right:22px;bottom:88px;z-index:9998;display:none;
+        #tabletBtn{position:fixed;right:22px;bottom:80px;z-index:9998;display:none;
             height:48px;padding:0 22px;border:1.5px solid #F0492F;border-radius:13px;background:#fff;color:#C13A24;
-            font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(240,73,47,.20);}
+            font-family:inherit;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(240,73,47,.20);}
         #tabletBtn:hover{background:#FFF5F2;}
         #tabletBtn.show{display:inline-flex;align-items:center;gap:8px;}
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;
