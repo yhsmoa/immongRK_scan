@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>검수</title>
+    <style>
+        /* 출고준비(shipPrepare)와 같은 데이터를 쓰되,
+           발주서를 상단에 두고 아래에는 목록만 전체 폭으로 보여준다. */
+        :root{
+            --bg:#eef0f6; --card:#fff; --ink:#1e2233; --ink-soft:#5a6178; --muted:#a0a6bd;
+            --line:#e4e7f0; --primary:#4f46e5; --primary-dark:#4338ca; --hover:#f6f7fc;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink);font-size:14px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:18px auto;}
+        .card{background:var(--card);border:1px solid #e4e7f0;border-radius:18px;box-shadow:0 2px 8px rgba(30,34,51,.05);padding:20px 22px;}
+
+        .head{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px;}
+        .title{font-size:22px;font-weight:700;letter-spacing:-.5px;margin:0;}
+        .meta{font-size:14px;color:#7a8199;}
+        .meta strong{color:var(--primary);}
+        .spacer{flex:1;}
+        .prog{display:flex;align-items:center;gap:10px;}
+        .prog .lbl{font-size:14px;color:#7a8199;}
+        .prog .val{font-size:15px;font-weight:700;}
+        .prog .track{width:160px;height:8px;background:var(--line);border-radius:99px;overflow:hidden;}
+        .prog .fill{height:100%;background:var(--primary);border-radius:99px;transition:width .2s;}
+
+        /* 발주서 버튼 — 상단 배치 (폭이 넓으므로 자동 채움) */
+        .ord-box{background:#fff;border:1px solid #e4e7f0;border-radius:18px;padding:14px;margin-bottom:16px;}
+        .ord-box .sec-label{font-size:13px;font-weight:600;color:#7a8199;margin-bottom:9px;}
+        .orders{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;}
+        .order{position:relative;overflow:hidden;border:1px solid #e4e7f0;border-radius:11px;cursor:pointer;
+            background:#fff;transition:border-color .12s,box-shadow .12s;min-width:0;box-shadow:2px 2px 5px rgba(30,34,51,.06);}
+        .order:hover{border-color:#c7d2fe;}
+        .order.active{border-color:var(--primary);box-shadow:0 0 0 2px rgba(79,70,229,.25);}
+        .o-fill{position:absolute;left:0;right:0;bottom:0;background:rgba(79,70,229,.12);z-index:0;}
+        .o-body{position:relative;z-index:1;padding:9px 12px;}
+        .o-no{font-size:13.5px;font-weight:700;color:var(--ink);white-space:nowrap;}
+        .o-center{font-size:11.5px;color:#7a8199;margin-top:2px;}
+        .o-qty{font-size:11.5px;color:#5a6178;margin-top:3px;font-variant-numeric:tabular-nums;}
+        .o-qty em{font-style:normal;color:var(--primary);font-weight:700;}   /* 준비수량 */
+        .o-qty b{color:#16a34a;}                                            /* 스캔수량 */
+
+        /* 목록 */
+        .side-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+        .side-head .h{font-size:15px;font-weight:600;color:#7a8199;}
+        .side-head .c{font-size:13px;color:var(--muted);}
+        .listwrap{background:#fff;border:1px solid #e4e7f0;border-radius:18px;padding:8px;
+            overflow-y:auto;max-height:calc(100vh - 300px);min-height:300px;}
+        /* 품목마다 구분선 */
+        .row{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;
+            border-bottom:1px solid var(--line);}
+        .row:last-child{border-bottom:none;}
+        .row:hover{background:var(--hover);}
+        .row .idx{width:26px;height:26px;flex:none;border-radius:8px;display:flex;align-items:center;justify-content:center;
+            font-size:14px;font-weight:700;background:#f0f1f6;color:var(--muted);}
+        /* 인덱스 바로 다음 상품 이미지 */
+        .row .thumb{width:56px;height:56px;flex:none;border-radius:10px;border:1px solid var(--line);background:#fff;
+            overflow:hidden;display:flex;align-items:center;justify-content:center;}
+        .row .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+        .row .thumb .ph{font-size:10px;color:#c4c8d6;font-weight:600;text-align:center;line-height:1.3;}
+        .row .info{flex:1;min-width:0;}
+        .row .top{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:5px;}
+        .loc-badge{font-size:15px;font-weight:700;color:#fff;background:var(--primary);
+            padding:2px 10px;border-radius:7px;white-space:nowrap;}
+        .bc-badge-sm{font-size:13px;font-weight:400;color:#5a6178;font-variant-numeric:tabular-nums;white-space:nowrap;}
+        .row .nm{font-size:13px;color:#5a6178;line-height:1.45;word-break:break-word;}
+
+        /* 오른쪽 끝 3수량 — 발주 / 준비 / 스캔 */
+        .qty3{flex:none;align-self:center;display:flex;gap:6px;}
+        .qty3 .q{width:62px;text-align:center;}
+        .qty3 .q .k{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:3px;}
+        .qty3 .q .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1;}
+        .qty3 .ord .v{color:#F0492F;}                 /* 발주수량 */
+        .qty3 .prep .v{color:var(--primary);}         /* 준비수량 */
+        .qty3 .scan .v{color:#16a34a;}                /* 스캔수량 */
+        .qty3 .v.empty{color:#c4c8d6;}                /* 값 없음 */
+        /* 준비만 클릭 → 숫자패드로 수정 */
+        .qty3 .prep{cursor:pointer;border-radius:9px;padding:4px 0;transition:background .12s;}
+        .qty3 .prep:hover{background:#eef0fe;}
+        .qty3 .prep:active{background:#e0e7ff;}
+
+        .empty-row{padding:40px 12px;text-align:center;color:var(--muted);font-size:14px;}
+        .listwrap::-webkit-scrollbar{width:10px;}
+        .listwrap::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
+        .name-badge{display:inline-block;background:#eef2ff;color:#4f46e5;border:1px solid #e0e7ff;border-radius:6px;
+            padding:0 7px;font-weight:700;white-space:nowrap;}
+
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e2233;color:#fff;
+            padding:13px 20px;border-radius:10px;font-size:14px;line-height:1.5;box-shadow:0 8px 24px rgba(30,34,51,.25);
+            opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10005;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <h1 class="title">검수</h1>
+                <span class="meta">발주서 <strong id="ordCount">0</strong>건 선택됨</span>
+                <div class="spacer"></div>
+                <div class="prog">
+                    <span class="lbl">진행</span>
+                    <span class="val" id="progVal">0 / 0</span>
+                    <span class="track"><span class="fill" id="progFill" style="width:0%"></span></span>
+                </div>
+            </div>
+
+            <!-- 발주서 (상단) -->
+            <div class="ord-box">
+                <div class="sec-label">발주서</div>
+                <div class="orders" id="ordList"></div>
+            </div>
+
+            <!-- 목록 -->
+            <div class="side-head">
+                <span class="h">목록</span>
+                <span class="c"><b id="itemCount">0</b>품목</span>
+            </div>
+            <div class="listwrap" id="itemList">
+                <div class="empty-row">발주서를 선택하세요.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+    <script src="/numpad.js"></script>
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        function modelBadge(name){
+            const s=String(name==null?'':name); const ci=s.indexOf(',');
+            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
+                if(m){ const t=m[1];
+                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                        const before=prefix.slice(0, prefix.length-m[0].length);
+                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
+            return esc(s);
+        }
+
+        // URL ?orders=a,b,c → 선택 발주번호 (출고준비와 동일)
+        const selNos=(new URLSearchParams(location.search).get('orders')||'').split(',').map(s=>s.trim()).filter(Boolean);
+        let orders=[];         // [{발주번호,물류센터,발주수량,스캔수량,items:[{위치,바코드,상품명,수량,준비,스캔}]}]
+        let activeNo=null;
+
+        async function loadData(){
+            try{
+                // 발주서 + 출고스캔(rk_ship_box_items) + 출고예정(rk_shipping_list)
+                const [res,scRes,slRes]=await Promise.all([
+                    fetch('/api/orders'),
+                    fetch('/api/ship-scan/scanned-map'),
+                    fetch('/api/shipping-list?source='+encodeURIComponent('재고')+'&status='+encodeURIComponent('출고예정'))
+                ]);
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                const data=await res.json();
+                const scanMap=scRes.ok?await scRes.json():{};
+                // 발주번호|바코드 → [{location,qty}] (출고예정 저장분)
+                const slMap=new Map();
+                if(slRes.ok){
+                    for(const s of await slRes.json()){
+                        const k=`${s.orderNumber}|${s.barcode}`;
+                        if(!slMap.has(k)) slMap.set(k,[]);
+                        slMap.get(k).push({location:s.location||'', qty:Number(s.qty)||0});
+                    }
+                    for(const v of slMap.values())
+                        v.sort((a,b)=>String(a.location).localeCompare(String(b.location),'ko',{numeric:true}));
+                }
+                const scanByOrder=new Map();
+                for(const k in scanMap){ const on=k.split('|')[0]; scanByOrder.set(on,(scanByOrder.get(on)||0)+(Number(scanMap[k])||0)); }
+                orders=data.filter(o=>selNos.includes(o.발주번호)).map(o=>{
+                    // 원본(박스정보 없음) 우선 dedup — 바코드별 1행
+                    const seen=new Set(); const items=[];
+                    for(const p of (o.상품정보||[])){
+                        if(p.박스정보) continue;
+                        if(seen.has(p.상품바코드)) continue;
+                        seen.add(p.상품바코드);
+                        const sl=slMap.get(`${o.발주번호}|${p.상품바코드}`);
+                        const slLocs=(sl||[]).map(x=>x.location).filter(Boolean);
+                        items.push({
+                            위치: slLocs.length?slLocs.join(' · '):(p.위치||'-'),
+                            바코드:p.상품바코드, 상품명:p.상품이름, 수량:Number(p.확정수량)||0,
+                            준비:(p.준비==null?null:Number(p.준비)),
+                            스캔:Number(scanMap[`${o.발주번호}|${p.상품바코드}`])||0,
+                            위치확정: slLocs.length>0,
+                            원위치: p.위치||'-'
+                        });
+                    }
+                    return {발주번호:o.발주번호, 물류센터:o.물류센터||'', 발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0, items};
+                });
+                // 출고예정 저장분이 없는 품목은 rk_stocks 위치로 채운다 (정렬 전에 수행)
+                await Promise.all([fillStockLocations(), fillImages()]);
+                // 작업 동선에 맞춰 위치 오름차순 정렬 (위치 없는 건 뒤로)
+                for(const o of orders){
+                    o.items.sort((a,b)=>{
+                        const an=(a.위치||'-')==='-', bn=(b.위치||'-')==='-';
+                        if(an!==bn) return an?1:-1;
+                        return String(a.위치).localeCompare(String(b.위치),'ko',{numeric:true});
+                    });
+                }
+                document.getElementById('ordCount').textContent=orders.length;
+                renderOrders();
+                if(orders.length) selectOrder(orders[0].발주번호);
+            }catch(e){ toast('데이터 로드 실패: '+e.message); }
+        }
+
+        // 바코드 → 상품 이미지 URL (rk_inventories.img)
+        let imgMap = {};
+        async function fillImages(){
+            const bcs=[...new Set(orders.flatMap(o=>o.items.map(it=>it.바코드)).filter(Boolean))];
+            if(!bcs.length) return;
+            try{
+                const res=await fetch('/api/inventory/images',{method:'POST',
+                    headers:{'Content-Type':'application/json'},body:JSON.stringify({barcodes:bcs})});
+                if(res.ok) imgMap=await res.json();
+            }catch(_){ /* 이미지 없으면 placeholder */ }
+        }
+
+        // 출고예정 저장분이 없는 품목 → rk_stocks 의 위치로 채운다.
+        async function fillStockLocations(){
+            const need=[];
+            for(const o of orders) for(const it of o.items) if(!it.위치확정) need.push(it.바코드);
+            const barcodes=[...new Set(need.filter(Boolean))];
+            if(!barcodes.length) return;
+            try{
+                const res=await fetch('/api/stocks/locations',{method:'POST',
+                    headers:{'Content-Type':'application/json'},body:JSON.stringify({barcodes})});
+                if(!res.ok) return;
+                const map=await res.json();
+                for(const o of orders) for(const it of o.items){
+                    if(it.위치확정) continue;
+                    const locs=map[it.바코드];
+                    if(locs&&locs.length) it.위치=locs.map(x=>x.location).join(' · ');
+                }
+            }catch(_){ /* 재고 위치 조회 실패 시 기존 위치 유지 */ }
+        }
+
+        function renderOrders(){
+            const el=document.getElementById('ordList');
+            el.innerHTML=orders.map(o=>{
+                const pct=o.발주수량>0?Math.min(100,Math.round(o.스캔수량/o.발주수량*100)):0;
+                const prep=o.items.reduce((s,it)=>s+(Number(it.준비)||0),0);
+                return `<div class="order ${o.발주번호===activeNo?'active':''}" data-no="${esc(o.발주번호)}" onclick="selectOrder('${esc(o.발주번호)}')">
+                    ${pct>0?`<div class="o-fill" style="height:${pct}%"></div>`:''}
+                    <div class="o-body">
+                        <div class="o-no">${esc(o.발주번호)}</div>
+                        <div class="o-center">${esc(o.물류센터)}</div>
+                        <div class="o-qty">${o.발주수량} | <em>${prep}</em> | <b>${o.스캔수량}</b></div>
+                    </div></div>`;
+            }).join('');
+        }
+
+        function activeOrder(){ return orders.find(o=>o.발주번호===activeNo); }
+
+        function selectOrder(no){
+            activeNo=no;
+            document.querySelectorAll('#ordList .order').forEach(el=>el.classList.toggle('active',el.dataset.no===no));
+            renderItems();
+        }
+
+        // ── 목록 (발주수량 · 준비수량 · 스캔수량) ──
+        function renderItems(){
+            const o=activeOrder();
+            const el=document.getElementById('itemList');
+            const total=o?o.items.length:0;
+            document.getElementById('itemCount').textContent=total;
+            // 진행률 = 준비수량이 입력된 품목 수
+            const done=o?o.items.filter(x=>x.준비!=null).length:0;
+            document.getElementById('progVal').textContent=`${done} / ${total}`;
+            document.getElementById('progFill').style.width=total?`${Math.round(done/total*100)}%`:'0%';
+            if(!o||!total){
+                el.innerHTML=`<div class="empty-row">품목이 없습니다.</div>`;
+                return;
+            }
+            el.innerHTML=o.items.map((it,i)=>{
+                const hasPrep=it.준비!=null;
+                const url=imgMap[it.바코드];
+                const thumb=url
+                    ? `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<span class=\\'ph\\'>이미지<br>없음</span>'">`
+                    : `<span class="ph">이미지<br>없음</span>`;
+                return `<div class="row">
+                    <div class="idx">${i+1}</div>
+                    <div class="thumb">${thumb}</div>
+                    <div class="info">
+                        <div class="top">
+                            <span class="loc-badge">${esc(it.위치||'-')}</span>
+                            <span class="bc-badge-sm">${esc(it.바코드)}</span>
+                        </div>
+                        <div class="nm">${modelBadge(it.상품명)}</div>
+                    </div>
+                    <div class="qty3">
+                        <div class="q ord"><div class="k">발주</div><div class="v">${it.수량}</div></div>
+                        <div class="q prep" onclick="editPrep(${i})"><div class="k">준비</div><div class="v ${hasPrep?'':'empty'}">${hasPrep?it.준비:'—'}</div></div>
+                        <div class="q scan"><div class="k">스캔</div><div class="v ${it.스캔?'':'empty'}">${it.스캔?it.스캔:'—'}</div></div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // '준비' 클릭 → 숫자패드로 준비수량 수정 (기존 값이 채워진 상태로 열림)
+        function editPrep(i){
+            const o=activeOrder(); const it=o&&o.items[i];
+            if(!it) return;
+            NumPad.open({
+                title:`준비 수량 · <b>${esc(it.바코드)}</b>`,
+                value:(it.준비==null?0:it.준비), min:0, max:Number(it.수량)||0,
+                onConfirm:(n)=>setPrepared(o.발주번호,it,n)
+            });
+        }
+
+        // 준비수량 변경 → 화면에 먼저 반영하고 rk_order_items.prepared_qty 에 저장.
+        // 실패하면 이전 값으로 되돌린다.
+        async function setPrepared(orderNo,it,n){
+            const prev=it.준비;
+            it.준비=n;
+            renderItems(); renderOrders();
+            try{
+                const res=await fetch('/api/orders/update-prepared',{method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({orderNumber:orderNo,barcode:it.바코드,prepared:n})});
+                const d=await res.json();
+                if(!res.ok||d.success===false) throw new Error(d.error||'저장 실패');
+            }catch(e){
+                it.준비=prev;
+                renderItems(); renderOrders();
+                toast('준비수량 저장 실패: '+e.message+'\n이전 값으로 되돌렸습니다.');
+            }
+        }
+
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2800);}
+
+        loadData();
+    </script>
+</body>
+</html>

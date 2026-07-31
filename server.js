@@ -72,6 +72,11 @@ app.get('/shipPrepare', (req, res) => {
   res.sendFile(path.join(__dirname, 'shipPrepare.html'));
 });
 
+// ✅ 검수 페이지 (요약에서 선택한 발주서 — 발주/준비/스캔 수량 대조)
+app.get('/shipInspect', (req, res) => {
+  res.sendFile(path.join(__dirname, 'shipInspect.html'));
+});
+
 // ✅ 스캔 페이지 라우트 추가
 app.get('/scan', (req, res) => {
   res.sendFile(path.join(__dirname, 'scan.html'));
