@@ -133,6 +133,8 @@
         .type-pill{display:inline-block;background:#eef0f4;color:#475569;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:600;}
         .type-pill.jaego{background:#e8f0ff;color:#2563eb;}
         .type-pill.ipgo{background:#fff1e6;color:#ea580c;}
+        /* 입고 배지 안에 출고코드(stockArrange) 를 같이 넣는다 — '입고 0729' 한 덩어리 */
+        .type-pill .ship-code{margin-left:5px;font-variant-numeric:tabular-nums;}
         .box-emoji{font-weight:600;color:#374151;}
         .hempty{color:#a9b0bd;font-size:12px;padding:14px 0;text-align:center;}
         /* 하단 저장 */
@@ -966,14 +968,20 @@
         }
         function renderScanDetail(d){
             const sl=d.shippingList||[], bi=d.boxItems||[], st=d.stocks||[];
-            // 1) 출고예정 내역: 구분(재고/입고) · 생성일(created_at) · 회차 · 수량
+            // 1) 출고예정 내역: 구분(재고 / 입고+출고코드) · 회차 · 수량 · 생성일(created_at)
             const slSorted=sl.slice().sort((a,b)=>String(a.source).localeCompare(String(b.source))||((b.batchNo||0)-(a.batchNo||0)));
             const slRows = sl.length
-                ? slSorted.map(r=>`<tr>
-                    <td class="c">${r.source==='재고'?'<span class="type-pill jaego">재고</span>':'<span class="type-pill ipgo">입고</span>'}</td>
-                    <td class="c">${esc(dateOnly(r.createdAt))}</td>
+                ? slSorted.map(r=>{
+                    // 입고분은 출고코드(rk_cn_shipments.shipment_code)를 배지 안에 함께 표시 — '입고 0729'
+                    const type = r.source==='재고'
+                        ? '<span class="type-pill jaego">재고</span>'
+                        : `<span class="type-pill ipgo">입고${r.shipmentCode?`<span class="ship-code">${esc(r.shipmentCode)}</span>`:''}</span>`;
+                    return `<tr>
+                    <td class="c">${type}</td>
                     <td class="c">${r.batchNo?esc(r.batchNo):'–'}</td>
-                    <td class="r qty-edit" contenteditable="true" data-kind="shipping" data-id="${esc(r.id)}" data-orig="${Number(r.qty)||0}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" oninput="updateScanSaveBtn()" onblur="sanitizeQty(this)">${Number(r.qty)||0}</td></tr>`).join('')
+                    <td class="r qty-edit" contenteditable="true" data-kind="shipping" data-id="${esc(r.id)}" data-orig="${Number(r.qty)||0}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}" oninput="updateScanSaveBtn()" onblur="sanitizeQty(this)">${Number(r.qty)||0}</td>
+                    <td class="c">${esc(dateOnly(r.createdAt))}</td></tr>`;
+                  }).join('')
                 : `<tr><td colspan="4" class="hempty">출고예정 내역이 없습니다.</td></tr>`;
             // 2) 출고스캔 박스: 박스(📦N번) · 크기 · 수량(편집)
             const biRows = bi.length
@@ -992,8 +1000,8 @@
             return `
                 <div class="scard">
                     <div class="scard-h"><span class="t">출고예정 내역</span><span class="cnt">${sl.length}건</span></div>
-                    <table class="htable"><colgroup><col style="width:24%"><col style="width:36%"><col style="width:18%"><col style="width:22%"></colgroup>
-                        <thead><tr><th class="c">구분</th><th class="c">생성일</th><th class="c">회차</th><th class="r">수량</th></tr></thead><tbody>${slRows}</tbody></table>
+                    <table class="htable"><colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
+                        <thead><tr><th class="c">구분</th><th class="c">회차</th><th class="r">수량</th><th class="c">생성일</th></tr></thead><tbody>${slRows}</tbody></table>
                 </div>
                 <div class="scard">
                     <div class="scard-h"><span class="t">출고스캔 박스</span><span class="cnt">박스 ${bi.length}개</span></div>

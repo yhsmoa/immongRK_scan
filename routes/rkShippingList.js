@@ -309,11 +309,22 @@ router.get('/api/rocket/scan-detail', async (req, res) => {
     const { data: inv } = await sb.from('rk_inventories').select('img').eq('barcode', barcode).limit(1);
     const img = (inv && inv.length && inv[0].img) ? inv[0].img : null;
 
+    // 5) 입고분의 출고코드 (rk_cn_shipments.shipment_code) — shipment_id 로 조회
+    const shipIds = [...new Set((sl || []).map(r => r.shipment_id).filter(x => x != null))];
+    const codeByShipId = new Map();
+    for (let i = 0; i < shipIds.length; i += 200) {
+      const { data: cs, error: eC } = await sb.from('rk_cn_shipments')
+        .select('id, shipment_code').in('id', shipIds.slice(i, i + 200));
+      if (eC) throw eC;
+      for (const c of (cs || [])) codeByShipId.set(c.id, c.shipment_code);
+    }
+
     res.json({
       img,
       shippingList: (sl || []).map(r => ({
         id: r.id, source: r.source, status: r.status, orderNumber: r.order_number, center: r.center,
         location: r.location, qty: r.qty, shippingDate: r.shipping_date, batchNo: r.batch_no, createdAt: r.created_at,
+        shipmentCode: codeByShipId.get(r.shipment_id) || null,
       })),
       boxItems: (bi || []).map(r => { const b = boxById.get(r.box_id) || {}; return { id: r.id, orderNumber: r.order_number, boxNo: b.box_no, boxSize: b.box_size, qty: r.qty }; })
         .sort((a, b) => (a.boxNo || 0) - (b.boxNo || 0)),
