@@ -12,11 +12,13 @@ const S = require('./rkShared');
 const router = express.Router();
 const sb = S.supabase;
 
-// 발주서의 바코드별 한도(확정수량 합) + 상품명 맵
+// 발주서의 바코드별 한도(확정수량 합) + 상품명 + 준비수량 + 발주서 원본 위치
 async function orderBarcodeMeta(orderNumber) {
   const order = await S.getOrderFull('rk_orders', 'rk_order_items', orderNumber);
   const limit = new Map();  // barcode -> 확정수량 합
   const name = new Map();    // barcode -> 상품명
+  const prep = new Map();    // barcode -> 준비수량 합 (전부 미입력이면 null 유지)
+  const loc = new Map();     // barcode -> 발주서에 적힌 위치
   if (order && Array.isArray(order.상품정보)) {
     for (const p of order.상품정보) {
       if (p.박스정보) continue;               // 원본(박스 아님) 행만
@@ -24,9 +26,54 @@ async function orderBarcodeMeta(orderNumber) {
       if (!bc) continue;
       limit.set(bc, (limit.get(bc) || 0) + (parseInt(p.확정수량) || 0));
       if (!name.has(bc) && p.상품이름) name.set(bc, p.상품이름);
+      if (p.준비 != null) prep.set(bc, (prep.get(bc) || 0) + (parseInt(p.준비) || 0));
+      if (!loc.has(bc) && p.위치 && p.위치 !== '-') loc.set(bc, p.위치);
     }
   }
-  return { order, limit, name };
+  return { order, limit, name, prep, loc };
+}
+
+// 바코드별 위치 — 출고예정(rk_shipping_list source='재고') 위치 우선, 없으면 rk_stocks 위치.
+// 출고준비(shipPrepare) 화면과 같은 우선순위를 쓴다. 정렬 전용이라 실패해도 조용히 넘어간다.
+async function locationsByBarcode(orderNumber, barcodes) {
+  const out = new Map();
+  if (!barcodes.length) return out;
+  const sortLoc = (a, b) => String(a).localeCompare(String(b), 'ko', { numeric: true });
+  try {
+    for (let i = 0; i < barcodes.length; i += 200) {
+      const chunk = barcodes.slice(i, i + 200);
+      const { data, error } = await sb.from('rk_shipping_list')
+        .select('barcode, location')
+        .eq('source', '재고').eq('status', '출고예정').eq('order_number', orderNumber)
+        .in('barcode', chunk);
+      if (error) throw error;
+      const byBc = new Map();
+      for (const r of (data || [])) {
+        const l = String(r.location || '').trim();
+        if (!r.barcode || !l || l === '-') continue;
+        if (!byBc.has(r.barcode)) byBc.set(r.barcode, []);
+        byBc.get(r.barcode).push(l);
+      }
+      for (const [bc, list] of byBc) out.set(bc, list.sort(sortLoc).join(' · '));
+    }
+    const rest = barcodes.filter(b => !out.has(b));
+    for (let i = 0; i < rest.length; i += 200) {
+      const chunk = rest.slice(i, i + 200);
+      const { data, error } = await sb.from('rk_stocks').select('barcode, location').in('barcode', chunk);
+      if (error) throw error;
+      const byBc = new Map();
+      for (const r of (data || [])) {
+        const l = String(r.location || '').trim();
+        if (!r.barcode || !l || l === '-') continue;
+        if (!byBc.has(r.barcode)) byBc.set(r.barcode, []);
+        byBc.get(r.barcode).push(l);
+      }
+      for (const [bc, list] of byBc) out.set(bc, [...new Set(list)].sort(sortLoc).join(' · '));
+    }
+  } catch (e) {
+    console.error('[rk] ship-scan 위치 조회 실패(정렬만 영향):', e.message);
+  }
+  return out;
 }
 
 // 발주서 조회 (유효성 + 상품/박스/출고리스트)
@@ -38,10 +85,16 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
     const orderId = await S.getOrderId('rk_orders', orderNumber);
     if (!orderId) return res.status(404).json({ valid: false, error: '존재하지 않는 발주서입니다.' });
 
-    const { order, limit, name } = await orderBarcodeMeta(orderNumber);
+    const { order, limit, name, prep, loc } = await orderBarcodeMeta(orderNumber);
     // 처리완료(DONE) 발주서는 스캔 대상에서 제외
     if (S.isDoneOrder(order)) return res.status(404).json({ valid: false, error: '처리완료된 발주서입니다.' });
-    const products = [...limit.keys()].map(bc => ({ barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0 }));
+    const barcodes = [...limit.keys()];
+    const locMap = await locationsByBarcode(orderNumber, barcodes);
+    const products = barcodes.map(bc => ({
+      barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0,
+      preparedQty: prep.has(bc) ? prep.get(bc) : null,      // 미입력은 null (0 과 구분)
+      location: locMap.get(bc) || loc.get(bc) || '',        // 정렬용
+    }));
 
     // 기존 박스 + 출고리스트
     const { data: boxes, error: eB } = await sb.from('rk_ship_boxes')

@@ -82,6 +82,7 @@
         td.pname{white-space:normal;word-break:break-word;color:#334155;line-height:1.5;}
         .name-badge{display:inline-block;background:#eef2ff;color:#4f46e5;border:1px solid #e0e7ff;border-radius:6px;padding:0 7px;font-weight:700;font-size:12.5px;white-space:nowrap;}
         td.qty{text-align:center;font-variant-numeric:tabular-nums;font-weight:700;font-size:16px;color:#1e293b;}
+        td.qty.qty-none{color:#c4c8d6;font-weight:600;}   /* 준비수량 0 또는 미입력 */
         td.ctr{text-align:center;}
         .state-row td{text-align:center;padding:36px 12px;color:var(--muted);}
         .table-scroll::-webkit-scrollbar,.hdr-wrap::-webkit-scrollbar{width:10px;height:10px;}
@@ -208,9 +209,9 @@
 
                     <div class="table-scroll">
                         <table>
-                            <colgroup><col style="width:150px"><col><col style="width:84px"><col style="width:84px"></colgroup>
-                            <thead><tr><th class="ctr">바코드</th><th>상품명</th><th class="ctr">발주수량</th><th class="ctr">스캔수량</th></tr></thead>
-                            <tbody id="shipBody"><tr class="state-row"><td colspan="4">발주서를 조회하세요.</td></tr></tbody>
+                            <colgroup><col style="width:150px"><col><col style="width:70px"><col style="width:70px"><col style="width:70px"></colgroup>
+                            <thead><tr><th class="ctr">바코드</th><th>상품명</th><th class="ctr">발주</th><th class="ctr">준비</th><th class="ctr">스캔</th></tr></thead>
+                            <tbody id="shipBody"><tr class="state-row"><td colspan="5">발주서를 조회하세요.</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -342,7 +343,8 @@
                 orderInput.style.display='none';
                 document.getElementById('ordDisplay').style.display='flex';
                 // 스캔목록 = 발주서 상품 리스트 (발주수량=확정수량)
-                products=(data.products||[]).map(p=>({barcode:p.barcode, productName:p.productName||'', orderQty:p.confirmedQty||0, scannedQty:0}));
+                products=(data.products||[]).map(p=>({barcode:p.barcode, productName:p.productName||'', orderQty:p.confirmedQty||0,
+                    preparedQty:(p.preparedQty==null?null:Number(p.preparedQty)), location:p.location||'', scannedQty:0}));
                 const nameByBc=new Map(products.map(p=>[p.barcode,p.productName]));
                 // 저장된 박스 아이템(박스별)
                 boxItems=(data.items||[]).map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName||nameByBc.get(i.barcode)||'', qty:i.qty}));
@@ -499,18 +501,35 @@
         function boxSizeOf(no){ return savedBoxes.find(b=>b.boxNo===no)?.boxSize || boxSizeMap.get(no) || currentBoxSize; }
         function fmtTs(ts){ if(!ts) return '-'; const d=new Date(ts); if(isNaN(d)) return '-'; const k=new Date(d.getTime()+9*3600*1000); const p=n=>String(n).padStart(2,'0'); return `${k.getUTCFullYear()}-${p(k.getUTCMonth()+1)}-${p(k.getUTCDate())} ${p(k.getUTCHours())}:${p(k.getUTCMinutes())}`; }
 
-        // 스캔목록 = 발주서 상품 리스트 (발주수량 vs 스캔수량, 같으면 연한 초록)
+        // 스캔목록 = 발주서 상품 리스트 (발주 vs 스캔, 같으면 연한 초록)
+        // 정렬: 준비수량 있는 것(>0) 먼저 → 없는 것(0/NULL) 나중, 각 그룹 안에서는 위치 오름차순
+        function shipSorted(){
+            const hasPrep=p=>(Number(p.preparedQty)||0)>0;
+            const locOf=p=>String(p.location||'');
+            return products.slice().sort((a,b)=>{
+                const ha=hasPrep(a), hb=hasPrep(b);
+                if(ha!==hb) return ha?-1:1;                       // 준비 있는 것 먼저
+                const la=locOf(a), lb=locOf(b);
+                if(!la!==!lb) return la?-1:1;                     // 위치 없는 건 그룹 뒤로
+                const c=la.localeCompare(lb,'ko',{numeric:true});
+                if(c) return c;
+                return String(a.barcode).localeCompare(String(b.barcode),'ko',{numeric:true});
+            });
+        }
         function renderShip(){
             const tb=document.getElementById('shipBody');
-            if(!currentOrder){ tb.innerHTML=`<tr class="state-row"><td colspan="4">발주서를 조회하세요.</td></tr>`; return; }
-            if(!products.length){ tb.innerHTML=`<tr class="state-row"><td colspan="4">상품이 없습니다.</td></tr>`; return; }
-            tb.innerHTML=products.map(p=>{
+            if(!currentOrder){ tb.innerHTML=`<tr class="state-row"><td colspan="5">발주서를 조회하세요.</td></tr>`; return; }
+            if(!products.length){ tb.innerHTML=`<tr class="state-row"><td colspan="5">상품이 없습니다.</td></tr>`; return; }
+            tb.innerHTML=shipSorted().map(p=>{
                 const done=p.orderQty>0 && p.scannedQty===p.orderQty;
                 const cls=done?'row-done':(p.barcode===lastScanBarcode?'row-latest':'');
+                // 준비수량 0 또는 미입력(NULL) → 회색
+                const prep=Number(p.preparedQty)||0;
                 return `<tr data-bc="${esc(p.barcode)}" class="${cls}">
                     <td class="bc">${esc(p.barcode)}</td>
                     <td class="pname pname-link" onclick="openBc('${esc(p.barcode)}')">${pnameHtml(p.productName)}</td>
                     <td class="qty">${p.orderQty}</td>
+                    <td class="qty${prep>0?'':' qty-none'}">${p.preparedQty==null?0:p.preparedQty}</td>
                     <td class="qty">${p.scannedQty}</td>
                 </tr>`;
             }).join('');
