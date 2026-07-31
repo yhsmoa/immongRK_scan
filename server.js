@@ -3295,10 +3295,13 @@ app.get('/api/shortage', async (req, res) => {
             item.yiwuTotalQty = yiwuMap.get(item.상품바코드) || 0;
         });
 
-        // 5.6단계: 재고 = rk_stocks 바코드별 합(qty NULL이면 미집계) − 재고 출고계획(rk_shipping_list source=재고 출고예정)
-        //   전부 NULL/데이터없음 → 비움(null), 그 외 max(0, 재고합 − 예약합)
+        // 5.6단계: 재고 = rk_stocks 바코드별 합 (qty NULL이면 미집계, 전부 NULL/데이터없음 → 비움(null))
+        //   ⚠ 재고예약(rk_shipping_list source=재고 status=출고예정)을 빼면 안 된다.
+        //      재고준비로 예약하는 순간 rk_stocks 에서 이미 즉시 차감되기 때문이다.
+        //      (routes/rkShippingList.js 의 '준비된 만큼 rk_stocks 즉시 차감' — note='재고준비 출고배정')
+        //      즉 rk_stocks.qty 자체가 이미 "예약분을 뺀 가용 재고"라, 또 빼면 이중차감이 된다.
+        //      배정 로직도 같은 전제로 avail = rk_stocks.qty 를 그대로 쓴다.
         const stockMap = new Map();     // barcode → { sum, has }
-        const stockResMap = new Map();  // barcode → 재고예약 합
         const stkBcs = shortageList.map(i => i.상품바코드).filter(Boolean);
         for (let i = 0; i < stkBcs.length; i += 200) {
             const batch = stkBcs.slice(i, i + 200);
@@ -3317,21 +3320,9 @@ app.get('/api/shortage', async (req, res) => {
                 from += PAGE;
             }
         }
-        for (let i = 0; i < stkBcs.length; i += 200) {
-            const batch = stkBcs.slice(i, i + 200);
-            let from = 0; const PAGE = 1000;
-            while (true) {
-                const { data, error } = await supabase.from('rk_shipping_list').select('barcode, qty').eq('source', '재고').eq('status', '출고예정').in('barcode', batch).range(from, from + PAGE - 1);
-                if (error) { console.error('rk_shipping_list(재고예약) 조회 오류:', error); break; }
-                if (!data || data.length === 0) break;
-                data.forEach(r => { if (r.barcode) stockResMap.set(r.barcode, (stockResMap.get(r.barcode) || 0) + (parseInt(r.qty) || 0)); });
-                if (data.length < PAGE) break;
-                from += PAGE;
-            }
-        }
         shortageList.forEach(item => {
             const s = stockMap.get(item.상품바코드);
-            item.재고 = (!s || !s.has) ? null : Math.max(0, s.sum - (stockResMap.get(item.상품바코드) || 0));
+            item.재고 = (!s || !s.has) ? null : Math.max(0, s.sum);
         });
 
         // 5.7단계: 잔여 = 재고정리(stockArrange) '처리중'(pending) 남은수량 바코드별 합
