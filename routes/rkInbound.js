@@ -277,6 +277,35 @@ router.post('/api/inbound/prepare', async (req, res) => {
       }
     }
 
+    // 재고건 출고예정 예약 = rk_shipping_list(source='재고', status='출고예정')의 발주번호+바코드별 합.
+    // ⚠ 이걸 빼지 않으면 "재고 준비 → 입고 출고준비" 순서일 때 같은 발주 수량에 재고분과 입고분이
+    //    중복 배정된다(발주 5 = 재고 5 + 입고 3 → 8). 재고 배정 쪽(rkShippingList.js 의 reservedByOrder)은
+    //    source 무관하게 이미 차감하고 있으므로, 여기서도 대칭으로 맞춘다.
+    //    입고분(source='입고')은 rk_cn_shipping 의 미러이므로 consumedMap 과 중복되어 여기서는 제외한다.
+    const stockReservedByOrderBc = new Map(); // `${order_number}|${barcode}` -> 재고 예약합
+    {
+      const bcs = [...barcodesInItems];
+      for (let i = 0; i < bcs.length; i += 200) {
+        const batch = bcs.slice(i, i + 200);
+        let from = 0; const PAGE = 1000;
+        while (true) {
+          const { data, error } = await sb.from('rk_shipping_list')
+            .select('order_number, barcode, qty, source, status')
+            .eq('source', '재고').eq('status', '출고예정')
+            .in('barcode', batch).range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (!data || !data.length) break;
+          for (const r of data) {
+            if (!r.order_number || !r.barcode) continue;
+            const k = `${r.order_number}|${r.barcode}`;
+            stockReservedByOrderBc.set(k, (stockReservedByOrderBc.get(k) || 0) + (parseInt(r.qty) || 0));
+          }
+          if (data.length < PAGE) break;
+          from += PAGE;
+        }
+      }
+    }
+
     const orderProductMap = new Map(); // barcode -> [{order, availableQuantity}]
     for (const order of orders) {
       for (const p of (order.상품정보 || [])) {
@@ -285,8 +314,9 @@ router.post('/api/inbound/prepare', async (req, res) => {
         const 스캔 = shipScanByOrderBc.get(`${order.발주번호}|${p.상품바코드}`) || 0;
         const consumed = consumedMap.has(p.상품바코드) && consumedMap.get(p.상품바코드).has(order.발주번호)
           ? consumedMap.get(p.상품바코드).get(order.발주번호) : 0;
-        // 가용 = 확정 - 출고스캔 - (이미 배정된 전량). 입고1/입고2 미차감.
-        const avail = (parseInt(p.확정수량) || 0) - 스캔 - consumed;
+        const 재고예약 = stockReservedByOrderBc.get(`${order.발주번호}|${p.상품바코드}`) || 0;
+        // 가용 = 확정 - 출고스캔 - (이미 배정된 입고 전량) - (재고건 출고예정). 입고1/입고2 미차감.
+        const avail = (parseInt(p.확정수량) || 0) - 스캔 - consumed - 재고예약;
         if (avail > 0) {
           if (!orderProductMap.has(p.상품바코드)) orderProductMap.set(p.상품바코드, []);
           orderProductMap.get(p.상품바코드).push({
