@@ -385,8 +385,23 @@
             // 이동 버튼
             document.getElementById('prevBtn').disabled=!o||curIdx<=0;
             document.getElementById('nextBtn').disabled=!o||!total||curIdx>=total-1;
-            // 목록 현재행 하이라이트
+            // 목록 현재행 하이라이트 + 화면 안으로 따라오게
             document.querySelectorAll('#itemList .row').forEach((el,i)=>el.classList.toggle('cur',i===curIdx));
+            scrollCurIntoView();
+        }
+
+        // '없음/다음'으로 진행할 때 목록이 저절로 따라 내려오도록 현재행을 목록 중앙에 둔다.
+        // (페이지 전체가 아니라 목록 박스만 스크롤해야 하므로 scrollIntoView 대신 직접 계산)
+        function scrollCurIntoView(){
+            const wrap=document.getElementById('itemList');
+            const el=wrap&&wrap.querySelector('.row.cur');
+            if(!wrap||!el) return;
+            const wr=wrap.getBoundingClientRect(), er=el.getBoundingClientRect();
+            const delta=(er.top-wr.top)-(wr.height/2-er.height/2);
+            if(Math.abs(delta)<1) return;
+            // ⚠ 부드러운 스크롤(scrollTo{behavior:'smooth'} · CSS scroll-behavior:smooth)은
+            //    일부 웹뷰/태블릿 환경에서 통째로 무시돼 아예 안 움직인다. 즉시 이동으로 확실하게 처리한다.
+            wrap.scrollTop=Math.max(0,wrap.scrollTop+delta);
         }
 
         function movePrev(){ if(curIdx>0){ curIdx--; renderCur(); } }
@@ -467,6 +482,7 @@
                     <div class="prep-dot ${prep?'':'empty'}">${prep?it.준비:''}</div>
                 </div>`;
             }).join('');
+            scrollCurIntoView();   // 목록을 다시 그린 뒤에도 현재행을 놓치지 않는다
         }
 
         let toastTimer;
