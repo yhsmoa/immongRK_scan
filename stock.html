@@ -147,6 +147,12 @@
                         <option value="500">500개씩</option>
                     </select>
                 </div>
+                <div class="page-size">
+                    <select id="stockFilter" onchange="changeFilter()">
+                        <option value="all" selected>전체</option>
+                        <option value="qty">재고</option>
+                    </select>
+                </div>
             </div>
 
             <div class="table-scroll">
@@ -172,6 +178,7 @@
 
         let allRows=[], viewRows=[];
         let pageSize=100, currentPage=1;
+        let stockFilter='all';   // 'all' = 전체 · 'qty' = 재고(수량 많은 순)
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         // 수량 비교: null(빈칸)과 0을 구별
@@ -259,8 +266,24 @@
                     return terms.some(t=>hay.some(h=>h.includes(t)));
                 });
             }
+            applyFilter();
             currentPage=1;
             render();
+        }
+
+        // 필터: 전체 = 불러온 순서 그대로 / 재고 = 수량 많은 순 (빈칸은 맨 뒤, 같으면 위치순)
+        function applyFilter(){
+            if(stockFilter!=='qty') return;
+            viewRows.sort((a,b)=>{
+                const an=a.수량==null, bn=b.수량==null;
+                if(an!==bn) return an?1:-1;
+                if(!an && Number(b.수량)!==Number(a.수량)) return Number(b.수량)-Number(a.수량);
+                return String(a.위치||'').localeCompare(String(b.위치||''),'ko',{numeric:true});
+            });
+        }
+        function changeFilter(){
+            stockFilter=document.getElementById('stockFilter').value||'all';
+            applySearch();   // 검색 결과를 다시 만든 뒤 정렬을 새로 적용
         }
 
         // ── 체크박스 선택 + 삭제 ──
