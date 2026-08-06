@@ -39,65 +39,61 @@
         .mode-tab:hover{background:#f8fafc;}
         .mode-tab.active{background:#2563eb;border-color:#2563eb;color:#fff;}
 
-        /* 날짜 행 — 뒤로 선을 그어 구분 */
-        .date-row{display:flex;align-items:center;gap:8px;margin:22px 6px 12px;}
-        .date-row .line{flex:1;height:1px;background:#e2e8f0;}
-        /* 센터 박스 | 발주서들 — 한 줄에 가로 배치. 센터 박스는 발주서 줄 수만큼 늘어난다 */
-        .center-row{display:flex;align-items:stretch;gap:10px;margin:0 8px 10px;}
-        /* 센터 박스 — 상단 메뉴와 같은 주황색. 내용은 상하좌우 정중앙 */
-        .center-box{flex:0 0 124px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-            border:1.5px solid #F0492F;border-radius:11px;background:#fff;color:#C13A24;cursor:pointer;user-select:none;
-            text-align:center;transition:background .12s,box-shadow .12s;}
-        .center-box:hover{background:#FFF5F2;}
-        .center-box.sel{background:#FDEBE6;box-shadow:0 0 0 3px rgba(240,73,47,.22);}
-        .center-box .cname{font-size:13.5px;font-weight:700;line-height:1.3;word-break:keep-all;}
-        .center-box .ccnt{font-size:11.5px;opacity:.8;font-variant-numeric:tabular-nums;}
-        .date-badge{display:inline-block;background:#2563eb;color:#fff;font-size:13.5px;font-weight:700;
-            padding:6px 14px;border-radius:7px;cursor:pointer;user-select:none;}
-        .date-badge:hover{background:#1d4ed8;}
-        .date-badge.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
-        .date-meta{font-size:12px;color:var(--muted);}
-        .orders{display:flex;flex-wrap:wrap;gap:10px;}
-        /* 카드 바깥 껍데기 — '완료' 배지와 층 태그를 여기에 붙인다.
-           .order 는 물결 채움 때문에 overflow:hidden 이라 배지를 카드 안에 두면 잘린다. */
-        .order-wrap{position:relative;display:flex;}
+        /* ── 날짜 행 — 어두운 알약 + 건수, 오른쪽에 미완료 요약, 아래로 구분선 ── */
+        .date-row{display:flex;align-items:center;gap:10px;margin:26px 6px 16px;
+            padding-bottom:12px;border-bottom:1px solid #ecebe9;}
+        .date-row .line{flex:1;}
+        .date-badge{display:inline-block;background:#231f1d;color:#fff;font-size:13px;font-weight:700;
+            padding:6px 13px;border-radius:7px;cursor:pointer;user-select:none;letter-spacing:.01em;
+            transition:background .12s,box-shadow .12s;}
+        .date-badge:hover{background:#3b3532;}
+        .date-badge.sel{background:#231f1d;box-shadow:0 0 0 3px rgba(35,31,29,.18);}
+        .date-meta{font-size:12.5px;color:#a8a29e;font-variant-numeric:tabular-nums;}
+        /* 미완료 요약 (태블릿 탭에서만) */
+        .todo-sum{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#E0761C;}
+        .todo-sum i{width:6px;height:6px;border-radius:50%;background:#F0842F;}
+
+        /* ── 센터 | 발주서들 — 센터끼리 옅은 선으로 한 번 더 구분 ── */
+        .center-row{display:flex;align-items:flex-start;gap:16px;margin:0 8px;
+            padding:14px 0;border-bottom:1px solid #f1efed;}
+        .center-row.last{border-bottom:none;}
+        /* 센터 — 테두리 없이 글자만. 선택하면 옅은 배경 */
+        .center-box{flex:0 0 108px;display:flex;flex-direction:column;gap:3px;cursor:pointer;user-select:none;
+            padding:5px 8px;border-radius:8px;transition:background .12s;}
+        .center-box:hover{background:#f6f4f2;}
+        .center-box.sel{background:#efece9;box-shadow:inset 0 0 0 1.5px #231f1d;}
+        .center-box .cname{font-size:14px;font-weight:800;color:#231f1d;line-height:1.3;word-break:keep-all;}
+        .center-box .ccnt{font-size:12px;color:#a8a29e;font-variant-numeric:tabular-nums;}
+        .center-box .ccnt b{color:#E0761C;}
+
+        /* ── 발주서 카드 ── */
+        .orders{display:flex;flex-wrap:wrap;gap:12px;}
+        .order{position:relative;border:1px solid #e7e5e2;border-radius:11px;background:#fff;cursor:pointer;
+            width:252px;padding:13px 15px;transition:border-color .12s,box-shadow .12s,background .12s;}
+        .order:hover{border-color:#cfcac5;}
+        .order.sel{border-color:#231f1d;box-shadow:0 0 0 2px rgba(35,31,29,.14);}
+        /* 준비 미완료 — 왼쪽 주황 띠 + 크림 배경 */
+        .order.todo{border-left:3px solid #F0842F;background:#FFFAF2;padding-left:13px;}
+        .order.todo.sel{box-shadow:0 0 0 2px rgba(240,132,47,.28);border-color:#F0842F;}
+        .o-head{display:flex;align-items:baseline;gap:7px;}
+        .o-no{font-size:14px;font-weight:800;color:#231f1d;white-space:nowrap;letter-spacing:-.01em;}
+        /* 완료 = 옅은 회색 글자 · 미완료 = 주황 알약 */
+        .o-state{margin-left:auto;font-size:11.5px;font-weight:600;color:#b6b0aa;white-space:nowrap;}
+        .o-state.todo{background:#F0842F;color:#fff;font-weight:700;padding:2px 8px;border-radius:5px;}
+        /* 발주 | 준비 | 스캔 — 크기·색 모두 동일 */
+        .o-qty{margin-top:9px;font-size:15px;font-weight:700;color:#3b3532;font-variant-numeric:tabular-nums;
+            letter-spacing:-.01em;}
+        .o-qty s{text-decoration:none;color:#cdc7c1;font-weight:600;margin:0 5px;}   /* 구분자 */
+        /* 센터명 — 발주번호 바로 옆 */
+        .o-center{font-size:11.5px;color:#a8a29e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         /* 층 배지 — 카드 안 맨 아래 (태블릿 탭 전용) */
-        .o-floors{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-        .o-floors .fl{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;
+        .o-floors{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px;}
+        .o-floors .fl{font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;
             white-space:nowrap;letter-spacing:-.02em;}
-        .o-floors .f1{background:#64748b;color:#fff;}   /* 1층 — 회색 */
-        .o-floors .f3{background:#eab308;color:#422006;}/* 3층 — 노랑 */
-        .o-floors .fx{background:#7c3aed;color:#fff;}   /* 기타 — 보라 */
-        .order{position:relative;overflow:hidden;border:1px solid #e5e9f0;border-radius:9px;cursor:pointer;
-            background:#fff;transition:border-color .12s,box-shadow .12s;min-width:132px;
-            box-shadow:2px 2px 5px rgba(15,23,42,.07);}
-        .order:hover{border-color:#cbd5e1;}
-        .order.sel{border-color:#f0492f;box-shadow:0 0 0 2px rgba(240,73,47,.20),2px 2px 5px rgba(15,23,42,.09);}
-        /* 스캔수량 비율만큼 아래에서 위로 채워지는 배경 (수면 물결 애니메이션) — 기본은 파랑 */
-        .o-fill{position:absolute;left:0;right:0;bottom:0;background:rgba(37,99,235,.14);z-index:0;transition:height .2s;}
-        /* 수면 물결: 채움 배경 바로 위에 정확히 맞닿게 배치 (겹치면 반투명색이 이중으로 쌓여 선처럼 보임) */
-        .o-fill::before{content:'';position:absolute;left:0;right:0;top:-6px;height:6px;
-            background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='6'%3E%3Cpath d='M0 3 Q10 0 20 3 T40 3 V6 H0 Z' fill='%232563eb' fill-opacity='.14'/%3E%3C/svg%3E") repeat-x bottom/40px 6px;
-            animation:waveL 3.2s linear infinite;}
-        /* 태블릿 탭에서만 준비완료 여부로 색을 나눈다 — 미완료 주황 · 완료 초록 */
-        .tablet-mode .o-fill{background:rgba(240,73,47,.14);}
-        .tablet-mode .o-fill::before{
-            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='6'%3E%3Cpath d='M0 3 Q10 0 20 3 T40 3 V6 H0 Z' fill='%23F0492F' fill-opacity='.14'/%3E%3C/svg%3E");}
-        .tablet-mode .order.done .o-fill{background:rgba(22,163,74,.20);}
-        .tablet-mode .order.done .o-fill::before{
-            background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='6'%3E%3Cpath d='M0 3 Q10 0 20 3 T40 3 V6 H0 Z' fill='%2316a34a' fill-opacity='.2'/%3E%3C/svg%3E");}
-        @keyframes waveL{from{background-position-x:0;}to{background-position-x:40px;}}
-        .o-body{position:relative;z-index:1;padding:9px 13px;}
-        .o-no{font-size:13.5px;font-weight:700;color:#1e293b;white-space:nowrap;}
-        .o-center{font-size:11.5px;color:#475569;margin-top:2px;}
-        .o-qty{font-size:11.5px;color:#334155;margin-top:3px;font-variant-numeric:tabular-nums;}
-        .o-qty em{font-style:normal;color:#4f46e5;font-weight:700;}   /* 준비수량 */
-        .o-qty b{color:#16a34a;}                                     /* 스캔수량 */
-        /* 완료/미완료 배지 — .order-wrap 기준이라 카드에 잘리지 않는다 */
-        .o-done{position:absolute;top:-6px;right:-5px;background:#16a34a;color:#fff;font-size:10px;font-weight:700;
-            padding:2px 6px;border-radius:999px;box-shadow:0 1px 3px rgba(0,0,0,.15);z-index:2;
-            pointer-events:none;white-space:nowrap;}
-        .o-done.todo{background:#F0492F;}   /* 준비 미완료 */
+        .o-floors .f1{background:#292420;color:#fff;}                        /* 1층 — 검정 */
+        .o-floors .f3{background:#2563eb;color:#fff;}                        /* 3층 — 파랑 */
+        .o-floors .fx{background:#fff;border:1px solid #d6d3d1;color:#44403c;}/* 기타 */
+        .o-floors .fnone{background:#fff;border:1px dashed #e7e5e4;color:#c7c2bd;font-weight:600;} /* 층 미지정 */
         .empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:14px;}
 
         /* 플로팅 버튼 스택 (화면 우하단 고정, 태블릿 대응)
@@ -278,15 +274,14 @@
             }
         }
 
-        // 완료 = 출고준비에서 준비수량을 전부 입력한 발주서 (카드 오른쪽 위 '완료' 배지)
+        // 완료 = 출고준비에서 준비수량을 전부 입력한 발주서 (카드 오른쪽 위 '완료' 표시)
         // 처리완료(DONE)는 서버에서 이미 제외되어 내려오므로 상태로는 판단하지 않는다.
         function isDone(o){ return !!o.준비완료; }
-        function scanPct(o){ return o.발주수량>0 ? Math.min(100,Math.round(o.스캔수량/o.발주수량*100)) : 0; }
+        // 20260810 → 2026.08.10 (형식이 다르면 원본 그대로)
+        function fmtDate(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}.${m[2]}.${m[3]}`:String(s||''); }
 
         function render(){
             const list=document.getElementById('list');
-            // 준비완료 색 구분(주황/초록)은 태블릿 탭에서만
-            list.classList.toggle('tablet-mode',mode==='TABLET');
             document.getElementById('orderCount').textContent=viewOrders.length;
             document.getElementById('selCount').textContent=selected.size;
             document.getElementById('btnCenter').disabled=selected.size===0;
@@ -299,50 +294,51 @@
                 if(!byDate.has(o.입고예정일)) byDate.set(o.입고예정일,[]);
                 byDate.get(o.입고예정일).push(o);
             }
+            const tablet = mode==='TABLET';   // 완료/미완료·층 표시는 태블릿 탭에서만
             let html='';
             for(const [date,dOrders] of byDate){
                 const dateSel=dOrders.length>0 && dOrders.every(o=>selected.has(o.발주번호));
+                const dTodo=tablet?dOrders.filter(o=>!isDone(o)).length:0;
                 html+=`<div class="date-row">
-                    <span class="date-badge ${dateSel?'sel':''}" data-date="${esc(date)}" onclick="toggleDate('${esc(date)}')">${esc(date)}</span>
+                    <span class="date-badge ${dateSel?'sel':''}" data-date="${esc(date)}" onclick="toggleDate('${esc(date)}')">${esc(fmtDate(date))}</span>
                     <span class="date-meta">${dOrders.length}건</span>
-                    <span class="line"></span></div>`;
+                    <span class="line"></span>
+                    ${dTodo?`<span class="todo-sum"><i></i>미완료 ${dTodo}건</span>`:''}</div>`;
                 const byCenter=new Map();
                 for(const o of dOrders){
                     if(!byCenter.has(o.물류센터)) byCenter.set(o.물류센터,[]);
                     byCenter.get(o.물류센터).push(o);
                 }
-                for(const [center,cOrders] of byCenter){
-                    // 센터 박스 | 발주서, 발주서, … (한 줄. 박스는 발주서 줄 수만큼 늘어남)
-                    html+=`<div class="center-row">
+                const centerList=[...byCenter.entries()];
+                centerList.forEach(([center,cOrders],ci)=>{
+                    // 센터 | 발주서, 발주서, … (한 줄). 날짜 그룹의 마지막 센터는 아래 선을 빼서 날짜 구분선과 겹치지 않게
+                    const cTodo=tablet?cOrders.filter(o=>!isDone(o)).length:0;
+                    html+=`<div class="center-row ${ci===centerList.length-1?'last':''}">
                         <div class="center-box" data-date="${esc(date)}" data-center="${esc(center)}" onclick="toggleCenter('${esc(date)}','${esc(center)}')">
                             <span class="cname">${esc(center)}</span>
-                            <span class="ccnt">${cOrders.length}건</span>
+                            <span class="ccnt">${cOrders.length}건${cTodo?` · <b>미완료 ${cTodo}</b>`:''}</span>
                         </div>
                         <div class="orders">`;
                     html+=cOrders.map(o=>{
                         const sel=selected.has(o.발주번호)?'sel':'';
                         const done=isDone(o);
-                        // 준비 완료/미완료 배지는 태블릿 탭에서만 표시 (완료=초록 · 미완료=주황)
-                        const doneBadge = mode!=='TABLET' ? ''
-                            : (done?`<span class="o-done">완료</span>`:`<span class="o-done todo">미완료</span>`);
-                        const pct=scanPct(o);
-                        // 층 태그도 태블릿 탭에서만 (1층 / 3층 / 기타 — 해당하는 것만)
+                        // 완료 = 옅은 회색 글자 · 미완료 = 주황 알약 (태블릿 탭에서만)
+                        const state = !tablet ? ''
+                            : (done?`<span class="o-state">완료</span>`:`<span class="o-state todo">미완료</span>`);
+                        // 층 배지 (태블릿 탭에서만). 위치를 못 찾았으면 '층 미지정'
                         const cls={'1층':'f1','3층':'f3','기타':'fx'};
-                        const floors = (mode==='TABLET' && (o.층||[]).length)
-                            ? `<div class="o-floors">${o.층.map(f=>`<span class="fl ${cls[f]}">${f}</span>`).join('')}</div>`
-                            : '';
-                        return `<div class="order-wrap">
-                            <div class="order ${sel} ${done?'done':''}" data-no="${esc(o.발주번호)}" onclick="toggleOrder('${esc(o.발주번호)}')">
-                            ${pct>0?`<div class="o-fill" style="height:${pct}%"></div>`:''}
-                            <div class="o-body">
-                                <div class="o-no">${esc(o.발주번호)}</div>
-                                <div class="o-center">${esc(o.물류센터)}</div>
-                                <div class="o-qty">${o.발주수량} | <em>${o.준비수량}</em> | <b>${o.스캔수량}</b></div>
-                                ${floors}
-                            </div></div>${doneBadge}</div>`;
+                        const floors = !tablet ? ''
+                            : `<div class="o-floors">${(o.층||[]).length
+                                ? o.층.map(f=>`<span class="fl ${cls[f]}">${f}</span>`).join('')
+                                : `<span class="fl fnone">층 미지정</span>`}</div>`;
+                        return `<div class="order ${sel} ${tablet&&!done?'todo':''}" data-no="${esc(o.발주번호)}" onclick="toggleOrder('${esc(o.발주번호)}')">
+                            <div class="o-head"><span class="o-no">${esc(o.발주번호)}</span><span class="o-center">${esc(o.물류센터)}</span>${state}</div>
+                            <div class="o-qty">${o.발주수량}<s>|</s>${o.준비수량}<s>|</s>${o.스캔수량}</div>
+                            ${floors}
+                        </div>`;
                     }).join('');
                     html+=`</div></div>`;
-                }
+                });
             }
             list.innerHTML=html;
             updateSelectionUI();
