@@ -122,12 +122,14 @@
         .bc-badge-sm{font-size:13px;font-weight:400;color:#5a6178;font-variant-numeric:tabular-nums;white-space:nowrap;}
         .qty-badge{font-size:15px;font-weight:700;color:#F0492F;white-space:nowrap;font-variant-numeric:tabular-nums;}
         .row .nm{font-size:13px;color:#5a6178;line-height:1.45;word-break:break-word;}
-        /* 준비값: 2줄 레이아웃과 무관하게 행 전체 기준 세로 중앙 (파란 동그라미) */
-        .prep-dot{flex:none;align-self:center;width:46px;height:46px;
+        /* 준비값: 2줄 레이아웃과 무관하게 행 전체 기준 세로 중앙.
+           값이 입력되면 파란 동그라미 배지(흰 숫자), 미입력이면 빈 자리만 차지한다. */
+        .prep-dot{flex:none;align-self:center;width:42px;height:42px;margin:0 2px;
             display:flex;align-items:center;justify-content:center;
             font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;
-            color:var(--primary);}                           /* 값이 있으면 파란 숫자만 */
-        .prep-dot.empty{color:#c4c8d6;}                      /* 미입력 */
+            border-radius:50%;background:var(--primary);color:#fff;
+            box-shadow:0 2px 6px rgba(79,70,229,.28);}
+        .prep-dot.empty{background:transparent;color:#c4c8d6;box-shadow:none;}   /* 미입력 */
         .empty-row{padding:40px 12px;text-align:center;color:var(--muted);font-size:14px;}
         .listwrap::-webkit-scrollbar{width:10px;}
         .listwrap::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
