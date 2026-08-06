@@ -3134,23 +3134,24 @@ app.get('/api/shortage', async (req, res) => {
         }
         barcodeMap.forEach(item => { item.총스캔수량 += (shipScanMap.get(item.상품바코드) || 0); });
 
-        // 3단계: 부족수량 계산 + SKU 수집 (부족수량 > 0만)
+        // 3단계: 부족수량 계산 + SKU 수집
+        //   ⚠ 재고부족 판정(발주 > 잔여+주문+재고)은 잔여·주문·재고가 모두 채워진 뒤에야 가능하므로
+        //      여기서는 거르지 않고 전부 담고, 5.8단계에서 최종 필터링한다.
+        //      (부족수량 = 발주 − 스캔 은 표시·정렬용으로 그대로 유지)
         const shortageList = [];
         const skuSet = new Set();
 
         barcodeMap.forEach(item => {
             const 부족수량 = item.총발주수량 - item.총스캔수량;
-            if (부족수량 > 0) {
-                const sku = barcodeToSku.get(item.상품바코드) || '';
-                if (sku) skuSet.add(sku);
+            const sku = barcodeToSku.get(item.상품바코드) || '';
+            if (sku) skuSet.add(sku);
 
-                shortageList.push({
-                    ...item,
-                    부족수량,
-                    부족률: item.총발주수량 > 0 ? Math.round((부족수량 / item.총발주수량) * 100 * 10) / 10 : 0,
-                    skuId: sku
-                });
-            }
+            shortageList.push({
+                ...item,
+                부족수량,
+                부족률: item.총발주수량 > 0 ? Math.round((부족수량 / item.총발주수량) * 100 * 10) / 10 : 0,
+                skuId: sku
+            });
         });
 
         // 3.5단계: 입고재고(pending) 모드 — shortageList 를 stockArrange 처리중 바코드로 교체
@@ -3363,6 +3364,20 @@ app.get('/api/shortage', async (req, res) => {
             item.remainQty = remainMap.get(item.상품바코드) || 0;
             item.img = barcodeToImg.get(item.상품바코드) || '';
         });
+
+        // 5.8단계: 재고부족 판정 — 아직 못 채운 수량이 확보 가능한 물량보다 많은 것만 남긴다.
+        //   부족수량(총발주수량 − 총스캔수량) > 잔여(remainQty) + 주문(yiwuTotalQty) + 재고(재고)
+        //   이미 스캔되어 나간 분은 발주에서 빼고 본다. 재고가 비어있으면(null) 0 으로 본다.
+        //   입고재고(pending) 모드는 이 조건을 적용하지 않는다.
+        //   ※ 6단계(발주내역 조회)보다 먼저 걸러야 불필요한 조회를 안 한다.
+        if (viewMode !== 'pending') {
+            for (let i = shortageList.length - 1; i >= 0; i--) {
+                const it = shortageList[i];
+                const 확보 = (Number(it.remainQty) || 0) + (Number(it.yiwuTotalQty) || 0) + (Number(it.재고) || 0);
+                const 남은발주 = (Number(it.총발주수량) || 0) - (Number(it.총스캔수량) || 0);
+                if (!(남은발주 > 확보)) shortageList.splice(i, 1);
+            }
+        }
 
         // 6단계: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
         const allBarcodes = shortageList.map(i => i.상품바코드).filter(Boolean);

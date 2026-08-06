@@ -355,6 +355,31 @@ module.exports = (io) => {
     }
   });
 
+  // 남은 준비수량 일괄 0 처리 (벌크) — 선택 발주서에서 아직 미입력(NULL)인 원본 상품행만 0 으로.
+  // 이미 입력된 값(0 포함)은 건드리지 않는다.
+  router.post('/api/orders/fill-prepared-zero', async (req, res) => {
+    try {
+      const { orderNumbers } = req.body;
+      if (!Array.isArray(orderNumbers) || orderNumbers.length === 0)
+        return res.status(400).json({ success: false, message: '발주서가 선택되지 않았습니다.' });
+      const { data: ords, error: eO } = await S.supabase.from('rk_orders')
+        .select('id, order_number').in('order_number', orderNumbers);
+      if (eO) throw eO;
+      if (!ords || !ords.length)
+        return res.status(404).json({ success: false, message: '발주서를 찾을 수 없습니다.' });
+      const ids = ords.map(o => o.id);
+      const { data, error } = await S.supabase.from('rk_order_items')
+        .update({ prepared_qty: 0 })
+        .in('order_id', ids).is('box_info', null).is('prepared_qty', null)
+        .select('id');
+      if (error) throw error;
+      res.json({ success: true, updatedCount: data ? data.length : 0, orderCount: ords.length });
+    } catch (e) {
+      console.error('[rk] fill-prepared-zero:', e);
+      res.status(500).json({ success: false, message: '준비수량 일괄 처리 중 오류가 발생했습니다.' });
+    }
+  });
+
   // 입고일 변경 (벌크)
   router.post('/api/orders/update-date', async (req, res) => {
     try {
