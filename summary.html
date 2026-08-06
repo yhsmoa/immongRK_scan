@@ -58,9 +58,16 @@
         .date-badge.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
         .date-meta{font-size:12px;color:var(--muted);}
         .orders{display:flex;flex-wrap:wrap;gap:10px;}
-        /* 카드 바깥 껍데기 — '완료' 배지를 여기에 붙인다.
+        /* 카드 바깥 껍데기 — '완료' 배지와 층 태그를 여기에 붙인다.
            .order 는 물결 채움 때문에 overflow:hidden 이라 배지를 카드 안에 두면 잘린다. */
         .order-wrap{position:relative;display:flex;}
+        /* 층 배지 — 카드 안 맨 아래 (태블릿 탭 전용) */
+        .o-floors{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
+        .o-floors .fl{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;
+            white-space:nowrap;letter-spacing:-.02em;}
+        .o-floors .f1{background:#64748b;color:#fff;}   /* 1층 — 회색 */
+        .o-floors .f3{background:#eab308;color:#422006;}/* 3층 — 노랑 */
+        .o-floors .fx{background:#7c3aed;color:#fff;}   /* 기타 — 보라 */
         .order{position:relative;overflow:hidden;border:1px solid #e5e9f0;border-radius:9px;cursor:pointer;
             background:#fff;transition:border-color .12s,box-shadow .12s;min-width:132px;
             box-shadow:2px 2px 5px rgba(15,23,42,.07);}
@@ -204,11 +211,70 @@
                     // 출고준비(shipPrepare)에서 [없음]으로 0 을 넣은 것도 입력으로 친다.
                     준비완료:(()=>{ const rows=(o.상품정보||[]).filter(p=>!p.박스정보);
                         return rows.length>0 && rows.every(p=>p.준비!=null); })(),
-                    상태:o.상태||'PROCESSING', 처리방식:o.처리방식||null
+                    상태:o.상태||'PROCESSING', 처리방식:o.처리방식||null,
+                    층:[]   // 아래 fillFloors() 에서 채운다 (태블릿 탭 전용)
                 }));
                 applyMode(); render();
+                fillFloors(data).then(()=>render()).catch(()=>{});   // 위치 조회는 뒤늦게 채워도 되는 부가정보
             }catch(e){
                 document.getElementById('list').innerHTML=`<div class="empty">데이터를 불러오지 못했습니다: ${esc(e.message)}</div>`;
+            }
+        }
+
+        // ── 층 태그 (태블릿 탭 전용) ──
+        // 위치는 출고준비(shipPrepare)와 같은 우선순위: 출고예정(재고건) → rk_stocks → 발주서 원본.
+        // 위치 앞자리가 1 이면 1층, 3 이면 3층, 그 외(2·4·'바구니' 등)는 기타.
+        // 한 발주서에 여러 층이 섞이면 해당하는 태그를 모두 표시한다.
+        const FLOOR_ORDER=['1층','3층','기타'];
+        function floorOf(loc){
+            const c=String(loc||'').trim().charAt(0);
+            return c==='1'?'1층':c==='3'?'3층':'기타';
+        }
+        async function fillFloors(raw){
+            // 태블릿 탭에서만 쓰므로 태블릿 발주서만 계산한다
+            const targets=raw.filter(o=>String(o.처리방식||'')==='TABLET');
+            if(!targets.length) return;
+            const byNo=new Map(orders.map(o=>[o.발주번호,o]));
+
+            // 1) 출고예정(재고건) 위치
+            const slMap=new Map();   // 발주번호|바코드 → [location]
+            try{
+                const r=await fetch('/api/shipping-list?source='+encodeURIComponent('재고')+'&status='+encodeURIComponent('출고예정'));
+                if(r.ok) for(const s of await r.json()){
+                    const k=`${s.orderNumber}|${s.barcode}`;
+                    if(!slMap.has(k)) slMap.set(k,[]);
+                    if(s.location) slMap.get(k).push(s.location);
+                }
+            }catch(_){ /* 없으면 재고 위치로 대체 */ }
+
+            // 2) 출고예정 위치가 없는 바코드는 rk_stocks 위치로
+            const need=[];
+            for(const o of targets) for(const p of (o.상품정보||[])){
+                if(p.박스정보||!p.상품바코드) continue;
+                if(!(slMap.get(`${o.발주번호}|${p.상품바코드}`)||[]).length) need.push(p.상품바코드);
+            }
+            let stkMap={};
+            const barcodes=[...new Set(need)];
+            if(barcodes.length){
+                try{
+                    const r=await fetch('/api/stocks/locations',{method:'POST',
+                        headers:{'Content-Type':'application/json'},body:JSON.stringify({barcodes})});
+                    if(r.ok) stkMap=await r.json();
+                }catch(_){ /* 위치를 못 찾으면 태그를 안 붙인다 */ }
+            }
+
+            // 3) 발주서별 층 집합
+            for(const o of targets){
+                const set=new Set();
+                for(const p of (o.상품정보||[])){
+                    if(p.박스정보||!p.상품바코드) continue;
+                    let locs=slMap.get(`${o.발주번호}|${p.상품바코드}`)||[];
+                    if(!locs.length) locs=(stkMap[p.상품바코드]||[]).map(x=>x.location).filter(Boolean);
+                    if(!locs.length && p.위치 && p.위치!=='-') locs=[p.위치];
+                    locs.forEach(l=>set.add(floorOf(l)));
+                }
+                const target=byNo.get(o.발주번호);
+                if(target) target.층=FLOOR_ORDER.filter(f=>set.has(f));
             }
         }
 
@@ -260,6 +326,11 @@
                         const doneBadge = mode!=='TABLET' ? ''
                             : (done?`<span class="o-done">완료</span>`:`<span class="o-done todo">미완료</span>`);
                         const pct=scanPct(o);
+                        // 층 태그도 태블릿 탭에서만 (1층 / 3층 / 기타 — 해당하는 것만)
+                        const cls={'1층':'f1','3층':'f3','기타':'fx'};
+                        const floors = (mode==='TABLET' && (o.층||[]).length)
+                            ? `<div class="o-floors">${o.층.map(f=>`<span class="fl ${cls[f]}">${f}</span>`).join('')}</div>`
+                            : '';
                         return `<div class="order-wrap">
                             <div class="order ${sel} ${done?'done':''}" data-no="${esc(o.발주번호)}" onclick="toggleOrder('${esc(o.발주번호)}')">
                             ${pct>0?`<div class="o-fill" style="height:${pct}%"></div>`:''}
@@ -267,6 +338,7 @@
                                 <div class="o-no">${esc(o.발주번호)}</div>
                                 <div class="o-center">${esc(o.물류센터)}</div>
                                 <div class="o-qty">${o.발주수량} | <em>${o.준비수량}</em> | <b>${o.스캔수량}</b></div>
+                                ${floors}
                             </div></div>${doneBadge}</div>`;
                     }).join('');
                     html+=`</div></div>`;
