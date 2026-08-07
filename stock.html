@@ -114,6 +114,7 @@
                 </div>
                 <div class="actions">
                     <button class="btn" id="locSaveBtn" onclick="saveSelectedLoc()">위치저장</button>
+                    <button class="btn" id="refreshBtn" onclick="refreshData()">새로고침</button>
                     <button class="btn" onclick="location.href='/stockScan'">재고스캔</button>
                     <div class="xlsx-drop">
                         <button class="btn primary">
@@ -372,6 +373,35 @@
             updateSaveBtn();
         }
         function hasDirty(){ return allRows.some(r=>!qtyEq(r.수량,r.origQty)); }
+
+        // ── 새로고침: 보던 페이지·검색어·필터·스크롤을 그대로 두고 데이터만 다시 불러온다 ──
+        async function refreshData(){
+            if(hasDirty() && !confirm('저장하지 않은 수량 수정이 있습니다.\n새로고침하면 사라집니다. 계속할까요?')) return;
+            const btn=document.getElementById('refreshBtn');
+            const org=btn?btn.textContent:'';
+            if(btn){ btn.disabled=true; btn.textContent='불러오는 중…'; }
+            const keepPage=currentPage;
+            const ts=document.querySelector('.table-scroll');
+            const keepScrollX=ts?ts.scrollLeft:0;      // 표는 가로만 스크롤된다
+            const keepScrollY=window.scrollY;          // 세로 스크롤은 창 기준
+            try{
+                const res=await fetch('/api/stocks');
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                const items=await res.json();
+                allRows=items.map(it=>({
+                    id:it.id, 위치:it.location, 상품번호:it.skuId, 바코드:it.barcode, 상품명:it.itemName,
+                    수량:it.qty==null?null:Number(it.qty), origQty:it.qty==null?null:Number(it.qty), 시즌:it.season, 비고:it.note
+                }));
+                applySearch();                 // 검색·필터를 다시 적용 (여기서 1페이지로 초기화됨)
+                const total=Math.max(1,Math.ceil(viewRows.length/pageSize));
+                currentPage=Math.min(keepPage,total);   // 보던 페이지로 복귀 (행이 줄었으면 마지막 페이지)
+                render();
+                if(ts) ts.scrollLeft=keepScrollX;
+                window.scrollTo(0,keepScrollY);
+                toast(`새로고침 완료 (${viewRows.length}개)`);
+            }catch(e){ toast('새로고침 실패: '+e.message); }
+            finally{ if(btn){ btn.disabled=false; btn.textContent=org; } }
+        }
         function updateSaveBtn(){
             const btn=document.getElementById('saveBtn');
             if(!btn) return;
