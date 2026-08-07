@@ -103,8 +103,8 @@ module.exports = (io) => {
   // ⚠️ /logistics-centers 를 /:orderNumber 보다 먼저 등록
   router.get('/api/orders/logistics-centers', async (req, res) => {
     try {
-      const { data, error } = await S.supabase.from('rk_orders').select('logistics_center');
-      if (error) throw error;
+      const data = await S.pageAll(() => S.supabase.from('rk_orders')
+        .select('logistics_center').order('id', { ascending: true }));
       const centers = [...new Set(data.map((r) => r.logistics_center).filter((v) => v != null))];
       res.json({ success: true, centers });
     } catch (e) {
@@ -122,9 +122,9 @@ module.exports = (io) => {
       const PAGE = 1000;
       const filled = (v) => v != null && String(v).trim() !== '';
 
-      const { data: headers, error: hErr } = await S.supabase
-        .from('rk_orders').select('id, order_number').eq('status', 'PROCESSING');
-      if (hErr) throw hErr;
+      const headers = await S.pageAll(() => S.supabase
+        .from('rk_orders').select('id, order_number').eq('status', 'PROCESSING')
+        .order('id', { ascending: true }));
       if (!headers || !headers.length) {
         return res.json({ orderNumbers: [], barcodes: [],
           stats: { processingOrders: 0, targetOrders: 0, skippedOrders: 0, totalItems: 0, needItems: 0 } });

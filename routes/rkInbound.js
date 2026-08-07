@@ -41,6 +41,27 @@ function toKorean(r) {
   };
 }
 
+// 테이블 전체 조회 — Supabase 는 range 를 안 주면 1000행에서 잘린다.
+// ⚠ 잘려도 오류가 아니라 "조용히 일부만" 돌아오기 때문에, 화면에서는 데이터가 사라진 것처럼 보이고
+//    계산(배정 합계 등)은 틀린 값으로 진행된다. 전체가 필요한 조회는 반드시 이 함수를 쓸 것.
+async function pageAll(table, select, tweak) {
+  const all = [];
+  let from = 0;
+  const size = 1000;
+  while (true) {
+    // tweak 의 정렬을 먼저 적용하고 id 는 뒤에 붙인다(같은 값일 때 페이지가 흔들리지 않게 하는 보조키).
+    let q = sb.from(table).select(select);
+    if (tweak) q = tweak(q);
+    q = q.order('id', { ascending: true }).range(from, from + size - 1);
+    const { data, error } = await q;
+    if (error) throw error;
+    all.push(...data);
+    if (data.length < size) break;
+    from += size;
+  }
+  return all;
+}
+
 // 아이템 전체 조회 (헤더 join) — 1000행 우회
 async function fetchAllItems() {
   const all = [];
@@ -63,9 +84,8 @@ async function fetchAllItems() {
 // 출고코드 목록 (코드별 요약: 아이템 수)
 router.get('/api/inbound/shipments', async (req, res) => {
   try {
-    const { data: shipments, error } = await sb
-      .from('rk_cn_shipments').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
+    const shipments = await pageAll('rk_cn_shipments', '*',
+      q => q.order('created_at', { ascending: false }));
     const items = await fetchAllItems();
     const countByShip = {};
     for (const it of items) countByShip[it.shipment_id] = (countByShip[it.shipment_id] || 0) + 1;
@@ -190,9 +210,8 @@ router.get('/api/inbound/arranged', async (req, res) => {
     let items = await fetchAllItems();
     if (shipmentCode) items = items.filter(i => i.rk_cn_shipments && i.rk_cn_shipments.shipment_code === shipmentCode);
     const itemIds = new Set(items.map(i => i.id));
-    const { data: allocs, error } = await sb.from('rk_cn_shipping').select('*');
-    if (error) throw error;
-    res.json(buildArranged(items, (allocs || []).filter(a => itemIds.has(a.shipment_item_id))));
+    const allocs = await pageAll('rk_cn_shipping', '*');
+    res.json(buildArranged(items, allocs.filter(a => itemIds.has(a.shipment_item_id))));
   } catch (e) {
     console.error('[rk] inbound/arranged:', e);
     res.status(500).json({ error: '출고배정 조회 중 오류가 발생했습니다: ' + e.message });
@@ -228,9 +247,8 @@ router.post('/api/inbound/prepare', async (req, res) => {
     if (shipmentCode) items = items.filter(i => i.rk_cn_shipments && i.rk_cn_shipments.shipment_code === shipmentCode);
     const targetItemIds = new Set(items.map(i => i.id));
 
-    // 전체 배정 로드
-    const { data: allAllocs, error: eAll } = await sb.from('rk_cn_shipping').select('*');
-    if (eAll) throw eAll;
+    // 전체 배정 로드 — 1000행에서 잘리면 기존 배정을 못 보고 중복 배정된다
+    const allAllocs = await pageAll('rk_cn_shipping', '*');
 
     // 발주 가용량 계산용: 바코드→(발주→이미 배정된 합계)  (전 출고코드/전 회차 통합)
     const consumedMap = new Map();
@@ -422,12 +440,9 @@ async function locationCandidatesByBarcode(barcodes) {
 router.get('/api/inbound/stock-arranges', async (req, res) => {
   try {
     const items = await fetchAllItems();
-    const { data: shipping, error: eS } = await sb.from('rk_cn_shipping').select('shipment_item_id, ship_qty');
-    if (eS) throw eS;
-    const { data: arr, error: eR } = await sb.from('rk_cn_stock_arranges')
-      .select('*, rk_cn_shipments(shipment_code), rk_cn_shipment_items(box_name, order_number, product_name)')
-      .order('id', { ascending: true });
-    if (eR) throw eR;
+    const shipping = await pageAll('rk_cn_shipping', 'shipment_item_id, ship_qty');
+    const arr = await pageAll('rk_cn_stock_arranges',
+      '*, rk_cn_shipments(shipment_code), rk_cn_shipment_items(box_name, order_number, product_name)');
 
     const shipByItem = new Map();
     for (const a of (shipping || [])) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));

@@ -104,6 +104,24 @@ function headerToKorean(h, items) {
   };
 }
 
+// ── 1000행 제한 우회 공통 ──
+// ⚠ Supabase 는 range() 를 안 주면 1000행에서 조용히 잘라 돌려준다. 오류가 아니라 "일부만" 오기 때문에
+//    화면에서는 데이터가 사라진 것처럼 보이고 합계 계산은 틀린 값으로 진행된다.
+//    전체 행이 필요한 조회는 반드시 이 함수를 쓸 것. (buildQuery 는 매번 새 쿼리를 만들어 반환)
+async function pageAll(buildQuery) {
+  const all = [];
+  let from = 0;
+  const size = 1000;
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + size - 1);
+    if (error) throw error;
+    all.push(...data);
+    if (data.length < size) break;
+    from += size;
+  }
+  return all;
+}
+
 // ── 1000행 제한 우회: order_id 목록으로 items 전체 조회 (id 순) ──
 async function fetchAllItems(itemTable, orderIds) {
   if (!orderIds.length) return [];
@@ -125,12 +143,11 @@ async function fetchAllItems(itemTable, orderIds) {
 
 // ── 전체 발주서 목록 (한글, 모든 상품 포함, 정렬 입고예정일>물류센터>발주번호) ──
 async function listOrdersFull(headerTable, itemTable) {
-  const { data: headers, error } = await supabase
+  const headers = await pageAll(() => supabase
     .from(headerTable).select('*')
     .order('arrival_date', { ascending: true })
     .order('logistics_center', { ascending: true })
-    .order('order_number', { ascending: true });
-  if (error) throw error;
+    .order('order_number', { ascending: true }));
   const ids = headers.map((h) => h.id);
   const items = await fetchAllItems(itemTable, ids);
   const grouped = new Map();
@@ -242,7 +259,7 @@ module.exports = {
   insertKoreanOrders,
   dateToYmd, tsToKst, dash, str, ymdToDate, kstToTs,
   emptyToNull, placeholderToNull, toInt, toNum,
-  itemToKorean, headerToKorean, fetchAllItems,
+  itemToKorean, headerToKorean, fetchAllItems, pageAll,
   isDoneOrder, excludeDone,
   listOrdersFull, getOrderFull, getOrderId, recalcHeaderAggregates,
   koreanItemToRow, koreanHeaderToRow,
