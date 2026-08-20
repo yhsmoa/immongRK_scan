@@ -27,10 +27,10 @@
         .prog .track{width:160px;height:8px;background:var(--line);border-radius:99px;overflow:hidden;}
         .prog .fill{height:100%;background:var(--primary);border-radius:99px;transition:width .2s;}
 
-        /* 좌우 5:5 */
+        /* 좌우 4:6 (작업영역 : 목록) */
         .split{display:flex;gap:18px;align-items:flex-start;}
-        .left{flex:1 1 0;min-width:0;}
-        .right{flex:1 1 0;min-width:0;}
+        .left{flex:4 1 0;min-width:0;}
+        .right{flex:6 1 0;min-width:0;}
         @media (max-width:900px){ .split{flex-direction:column;} .left,.right{flex:none;width:100%;} }
 
         .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px;}
