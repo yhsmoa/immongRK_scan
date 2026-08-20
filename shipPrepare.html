@@ -101,17 +101,21 @@
         .o-qty b{color:#16a34a;}                                            /* 스캔수량 */
 
         /* 오른쪽 목록 — 카드형 */
-        .side-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
-        .side-head .h{font-size:15px;font-weight:600;color:#7a8199;}
-        .side-head .c{font-size:13px;color:var(--muted);}
+        /* 목록 머리글('목록 N품목')은 제거 — 목록이 그만큼 위로 올라온다 */
         .listwrap{background:#fff;border:1px solid #e4e7f0;border-radius:18px;padding:8px;
-            overflow-y:auto;max-height:calc(100vh - 210px);min-height:300px;}
+            overflow-y:auto;max-height:calc(100vh - 170px);min-height:300px;}
         .row{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:12px;margin-bottom:4px;cursor:pointer;}
         .row:hover{background:var(--hover);}
         .row.cur{background:#f6f7fc;box-shadow:inset 0 0 0 2px #c7d2fe;}
         .row .idx{width:26px;height:26px;flex:none;border-radius:8px;display:flex;align-items:center;justify-content:center;
             font-size:14px;font-weight:700;background:#f0f1f6;color:var(--muted);}
         .row.cur .idx{background:#eef0fe;color:var(--primary);}
+        /* 번호와 위치 사이 상품 이미지 — 행 높이(2줄)에 맞춘 정사각 썸네일 */
+        .row .thumb{width:56px;height:56px;flex:none;align-self:center;border-radius:10px;
+            border:1px solid var(--line);background:#fff;overflow:hidden;
+            display:flex;align-items:center;justify-content:center;}
+        .row .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+        .row .thumb .ph{font-size:10px;color:#c4c8d6;font-weight:600;text-align:center;line-height:1.3;}
         .row .info{flex:1;min-width:0;}
         /* 상단: 위치배지 · 바코드배지 · 수량 */
         .row .top{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:5px;}
@@ -206,12 +210,8 @@
                     </div>
                 </div>
 
-                <!-- 오른쪽: 목록 -->
+                <!-- 오른쪽: 목록 (머리글 없이 목록만 — 화면을 위로 더 쓴다) -->
                 <div class="right">
-                    <div class="side-head">
-                        <span class="h">목록</span>
-                        <span class="c"><b id="itemCount">0</b>품목</span>
-                    </div>
                     <div class="listwrap" id="itemList">
                         <div class="empty-row">발주서를 선택하세요.</div>
                     </div>
@@ -464,15 +464,20 @@
         function renderItems(){
             const o=activeOrder();
             const el=document.getElementById('itemList');
-            document.getElementById('itemCount').textContent=o?o.items.length:0;
             if(!o||!o.items.length){
                 el.innerHTML=`<div class="empty-row">품목이 없습니다.</div>`;
                 return;
             }
             el.innerHTML=o.items.map((it,i)=>{
                 const prep=it.준비!=null;
+                // 번호 다음에 상품 이미지 (renderCur 과 같은 imgMap 사용)
+                const url=imgMap[it.바코드];
+                const thumb=url
+                    ? `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<span class=\\'ph\\'>이미지<br>없음</span>'">`
+                    : `<span class="ph">이미지<br>없음</span>`;
                 return `<div class="row ${i===curIdx?'cur':''}" onclick="curIdx=${i};renderCur();">
                     <div class="idx">${i+1}</div>
+                    <div class="thumb">${thumb}</div>
                     <div class="info">
                         <div class="top">
                             <span class="loc-badge">${esc(it.위치||'-')}</span>
