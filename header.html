@@ -10,6 +10,12 @@
     .site-brand{display:flex;align-items:center;gap:9px;flex-shrink:0;text-decoration:none;color:#1C1B1A;}
     .site-brand .dot{width:9px;height:9px;border-radius:3px;background:#F0492F;}
     .site-brand span{font-weight:800;font-size:15px;letter-spacing:-.02em;white-space:nowrap;}
+    /* 메뉴 맨 앞 전체화면 토글 — 메뉴 링크와 같은 높이·모서리, 터치 영역 넉넉히 */
+    .fs-btn{border:0;background:transparent;cursor:pointer;font-family:inherit;
+        font-size:15px;line-height:17px;padding:7px 9px;border-radius:9px;margin-right:2px;
+        display:inline-flex;align-items:center;justify-content:center;transition:background .15s;}
+    .fs-btn:hover{background:#F3F1EE;}
+    .fs-btn.on{background:#FDEBE6;}                 /* 전체화면 중 */
     .site-menu{display:flex;gap:2px;align-items:center;flex-wrap:nowrap;}
     .site-menu a.m-link{font-size:13px;font-weight:600;padding:7px 9px;border-radius:9px;white-space:nowrap;
         text-decoration:none;color:#78736F;transition:background .15s,color .15s;display:inline-block;}
@@ -32,6 +38,12 @@
     <nav class="site-nav">
         <a href="/" class="site-brand"><span class="dot"></span><span>아이엠몽 로켓</span></a>
         <div class="site-menu">
+            <!-- 홈 옆 전체화면 토글 (헤더는 innerHTML 로 주입돼 <script> 가 안 돌아가므로 inline onclick 사용) -->
+            <button type="button" class="fs-btn" id="fsBtn" title="전체화면 켜기/끄기" aria-label="전체화면"
+                onclick="(function(){var d=document;var on=d.fullscreenElement||d.webkitFullscreenElement;
+                    try{ if(on){ (d.exitFullscreen||d.webkitExitFullscreen).call(d); }
+                         else { var e=d.documentElement; (e.requestFullscreen||e.webkitRequestFullscreen).call(e); } }
+                    catch(err){ /* 브라우저가 막으면 무시 */ } })()">🖥️</button>
             <a href="/" class="m-link" data-path="/">홈</a>
             <a href="/summary" class="m-link" data-path="/summary">요약</a>
             <div class="m-item" data-path="/rocket,/newOrder">
@@ -67,4 +79,6 @@
 </header>
 <!-- 현재 경로 active 표시: innerHTML 로 주입돼도 실행되도록 img onload 사용 -->
 <img alt="" style="display:none" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-    onload="(function(){var p=location.pathname;document.querySelectorAll('.site-menu [data-path]').forEach(function(el){var ps=el.getAttribute('data-path').split(',');if(ps.indexOf(p)>-1){var l=el.matches('a')?el:el.querySelector('a.m-link');if(l)l.classList.add('active');}});})()">
+    onload="(function(){var p=location.pathname;document.querySelectorAll('.site-menu [data-path]').forEach(function(el){var ps=el.getAttribute('data-path').split(',');if(ps.indexOf(p)>-1){var l=el.matches('a')?el:el.querySelector('a.m-link');if(l)l.classList.add('active');}});
+    var sync=function(){var b=document.getElementById('fsBtn');if(b)b.classList.toggle('on',!!(document.fullscreenElement||document.webkitFullscreenElement));};
+    document.addEventListener('fullscreenchange',sync);document.addEventListener('webkitfullscreenchange',sync);sync();})()">
