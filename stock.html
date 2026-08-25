@@ -29,7 +29,15 @@
         .page-size select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
 
         .table-scroll{overflow-x:auto;}
-        table{width:100%;border-collapse:collapse;min-width:1150px;table-layout:fixed;}
+        table{width:100%;border-collapse:collapse;min-width:1190px;table-layout:fixed;}
+        /* img 열 / 이미지 미리보기 (상품부족 페이지와 같은 방식) */
+        th.col-img{width:46px;}
+        /* 좌우 패딩(10px)이 남아 있으면 이모지가 잘려 말줄임(…)이 같이 보인다 */
+        td.img-cell{text-align:center;padding:8px 2px;text-overflow:clip;}
+        .img-emoji{cursor:pointer;font-size:14px;}
+        #imgPreview{position:fixed;display:none;z-index:10000;border:1px solid #cbd5e1;background:#fff;
+            box-shadow:0 6px 20px rgba(0,0,0,.22);padding:4px;border-radius:8px;pointer-events:none;}
+        #imgPreview img{width:400px;height:400px;object-fit:contain;display:block;background:#f8fafc;}
         thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
         thead th.ctr{text-align:center;}
         tbody td{padding:8px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
@@ -159,18 +167,19 @@
             <div class="table-scroll">
                 <table>
                     <colgroup>
-                        <col style="width:44px"><col style="width:140px"><col style="width:130px"><col style="width:150px"><col><col style="width:90px"><col style="width:90px"><col style="width:200px">
+                        <col style="width:44px"><col style="width:140px"><col style="width:130px"><col style="width:150px"><col style="width:46px"><col><col style="width:90px"><col style="width:90px"><col style="width:200px">
                     </colgroup>
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
-                            <th>위치</th><th>상품번호</th><th>바코드</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">시즌</th><th>비고</th>
+                            <th>위치</th><th>상품번호</th><th>바코드</th><th class="col-img">img</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">시즌</th><th>비고</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="8">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="9">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
+            <div id="imgPreview"><img alt="상품 이미지"></div>
         </div>
     </div>
 
@@ -196,7 +205,7 @@
                 }));
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="7">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="9">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -207,13 +216,14 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(pageRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="8">표시할 재고가 없습니다.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="9">표시할 재고가 없습니다.</td></tr>`;
             }else{
-                tb.innerHTML=pageRows.map(r=>`<tr>
+                tb.innerHTML=pageRows.map(r=>`<tr data-bc="${esc(r.바코드||'')}">
                     <td class="chk"><input type="checkbox" class="rowchk" data-id="${esc(r.id)}" onchange="updateDelBtn()"></td>
                     <td class="loc loc-edit" contenteditable="true" data-id="${esc(r.id)}" data-orig="${esc(r.위치||'')}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveLoc('${esc(r.id)}',this)">${esc(r.위치||'')}</td>
                     <td>${esc(r.상품번호)}</td>
                     <td>${esc(r.바코드)}</td>
+                    <td class="img-cell">${imgCellHtml(r.바코드)}</td>
                     <td class="pname" title="클릭하면 재고 변경 이력을 봅니다" onclick="openHistory('${esc(r.바코드)}','${esc(String(r.상품명||'').replace(/'/g,'&#39;'))}')">${esc(r.상품명)}</td>
                     <td class="ctr qty-edit${r.수량===0?' qty-zero':''}${!qtyEq(r.수량,r.origQty)?' qty-dirty':''}" contenteditable="true" data-id="${esc(r.id)}" data-orig="${r.origQty==null?'':esc(r.origQty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveQtyCell('${esc(r.id)}',this)">${r.수량==null?'':esc(r.수량)}</td>
                     <td class="ctr">${dashCell(r.시즌)}</td>
@@ -225,7 +235,67 @@
             renderPagination(totalPages);
             updateSaveBtn();
             updateDelBtn();
+            loadPageImages();
         }
+
+        // ── 이미지 열 ──
+        // 재고가 1만 건이 넘어 전부 조회하면 느리므로, 화면에 보이는 페이지의 바코드만 그때그때 받아 캐시한다.
+        // 이미지가 없는 바코드도 ''(빈값)으로 캐시해 같은 요청을 반복하지 않는다.
+        const imgMap=new Map();   // 바코드 → 이미지 URL ('' = 이미지 없음)
+        let imgToken=0;           // 페이지를 빠르게 넘길 때 늦게 온 응답이 덮어쓰지 않도록
+        function imgCellHtml(bc){
+            const url=bc?imgMap.get(bc):'';
+            if(!url) return '';
+            return `<span class="img-emoji" data-img="${String(url).replace(/"/g,'&quot;')}">🖼️</span>`;
+        }
+        async function loadPageImages(){
+            const rows=[...document.querySelectorAll('#tbody tr[data-bc]')];
+            if(!rows.length) return;
+            const need=[...new Set(rows.map(tr=>tr.dataset.bc).filter(bc=>bc&&!imgMap.has(bc)))];
+            if(!need.length){ paintImages(rows); return; }
+            const my=++imgToken;
+            try{
+                const res=await fetch('/api/inventory/images',{method:'POST',
+                    headers:{'Content-Type':'application/json'},body:JSON.stringify({barcodes:need})});
+                if(!res.ok) return;
+                const map=await res.json();
+                for(const bc of need) imgMap.set(bc, map[bc]||'');
+            }catch(_){ return; }               // 실패해도 표 자체는 그대로 쓴다
+            if(my!==imgToken) return;          // 그 사이 다른 페이지로 넘어갔으면 버린다
+            paintImages([...document.querySelectorAll('#tbody tr[data-bc]')]);
+        }
+        function paintImages(rows){
+            for(const tr of rows){
+                const cell=tr.querySelector('.img-cell');
+                if(cell) cell.innerHTML=imgCellHtml(tr.dataset.bc);
+            }
+        }
+        // 이미지에 마우스를 올리면 커서 옆에 400x400 미리보기 (상품부족 페이지와 동일)
+        function setupImgPreview(){
+            const box=document.getElementById('imgPreview');
+            if(!box) return;
+            const imgEl=box.querySelector('img');
+            const OFFSET=20, SIZE=410;
+            function place(e){
+                let left=e.clientX+OFFSET;
+                if(left+SIZE>window.innerWidth) left=e.clientX-OFFSET-SIZE;   // 오른쪽이 좁으면 왼쪽에
+                let top=e.clientY-SIZE/2;
+                top=Math.max(8,Math.min(top,window.innerHeight-SIZE-8));
+                box.style.left=left+'px'; box.style.top=top+'px';
+            }
+            document.addEventListener('mouseover',e=>{
+                const el=e.target.closest('.img-emoji'); if(!el) return;
+                const url=el.getAttribute('data-img'); if(!url) return;
+                imgEl.src=url; box.style.display='block'; place(e);
+            });
+            document.addEventListener('mousemove',e=>{
+                if(box.style.display==='block'&&e.target.closest('.img-emoji')) place(e);
+            });
+            document.addEventListener('mouseout',e=>{
+                if(e.target.closest('.img-emoji')){ box.style.display='none'; imgEl.removeAttribute('src'); }
+            });
+        }
+        setupImgPreview();
 
         function renderPagination(totalPages){
             const el=document.getElementById('pagination');
