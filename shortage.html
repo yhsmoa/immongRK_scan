@@ -694,9 +694,10 @@
          CSV 열은 서버(routes/rkAdItems.js) 의 pick() 매핑과 이름이 맞아야 한다. -->
     <script type="text/plain" id="adConsoleTpl">
 
-/* 쿠팡 광고 상품 전체 덤프 v2 — 중복제거 · 수집시각 · 스냅샷 신선도 관리 */
-(() => {
+/* 쿠팡 광고 상품 전체 덤프 v3 — IndexedDB 저장(용량 초과 해소) · 중복제거 · 수집시각 · 스냅샷 신선도 관리 */
+(async () => {
   const KEY='cpq_ad_dump_v2', STOP_KEY=KEY+'_stoppedAt';
+  const DB_NAME='cpq_ad_dump', DB_STORE='state', DB_KEY='current';
   const API='/marketing/cmg-api/vendoritems', SIZE=1000;
   const CFG={delayMin:1500,delayMax:3000,backoff:[30000,60000,120000],
     maxConsecFail:3,maxConsecRate:2,maxTotalFail:8,maxPages:60,
@@ -706,10 +707,42 @@
   const now=()=>new Date().toTimeString().slice(0,8);
   const fmt=ms=>{const s=Math.max(0,Math.round(ms/1000));
     return s>=60?Math.floor(s/60)+'분 '+String(s%60).padStart(2,'0')+'초':s+'초';};
-  const load=()=>{try{return JSON.parse(localStorage.getItem(KEY))||null}catch{return null}};
-  const save=s=>{try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){console.warn('저장 실패(용량?)',e)}};
+  /* 저장소 = IndexedDB.
+     localStorage 로 전체 결과를 저장하던 것을 옮겼다.
+     15,665건이면 JSON 이 약 4.7MB 인데 localStorage 는 문자를 2바이트로 담아 실제 9MB 이상을 쓴다.
+     Wing 이 이미 쓰는 양까지 더해져 한도를 넘기면 QuotaExceededError 로 저장이 끊기고,
+     그때부터 이어받기 지점이 갱신되지 않아 중간에 멈추면 처음부터 다시 받아야 했다. */
+  let _db=null;
+  const idb=()=>new Promise((res,rej)=>{
+    if(_db){res(_db);return;}
+    const rq=indexedDB.open(DB_NAME,1);
+    rq.onupgradeneeded=()=>{const d=rq.result;if(!d.objectStoreNames.contains(DB_STORE))d.createObjectStore(DB_STORE);};
+    rq.onsuccess=()=>{_db=rq.result;res(_db);};
+    rq.onerror=()=>rej(rq.error);
+  });
+  const idbGet=async k=>{const d=await idb();return new Promise((res,rej)=>{
+    const r=d.transaction(DB_STORE,'readonly').objectStore(DB_STORE).get(k);
+    r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});};
+  const idbSet=async(k,v)=>{const d=await idb();return new Promise((res,rej)=>{
+    const tx=d.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put(v,k);
+    tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);});};
+  const idbDel=async k=>{const d=await idb();return new Promise((res,rej)=>{
+    const tx=d.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).delete(k);
+    tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error);});};
+  const load=async()=>{
+    try{const v=await idbGet(DB_KEY);if(v)return v;}catch(e){console.warn('IndexedDB 읽기 실패',e);}
+    try{const raw=localStorage.getItem(KEY);            // 구버전(localStorage) 작업분 1회 승계
+      if(raw){const v=JSON.parse(raw);localStorage.removeItem(KEY);
+        console.log('%c이전 작업분을 IndexedDB 로 옮겼습니다.','color:#06c;font-weight:bold');return v;}
+    }catch{}
+    return null;
+  };
+  let _saveWarned=false;
+  const save=async s=>{try{await idbSet(DB_KEY,s||S);_saveWarned=false;}
+    catch(e){if(!_saveWarned){_saveWarned=true;
+      console.warn('저장 실패 — 수집은 계속됩니다. 끝나면 __csv() 로 받으세요.',e);}}};
 
-  let S=load();
+  let S=await load();
   if (S && S.startedAt && Date.now()-S.startedAt>CFG.staleMs && !S.done){
     console.warn('%c이전 세션이 6시간 이상 지나 폐기했습니다 (값이 섞이는 것 방지). 처음부터 수집합니다.','color:#c60;font-weight:bold');
     S=null;
@@ -796,9 +829,10 @@
     a.download='coupang_ad_'+rows.length+'.csv';a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),3000);
     return rows.length+'행 다운로드';};
-  window.__reset=()=>{localStorage.removeItem(KEY);localStorage.removeItem(STOP_KEY);
+  window.__reset=async()=>{localStorage.removeItem(KEY);localStorage.removeItem(STOP_KEY);
+    try{await idbDel(DB_KEY);}catch(e){console.warn('IndexedDB 삭제 실패',e);}
     S={map:{},page:1,total:null,done:false,startedAt:Date.now()};return '초기화 완료';};
-  console.log('%c[전체 덤프 v2 준비 완료]\n'+(count()?'이전 작업 '+count()+'건 (page '+S.page+' 부터 이어서)\n':'')
+  console.log('%c[전체 덤프 v3 준비 완료]\n'+(count()?'이전 작업 '+count()+'건 (page '+S.page+' 부터 이어서)\n':'')
     +'__run() → __csv()','color:#0a0;font-size:13px;font-weight:bold;line-height:1.7');
 })();
     </script>
