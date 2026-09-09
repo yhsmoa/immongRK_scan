@@ -773,6 +773,14 @@
       console.warn('%c⚠ 직전 자동 정지. '+Math.ceil((CFG.cooldownMs-(Date.now()-st))/60000)+'분 더 쉬는 것을 권합니다.\n그래도 진행하려면 __run() 을 한 번 더.','color:#c60;font-weight:bold');
       localStorage.removeItem(STOP_KEY);return;
     }
+    /* 이미 끝난 수집이 남아 있으면 그것을 새로 받는다.
+       그대로 두면 루프를 건너뛰어 어제 재고가 그대로 __csv() 로 나간다. */
+    if(S.done){
+      const before=count();
+      S={map:{},page:1,total:null,done:false,startedAt:Date.now()};
+      await save(S);
+      console.log('%c이전 수집('+before+'건)은 완료된 것이라 새로 받습니다.','color:#06c;font-weight:bold');
+    }
     RUNNING=true;STOP=false;
     let cf=0,cr=0,tf=0,bl=0,lastPct=-1;
     const t0=Date.now(),start=count();
