@@ -840,8 +840,21 @@
   window.__reset=async()=>{localStorage.removeItem(KEY);localStorage.removeItem(STOP_KEY);
     try{await idbDel(DB_KEY);}catch(e){console.warn('IndexedDB 삭제 실패',e);}
     S={map:{},page:1,total:null,done:false,startedAt:Date.now()};return '초기화 완료';};
-  console.log('%c[전체 덤프 v3 준비 완료]\n'+(count()?'이전 작업 '+count()+'건 (page '+S.page+' 부터 이어서)\n':'')
-    +'__run() → __csv()','color:#0a0;font-size:13px;font-weight:bold;line-height:1.7');
+  /* 붙여넣으면 바로 수집을 시작하고, 끝까지 받으면 CSV 까지 자동으로 내려받는다.
+     중간에 끊긴 경우에는 받다 만 CSV 가 나가지 않도록 자동 저장을 하지 않는다. */
+  console.log('%c[전체 덤프 v3] 자동으로 시작합니다.\n'
+    +(count()&&!S.done?'이전 작업 '+count()+'건 (page '+S.page+' 부터 이어서)\n':'')
+    +'멈추기 __stop()  ·  이어서/다시 받기 __run()  ·  CSV 다시 받기 __csv()',
+    'color:#0a0;font-size:13px;font-weight:bold;line-height:1.7');
+  const R=await window.__run();
+  if(R&&R.done){
+    window.__csv();
+    console.log('%c✅ CSV 를 내려받았습니다. 상품부족 페이지의 [광고결과 업로드] 로 올려주세요.\n'
+      +'(다운로드가 막혔으면 __csv() 를 한 번 더 실행하세요)','color:#0a0;font-size:13px;font-weight:bold;line-height:1.7');
+  }else if(R){
+    console.warn('%c수집이 끝나지 않아 CSV 를 자동 저장하지 않았습니다.\n'
+      +'__run() 으로 이어서 진행하세요. 지금까지 받은 것만 필요하면 __csv().','color:#c60;font-weight:bold;line-height:1.7');
+  }
 })();
     </script>
 
@@ -1208,15 +1221,16 @@
             }
             const msg = '전체 상품(약 15,600건)을 요청 16번으로 받아옵니다. 예상 약 2분.'
                 + '\n\n1) advertising.coupang.com 광고 상품선택 화면 열기'
-                + '\n2) F12 → Console 에 붙여넣기'
-                + '\n3) __run()   ← 실행 (10%마다 진행률 표시)'
-                + '\n4) __csv()   ← 끝나면 CSV 다운로드'
-                + '\n5) 이 화면의 [광고결과 업로드] 로 그 파일을 올리면'
+                + '\n2) F12 → Console 에 붙여넣고 Enter'
+                + '\n   → 수집이 바로 시작되고(10%마다 진행률),'
+                + '\n     끝나면 CSV 까지 자동으로 내려받습니다.'
+                + '\n3) 이 화면의 [광고결과 업로드] 로 그 파일을 올리면'
                 + '\n   SKU 에 매칭된 엑셀이 내려받아집니다.'
-                + '\n\n※ 실패가 반복되면 스크립트가 스스로 멈춥니다.'
-                + '\n   바로 다시 돌리지 말고 쉬었다가 __run() 하세요 (이어서 진행).'
-                + '\n※ __status() 진행상황·수집시각 확인 · __stop() 중단 · __reset() 처음부터'
-                + '\n※ 6시간 지난 수집분은 자동 폐기되어 값이 섞이지 않습니다.';
+                + '\n\n※ 중간에 끊기면 CSV 를 자동 저장하지 않습니다.'
+                + '\n   쉬었다가 __run() 하면 받던 지점부터 이어서 진행합니다.'
+                + '\n※ __stop() 중단 · __status() 진행상황 · __csv() CSV 다시 받기'
+                + '\n※ 이미 완료된 수집분이 남아 있으면 새로 받으므로'
+                + '\n   어제 값이 그대로 나오지 않습니다.';
             if (copied) alert('콘솔 스크립트를 복사했습니다.\n' + msg);
             else prompt('아래 스크립트를 복사해 콘솔에 붙여넣으세요.\n' + msg, script);
         }
