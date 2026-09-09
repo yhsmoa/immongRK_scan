@@ -204,6 +204,30 @@ router.patch('/api/stocks/:id/location', async (req, res) => {
   }
 });
 
+// 상품명 인라인 수정 — 같은 바코드가 여러 위치에 있으면 이름이 갈리지 않도록 함께 반영
+router.patch('/api/stocks/:id/item-name', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const itemName = String(req.body.itemName ?? '').trim();
+    if (!itemName) return res.status(400).json({ error: '상품명을 입력하세요.' });
+
+    const { data: cur, error: findErr } = await sb
+      .from('rk_stocks').select('id, barcode').eq('id', id).maybeSingle();
+    if (findErr) throw findErr;
+    if (!cur) return res.status(404).json({ error: '재고를 찾을 수 없습니다.' });
+
+    const q = sb.from('rk_stocks').update({ item_name: itemName });
+    const { data, error } = cur.barcode
+      ? await q.eq('barcode', cur.barcode).select('id')
+      : await q.eq('id', id).select('id');
+    if (error) throw error;
+    res.json({ ok: true, itemName, barcode: cur.barcode, updated: (data || []).length });
+  } catch (e) {
+    console.error('[rk] stocks/item-name:', e);
+    res.status(500).json({ error: '상품명 수정 실패: ' + e.message });
+  }
+});
+
 // 재고 삭제 (체크박스 선택 → 삭제)
 router.post('/api/stocks/delete', async (req, res) => {
   try {

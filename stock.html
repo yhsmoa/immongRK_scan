@@ -44,6 +44,8 @@
         tbody tr:hover td{background:var(--hover);}
         td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
         td.pname{white-space:normal;color:#334155;cursor:pointer;}
+        td.pname:hover{background:#f8faff;}
+        td.pname[contenteditable="true"]{cursor:text;outline:none;background:#fff;box-shadow:inset 0 0 0 2px #c7d2fe;}
 
         /* 재고 이력 — 오른쪽 슬라이드 패널 */
         .hist-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10000;}
@@ -224,7 +226,7 @@
                     <td>${esc(r.상품번호)}</td>
                     <td>${esc(r.바코드)}</td>
                     <td class="img-cell">${imgCellHtml(r.바코드)}</td>
-                    <td class="pname" title="클릭하면 재고 변경 이력을 봅니다" onclick="openHistory('${esc(r.바코드)}','${esc(String(r.상품명||'').replace(/'/g,'&#39;'))}')">${esc(r.상품명)}</td>
+                    <td class="pname" title="클릭: 재고 변경 이력 · 더블클릭: 상품명 수정" data-id="${esc(r.id)}" data-orig="${esc(r.상품명||'')}" onclick="pnameClick(this,'${esc(r.바코드)}','${esc(String(r.상품명||'').replace(/'/g,'&#39;'))}')" ondblclick="beginEditName(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveName('${esc(r.id)}',this)">${esc(r.상품명)}</td>
                     <td class="ctr qty-edit${r.수량===0?' qty-zero':''}${!qtyEq(r.수량,r.origQty)?' qty-dirty':''}" contenteditable="true" data-id="${esc(r.id)}" data-orig="${r.origQty==null?'':esc(r.origQty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveQtyCell('${esc(r.id)}',this)">${r.수량==null?'':esc(r.수량)}</td>
                     <td class="ctr">${dashCell(r.시즌)}</td>
                     <td>${dashCell(r.비고)}</td>
@@ -421,6 +423,42 @@
                 cell.dataset.orig=val; cell.textContent=val;
                 toast('위치 수정 완료');
             }catch(e){ cell.textContent=orig; toast('위치 수정 실패: '+e.message); }
+        }
+
+        // ── 상품명 인라인 수정 (클릭=이력 / 더블클릭=수정) ──
+        // 더블클릭 시 첫 클릭으로 이력창이 뜨지 않도록 살짝 늦춰서 실행한다.
+        let pnameClickTimer=null;
+        function pnameClick(cell,barcode,name){
+            if(cell.isContentEditable) return;          // 편집 중에는 이력창을 열지 않는다
+            clearTimeout(pnameClickTimer);
+            pnameClickTimer=setTimeout(()=>openHistory(barcode,name),220);
+        }
+        function beginEditName(cell){
+            clearTimeout(pnameClickTimer);              // 이력창 예약 취소
+            if(cell.isContentEditable) return;
+            cell.contentEditable='true';
+            cell.focus();
+            const range=document.createRange(); range.selectNodeContents(cell);
+            const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        }
+        async function saveName(id,cell){
+            cell.contentEditable='false';
+            const row=allRows.find(r=>String(r.id)===String(id));
+            const val=String(cell.textContent).replace(/\s+/g,' ').trim();
+            const orig=cell.dataset.orig||'';
+            if(val===orig){ cell.textContent=orig; return; }
+            if(!val){ cell.textContent=orig; toast('상품명을 입력하세요.'); return; }
+            try{
+                const res=await fetch('/api/stocks/'+encodeURIComponent(id)+'/item-name',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({itemName:val})});
+                const data=await res.json().catch(()=>({}));
+                if(!res.ok) throw new Error(data.error||'저장 실패');
+                // 같은 바코드 행은 화면에서도 같이 갱신 (서버가 함께 수정했으므로)
+                const bc=row?row.바코드:null;
+                allRows.forEach(r=>{ if(bc ? r.바코드===bc : String(r.id)===String(id)) r.상품명=val; });
+                cell.dataset.orig=val; cell.textContent=val;
+                toast(data.updated>1 ? `상품명 수정 완료 (같은 바코드 ${data.updated}건 반영)` : '상품명 수정 완료');
+                if(data.updated>1) render();
+            }catch(e){ cell.textContent=orig; toast('상품명 수정 실패: '+e.message); }
         }
 
         // ── 수량 인라인 수정 (셀 클릭 편집, 저장 버튼으로 일괄 저장) ──
