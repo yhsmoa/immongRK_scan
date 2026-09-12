@@ -309,6 +309,37 @@
             font-size: 14px;
         }
         
+        /* 라벨출력 모달 — label-service /print-embed 를 iframe 으로 띄운다 */
+        .label-modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 8px 30px rgba(0,0,0,.25);
+            z-index: 1000;
+            width: 600px;
+            max-width: 94vw;
+            max-height: 94vh;
+            overflow: hidden;
+            flex-direction: column;
+        }
+        .label-modal.active { display: flex; }
+        .label-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .label-modal-header h3 { margin: 0; font-size: 16px; }
+        .label-modal-header .label-count { font-size: 13px; color: #6b7280; margin-left: 8px; font-weight: 500; }
+        .label-modal iframe { display: block; width: 100%; height: 480px; min-height: 300px; flex: 1 1 auto; border: 0; background: #fff; }
+        .label-modal-status { padding: 8px 16px; font-size: 13px; color: #15803d; border-top: 1px solid #e5e7eb; min-height: 20px; }
+        .label-modal-status:empty { display: none; }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -342,6 +373,7 @@
                     <span class="subtitle">전체 <b id="rowCount">0</b>개 · <span id="selCount">0</span>개 선택</span>
                 </div>
                 <div class="actions upload-section">
+                    <button id="labelPrintBtn" class="upload-btn" onclick="openLabelPrint()">라벨출력</button>
                     <button id="registerBtn" class="upload-btn" onclick="openRegisterModal()">직접 등록</button>
                     <button id="locationSaveBtn" class="upload-btn" onclick="saveSelectedLocations()">위치저장</button>
                     <div class="dd">
@@ -410,6 +442,17 @@
         <div class="loc-modal-desc">선택한 <b id="locSaveCount">0</b>개 상품을 재고(rk_stocks)에 이 위치로 저장합니다. <span class="loc-modal-note">수량은 비워둡니다.</span></div>
         <input type="text" class="location-input" id="locationInput" placeholder="위치 입력 (예: 105B53)">
         <button class="location-save-btn" onclick="saveLocation()">저장</button>
+    </div>
+
+    <!-- 라벨출력 모달 — 선택한 상품을 label-service 로 보내 QZ Tray 로 인쇄 -->
+    <div class="overlay" id="labelOverlay" onclick="closeLabelPrint()"></div>
+    <div class="label-modal" id="labelModal">
+        <div class="label-modal-header">
+            <h3>라벨출력 <span class="label-count"><b id="labelPrintCount">0</b>개 상품</span></h3>
+            <button class="register-btn close-btn" onclick="closeLabelPrint()">닫기</button>
+        </div>
+        <iframe id="labelPrintFrame" title="라벨 출력"></iframe>
+        <div class="label-modal-status" id="labelPrintStatus"></div>
     </div>
 
     <!-- 로딩 인디케이터 (진행률 바 포함) -->
@@ -755,6 +798,107 @@
             document.getElementById('locationInput').value = '';
             document.getElementById('locationInput').dataset.selectedItems = '';
         }
+
+        // ============================================================
+        // 라벨출력 — 별도 서비스(label-service) 임베드
+        //   1) 선택한 행의 바코드 → /api/label/items 로 coupang_items 데이터 조회
+        //   2) iframe(/print-embed) 이 준비되면 postMessage 로 항목 전달
+        //   3) 임베드 안에서 템플릿 확인 후 QZ Tray 로 인쇄. 결과는 message 로 돌아온다
+        // ============================================================
+        let labelCfg = null;            // { url, source, userId } — /api/label/config
+        let labelOrigin = null;         // 임베드 origin (메시지 검증용)
+        let labelPending = null;        // 아직 안 보낸 인쇄 요청 (iframe 준비 대기)
+
+        async function getLabelCfg() {
+            if (labelCfg) return labelCfg;
+            const res = await fetch('/api/label/config');
+            const j = await res.json();
+            if (!res.ok) throw new Error(j.error || '라벨 서비스 설정을 불러오지 못했습니다.');
+            labelCfg = j;
+            labelOrigin = new URL(j.url).origin;
+            return j;
+        }
+
+        function sendLabelPending() {
+            const frame = document.getElementById('labelPrintFrame');
+            if (!labelPending || !frame.contentWindow || frame.dataset.ready !== '1') return;
+            frame.contentWindow.postMessage(labelPending, labelOrigin);
+            labelPending = null;
+        }
+
+        async function openLabelPrint() {
+            // 바코드 셀은 모바일에서 줄바꿈이 끼어 있으니 공백을 전부 지운다
+            const barcodes = Array.from(document.querySelectorAll('.item-checkbox:checked'))
+                .map(cb => cb.closest('tr').querySelector('td:nth-child(4)').textContent.replace(/\s+/g, ''))
+                .filter(Boolean);
+            if (barcodes.length === 0) { alert('라벨을 출력할 항목을 선택해주세요.'); return; }
+
+            const btn = document.getElementById('labelPrintBtn');
+            btn.disabled = true;
+            try {
+                const cfg = await getLabelCfg();
+                const res = await fetch('/api/label/items', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ barcodes })
+                });
+                const j = await res.json();
+                if (!res.ok) throw new Error(j.error || '상품 데이터 조회 실패');
+                if (!j.items.length) { alert('선택한 바코드가 상품 데이터에 없습니다.'); return; }
+                if (j.missing.length) {
+                    alert(`${j.missing.length}개 바코드는 쿠팡 상품정보(coupang_items)에 없어 재고 정보(상품명·SKU)만으로 출력됩니다.`);
+                }
+
+                labelPending = {
+                    type: 'label-print:print',
+                    requestId: String(Date.now()),
+                    source: cfg.source,
+                    userId: cfg.userId,
+                    labelType: 'both',
+                    autoPrint: false,
+                    items: j.items
+                };
+                document.getElementById('labelPrintCount').textContent = j.items.length;
+                document.getElementById('labelPrintStatus').textContent = '';
+                document.getElementById('labelOverlay').classList.add('active');
+                document.getElementById('labelModal').classList.add('active');
+
+                const frame = document.getElementById('labelPrintFrame');
+                if (frame.dataset.ready === '1') {
+                    sendLabelPending();                     // 이미 로드된 iframe 재사용
+                } else {
+                    frame.src = cfg.url + '/print-embed';   // 로드되면 'label-print:ready' 가 온다
+                }
+            } catch (e) {
+                alert('라벨 출력 준비 실패: ' + e.message);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function closeLabelPrint() {
+            document.getElementById('labelOverlay').classList.remove('active');
+            document.getElementById('labelModal').classList.remove('active');
+            labelPending = null;
+        }
+
+        // 임베드 → 이 창: 준비 완료 / 인쇄 결과
+        window.addEventListener('message', function(e) {
+            if (!labelOrigin || e.origin !== labelOrigin) return;
+            const d = e.data || {};
+            if (d.type === 'label-print:ready') {
+                document.getElementById('labelPrintFrame').dataset.ready = '1';
+                sendLabelPending();
+            } else if (d.type === 'label-print:result') {
+                const status = document.getElementById('labelPrintStatus');
+                const type = d.labelType === 'care' ? '케어 라벨' : '라벨 스티커';
+                if (d.ok) {
+                    status.textContent = (status.textContent ? status.textContent + ' · ' : '') + `✓ ${type} ${d.printed}장 전송됨`;
+                } else {
+                    status.textContent = `✕ ${type} 실패`;   // 상세 사유는 임베드가 이미 alert 로 띄운다
+                }
+            }
+        });
 
         // 검색 처리 함수
         function handleSearch(event) {
