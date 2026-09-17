@@ -19,6 +19,9 @@ function invToKorean(r) {
     name: S.str(r.name),
     barcode: S.str(r.barcode),
     orderStatus: S.str(r.order_status),
+    // 혼용률 / 권장연령 — 컬럼이 아직 없어도 ''(빈값)으로 내려가 화면이 깨지지 않는다
+    composition: S.str(r.composition),
+    recommandedAge: S.str(r.recommanded_age),
     quantity: r.quantity == null ? '-' : r.quantity,
     location: r.location == null ? '-' : r.location,
     lastUpdate: r.last_update,

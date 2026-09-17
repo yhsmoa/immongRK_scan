@@ -111,10 +111,13 @@
             th, td {
                 padding: 8px;
             }
-            /* 모바일에서 숨길 열 */
+            /* 모바일에서 숨길 열 (⚠ 열 순서가 바뀌면 번호도 같이 바꿔야 한다)
+               1 체크 · 2 SKU · 3 상품명 · 4 바코드 · 5 혼용률 · 6 권장연령 · 7 발주가능상태 · 8 재고 */
             th:nth-child(2), td:nth-child(2), /* SKU ID */
-            th:nth-child(5), td:nth-child(5), /* 발주가능상태 */
-            th:nth-child(6), td:nth-child(6) { /* 재고 */
+            th:nth-child(5), td:nth-child(5), /* 혼용률 */
+            th:nth-child(6), td:nth-child(6), /* 권장연령 */
+            th:nth-child(7), td:nth-child(7), /* 발주가능상태 */
+            th:nth-child(8), td:nth-child(8) { /* 재고 */
                 display: none;
             }
             .mobile-wrap {
@@ -424,6 +427,8 @@
                             <th>SKU ID</th>
                             <th>상품명</th>
                             <th>바코드</th>
+                            <th>혼용률</th>
+                            <th>권장연령</th>
                             <th>발주가능상태</th>
                             <th>재고</th>
                         </tr>
@@ -451,7 +456,12 @@
             <h3>라벨출력 <span class="label-count"><b id="labelPrintCount">0</b>개 상품</span></h3>
             <button class="register-btn close-btn" onclick="closeLabelPrint()">닫기</button>
         </div>
-        <iframe id="labelPrintFrame" title="라벨 출력"></iframe>
+        <!-- allow: 임베드(다른 origin)가 이 PC 의 QZ Tray(wss://localhost)에 붙으려면
+             크롬 로컬 네트워크 접근(LNA) 권한을 부모 페이지가 위임해야 한다.
+             크롬 버전마다 기능 이름이 달라 셋 다 넣는다(모르는 이름은 무시된다).
+             ⚠ 권한은 iframe 이 이동할 때 적용되므로 src 를 넣기 전부터 이 속성이 있어야 한다. -->
+        <iframe id="labelPrintFrame" title="라벨 출력"
+                allow="loopback-network; local-network; local-network-access"></iframe>
         <div class="label-modal-status" id="labelPrintStatus"></div>
     </div>
 
@@ -640,6 +650,10 @@
             renderInventory();
         }
 
+        // 혼용률·권장연령은 자유 입력 텍스트라 태그로 해석되지 않게 이스케이프한다
+        const esc = (s) => String(s == null ? '' : s)
+            .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
         // 현재 페이지 렌더
         function renderInventory() {
             const tbody = document.querySelector('#inventoryTable tbody');
@@ -669,6 +683,8 @@
                     <td>${item.skuId}</td>
                     <td class="${isMobile ? 'mobile-wrap' : ''}">${name}</td>
                     <td class="${isMobile ? 'mobile-wrap' : ''}">${barcode}</td>
+                    <td class="col-comp">${esc(item.composition)}</td>
+                    <td class="col-age">${esc(item.recommandedAge)}</td>
                     <td>${item.orderStatus}</td>
                     <td>${item.quantity}</td>
                 `;
