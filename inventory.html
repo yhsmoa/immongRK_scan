@@ -820,10 +820,29 @@
         //   1) 선택한 행의 바코드 → /api/label/items 로 coupang_items 데이터 조회
         //   2) iframe(/print-embed) 이 준비되면 postMessage 로 항목 전달
         //   3) 임베드 안에서 템플릿 확인 후 QZ Tray 로 인쇄. 결과는 message 로 돌아온다
+        //
+        // 템플릿별 프린터 지정값은 "이 페이지" 가 기억한다 (localStorage, 첫 번째 당사자 저장소).
+        //   iframe 안의 저장소는 브라우저가 사이트별로 나누고 서드파티 저장소 차단 설정에서는 아예 막혀서,
+        //   임베드에 맡기면 열 때마다 "(지정 안 함)" 으로 돌아온다. 그래서 요청에 printerMap 을 실어 보내고,
+        //   작업자가 임베드에서 바꾸면 'label-print:printer-map' 으로 돌려받아 여기 저장한다.
+        //
+        // ?labeldebug=1 로 이 페이지를 열면 임베드에 [인쇄 명령 저장] 버튼이 생긴다 (프린터로 갈 바이트를 파일로).
         // ============================================================
         let labelCfg = null;            // { url, source, userId } — /api/label/config
         let labelOrigin = null;         // 임베드 origin (메시지 검증용)
         let labelPending = null;        // 아직 안 보낸 인쇄 요청 (iframe 준비 대기)
+        const LABEL_PRINTER_KEY = 'label_printer_map_v1';   // { [템플릿 id]: 프린터명 }
+        const labelDebug = new URLSearchParams(location.search).get('labeldebug') === '1';
+
+        function loadLabelPrinterMap() {
+            try {
+                const j = JSON.parse(localStorage.getItem(LABEL_PRINTER_KEY) || '{}');
+                return j && typeof j === 'object' && !Array.isArray(j) ? j : {};
+            } catch (_) { return {}; }
+        }
+        function saveLabelPrinterMap(map) {
+            try { localStorage.setItem(LABEL_PRINTER_KEY, JSON.stringify(map || {})); } catch (_) { /* 저장 불가 시 무시 */ }
+        }
 
         async function getLabelCfg() {
             if (labelCfg) return labelCfg;
@@ -872,6 +891,7 @@
                     userId: cfg.userId,
                     labelType: 'both',
                     autoPrint: false,
+                    printerMap: loadLabelPrinterMap(),   // 이 PC 에서 기억해 둔 템플릿별 프린터
                     items: j.items
                 };
                 document.getElementById('labelPrintCount').textContent = j.items.length;
@@ -883,7 +903,7 @@
                 if (frame.dataset.ready === '1') {
                     sendLabelPending();                     // 이미 로드된 iframe 재사용
                 } else {
-                    frame.src = cfg.url + '/print-embed';   // 로드되면 'label-print:ready' 가 온다
+                    frame.src = cfg.url + '/print-embed' + (labelDebug ? '?debug=1' : '');   // 로드되면 'label-print:ready' 가 온다
                 }
             } catch (e) {
                 alert('라벨 출력 준비 실패: ' + e.message);
@@ -905,6 +925,9 @@
             if (d.type === 'label-print:ready') {
                 document.getElementById('labelPrintFrame').dataset.ready = '1';
                 sendLabelPending();
+            } else if (d.type === 'label-print:printer-map') {
+                // 작업자가 임베드에서 프린터를 바꿈 → 이 PC 에 기억 (다음 요청의 printerMap 으로 다시 보낸다)
+                if (d.map && typeof d.map === 'object' && !Array.isArray(d.map)) saveLabelPrinterMap(d.map);
             } else if (d.type === 'label-print:result') {
                 const status = document.getElementById('labelPrintStatus');
                 const type = d.labelType === 'care' ? '케어 라벨' : '라벨 스티커';
