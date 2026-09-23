@@ -224,24 +224,28 @@ router.post('/api/ship-scan/delete-box', async (req, res) => {
 
 // 스캔개수 맵 — rk_ship_box_items 를 발주번호+바코드로 합산(박스가 달라도 합침)
 // 응답: { "발주번호|바코드": qty합, ... }  (rocket 스캔수량 표시용)
+// 기본은 진행중(DONE 아님) 발주서의 스캔행만 읽는다. 처리완료 발주서의 스캔행이 전체의 90% 를 넘어
+// 전부 읽으면 2초 이상 걸리는데, 이 맵을 쓰는 화면(발주서·요약·출고준비·검수)은 모두 진행중만 표시한다.
+// 처리완료까지 필요하면 ?all=1
 router.get('/api/ship-scan/scanned-map', async (req, res) => {
   try {
     const map = {};
-    let from = 0;
-    const size = 1000;
-    while (true) {
-      const { data, error } = await sb.from('rk_ship_box_items')
-        .select('order_number, barcode, qty')
-        .order('id', { ascending: true })
-        .range(from, from + size - 1);
-      if (error) throw error;
-      for (const r of data) {
+    const add = (rows) => {
+      for (const r of rows) {
         if (!r.order_number || !r.barcode) continue;
         const k = `${r.order_number}|${r.barcode}`;
         map[k] = (map[k] || 0) + (parseInt(r.qty, 10) || 0);
       }
-      if (data.length < size) break;
-      from += size;
+    };
+    const baseQuery = () => sb.from('rk_ship_box_items').select('order_number, barcode, qty');
+    if (String(req.query.all || '') === '1') {
+      add(await S.pageAll(() => baseQuery().order('id', { ascending: true })));
+    } else {
+      const active = await S.listActiveOrderNumbers('rk_orders');
+      if (active.length) {
+        add(await S.chunked(active, 200, (nos) =>
+          S.pageAll(() => baseQuery().in('order_number', nos).order('id', { ascending: true }))));
+      }
     }
     res.json(map);
   } catch (e) {

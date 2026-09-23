@@ -194,24 +194,16 @@
 
         async function loadData(){
             try{
-                // 발주서 + 출고스캔(rk_ship_box_items) 병렬 — 스캔수량은 출고스캔 기준
-                const [res,scRes]=await Promise.all([fetch('/api/orders'), fetch('/api/ship-scan/scanned-map')]);
+                // 요약 전용 경량 API — 서버가 진행중 발주서만 읽어 발주수량/준비수량/준비완료/스캔수량을
+                // 발주서별로 미리 합산해 내려준다. (예전 /api/orders + scanned-map 조합은 800KB·14초)
+                // 태블릿 발주서에만 상품정보=[{상품바코드,위치}] 가 붙어 온다 (fillFloors 층 태그용).
+                const res=await fetch('/api/orders/summary');
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const data=await res.json();
-                const scanMap=scRes.ok?await scRes.json():{};
-                // 발주번호|바코드 → 발주번호별 출고스캔 합
-                const scanByOrder=new Map();
-                for(const k in scanMap){ const on=k.split('|')[0]; scanByOrder.set(on,(scanByOrder.get(on)||0)+(Number(scanMap[k])||0)); }
-                // 처리완료(DONE)는 서버(/api/orders)에서 이미 제외되어 내려온다
                 orders=data.map(o=>({
                     발주번호:o.발주번호, 물류센터:o.물류센터||'(미정)', 입고예정일:o.입고예정일||'(미정)',
-                    발주수량:Number(o.발주수량)||0, 스캔수량:scanByOrder.get(o.발주번호)||0,
-                    // 준비수량 = 원본 상품행(박스정보 없음)의 prepared_qty 합
-                    준비수량:(o.상품정보||[]).reduce((s,p)=>s+(p.박스정보?0:(Number(p.준비)||0)),0),
-                    // 준비완료 = 원본 상품행이 하나라도 있고, 전부 준비수량이 입력된 상태(0 포함, NULL 제외)
-                    // 출고준비(shipPrepare)에서 [없음]으로 0 을 넣은 것도 입력으로 친다.
-                    준비완료:(()=>{ const rows=(o.상품정보||[]).filter(p=>!p.박스정보);
-                        return rows.length>0 && rows.every(p=>p.준비!=null); })(),
+                    발주수량:Number(o.발주수량)||0, 스캔수량:Number(o.스캔수량)||0,
+                    준비수량:Number(o.준비수량)||0, 준비완료:!!o.준비완료,
                     상태:o.상태||'PROCESSING', 처리방식:o.처리방식||null,
                     층:[]   // 아래 fillFloors() 에서 채운다 (태블릿 탭 전용)
                 }));

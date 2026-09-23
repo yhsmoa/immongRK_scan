@@ -201,12 +201,77 @@ module.exports = (io) => {
     }
   });
 
+  // ⚠️ /summary 도 /:orderNumber 보다 먼저 등록
+  // 요약(summary) 전용 경량 목록 — 진행중 발주서의 카드 표시값만 돌려준다.
+  // /api/orders(전체 상품행 포함, 800KB)와 달리 필요한 컬럼만 읽고 발주서별로 미리 합산해 수 KB 로 응답.
+  //   발주수량 = rk_orders.order_qty, 준비수량 = 원본 상품행 prepared_qty 합,
+  //   준비완료 = 원본 상품행이 1개 이상이고 전부 prepared_qty 가 입력(0 포함)된 상태,
+  //   스캔수량 = rk_ship_box_items qty 합(발주번호 기준).
+  //   상품정보 = 태블릿(process_type=TABLET) 발주서에만 [{상품바코드, 위치}] (층 태그 계산용, 원본행만)
+  router.get('/api/orders/summary', async (req, res) => {
+    try {
+      const headers = await S.pageAll(() => S.notDone(S.supabase.from('rk_orders')
+        .select('id, order_number, arrival_date, logistics_center, order_qty, status, process_type'))
+        .order('arrival_date', { ascending: true })
+        .order('logistics_center', { ascending: true })
+        .order('order_number', { ascending: true }));
+      if (!headers.length) return res.json([]);
+
+      const ids = headers.map((h) => h.id);
+      const orderNos = [...new Set(headers.map((h) => String(h.order_number)).filter(Boolean))];
+      const [items, scans] = await Promise.all([
+        S.chunked(ids, 300, (part) => S.pageAll(() => S.supabase.from('rk_order_items')
+          .select('order_id, barcode, box_info, prepared_qty, location')
+          .in('order_id', part).order('id', { ascending: true }))),
+        S.chunked(orderNos, 200, (part) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
+          .select('order_number, qty')
+          .in('order_number', part).order('id', { ascending: true }))),
+      ]);
+
+      const agg = new Map();   // order_id → { prep, rows, allFilled, products[] }
+      for (const it of items) {
+        if (it.box_info) continue;                       // 원본행만
+        let a = agg.get(it.order_id);
+        if (!a) { a = { prep: 0, rows: 0, allFilled: true, products: [] }; agg.set(it.order_id, a); }
+        a.rows++;
+        if (it.prepared_qty == null) a.allFilled = false; else a.prep += Number(it.prepared_qty) || 0;
+        a.products.push({ 상품바코드: S.str(it.barcode), 위치: S.dash(it.location) });
+      }
+      const scanByOrder = new Map();
+      for (const s of scans) {
+        const on = String(s.order_number || '');
+        if (on) scanByOrder.set(on, (scanByOrder.get(on) || 0) + (parseInt(s.qty, 10) || 0));
+      }
+
+      res.json(headers.map((h) => {
+        const a = agg.get(h.id) || { prep: 0, rows: 0, allFilled: false, products: [] };
+        const on = String(h.order_number);
+        const out = {
+          발주번호: on,
+          입고예정일: S.dateToYmd(h.arrival_date),
+          물류센터: S.str(h.logistics_center),
+          발주수량: h.order_qty,
+          스캔수량: scanByOrder.get(on) || 0,
+          준비수량: a.prep,
+          준비완료: a.rows > 0 && a.allFilled,
+          상태: S.str(h.status),
+          처리방식: h.process_type == null ? null : S.str(h.process_type),
+        };
+        if (out.처리방식 === 'TABLET') out.상품정보 = a.products;
+        return out;
+      }));
+    } catch (e) {
+      console.error('[rk] orders/summary:', e);
+      res.status(500).json({ error: '발주서 요약을 불러오는데 실패했습니다.' });
+    }
+  });
+
   // 발주서 목록
   router.get('/api/orders', async (req, res) => {
     try {
       const referer = req.headers.referer || '';
       // 처리완료(DONE) 발주서는 목록에서 제외 (발주서·요약·입고정리·재고준비·출고준비 공통)
-      const orders = S.excludeDone(await S.listOrdersFull('rk_orders', 'rk_order_items'));
+      const orders = await S.listOrdersFull('rk_orders', 'rk_order_items', { excludeDone: true });
       res.json(orders.map((o) => processListOrder(o, referer)));
     } catch (e) {
       console.error('[rk] 발주서 목록:', e);

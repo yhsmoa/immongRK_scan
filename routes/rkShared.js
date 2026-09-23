@@ -141,13 +141,23 @@ async function fetchAllItems(itemTable, orderIds) {
   return all;
 }
 
+// ── 처리완료(DONE) 제외 조건을 쿼리에 붙인다 (status NULL 은 진행중으로 취급) ──
+// ⚠ .neq('status','DONE') 만 쓰면 Postgres 에서 NULL 행이 같이 빠지므로 or 로 묶는다.
+const notDone = (q) => q.or('status.is.null,status.neq.DONE');
+
 // ── 전체 발주서 목록 (한글, 모든 상품 포함, 정렬 입고예정일>물류센터>발주번호) ──
-async function listOrdersFull(headerTable, itemTable) {
-  const headers = await pageAll(() => supabase
-    .from(headerTable).select('*')
-    .order('arrival_date', { ascending: true })
-    .order('logistics_center', { ascending: true })
-    .order('order_number', { ascending: true }));
+// excludeDone=true 면 처리완료(DONE) 발주서를 DB 조회 단계에서 제외한다.
+//   → 처리완료가 쌓일수록(수백 건·상품행 수만 개) 전부 읽고 버리는 비용이 커지므로,
+//     진행중 업무 화면은 반드시 이 옵션을 켜서 호출할 것. (요약 페이지 14초 → 1초 미만)
+async function listOrdersFull(headerTable, itemTable, { excludeDone = false } = {}) {
+  const headers = await pageAll(() => {
+    let q = supabase.from(headerTable).select('*');
+    if (excludeDone) q = notDone(q);
+    return q
+      .order('arrival_date', { ascending: true })
+      .order('logistics_center', { ascending: true })
+      .order('order_number', { ascending: true });
+  });
   const ids = headers.map((h) => h.id);
   const items = await fetchAllItems(itemTable, ids);
   const grouped = new Map();
@@ -174,6 +184,20 @@ async function getOrderFull(headerTable, itemTable, orderNumber) {
 // 진행중 업무 화면은 DONE 을 데이터에서 아예 제외한다.
 const isDoneOrder = (o) => String((o && o.상태) || '') === 'DONE';
 const excludeDone = (orders) => (orders || []).filter((o) => !isDoneOrder(o));
+
+// ── 진행중(DONE 아님) 발주번호 목록 — 출고스캔 합산 등 다른 테이블을 발주서 범위로 좁힐 때 사용 ──
+async function listActiveOrderNumbers(headerTable = 'rk_orders') {
+  const rows = await pageAll(() => notDone(supabase.from(headerTable).select('order_number'))
+    .order('id', { ascending: true }));
+  return [...new Set(rows.map((r) => r.order_number).filter((v) => v != null).map(String))];
+}
+
+// ── 큰 IN 목록을 나눠 조회 (URL 길이 제한 회피) ──
+async function chunked(list, size, fn) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(...(await fn(list.slice(i, i + size))));
+  return out;
+}
 
 // ── 헤더 id 조회 ──
 async function getOrderId(headerTable, orderNumber) {
@@ -260,7 +284,7 @@ module.exports = {
   dateToYmd, tsToKst, dash, str, ymdToDate, kstToTs,
   emptyToNull, placeholderToNull, toInt, toNum,
   itemToKorean, headerToKorean, fetchAllItems, pageAll,
-  isDoneOrder, excludeDone,
+  isDoneOrder, excludeDone, notDone, listActiveOrderNumbers, chunked,
   listOrdersFull, getOrderFull, getOrderId, recalcHeaderAggregates,
   koreanItemToRow, koreanHeaderToRow,
 };
