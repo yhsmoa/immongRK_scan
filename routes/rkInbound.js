@@ -272,57 +272,32 @@ router.post('/api/inbound/prepare', async (req, res) => {
     if (orderNumbers && orderNumbers.length) orders = orders.filter(o => orderNumbers.includes(o.발주번호));
 
     const barcodesInItems = new Set(items.map(i => i.barcode).filter(Boolean));
+    // 스캔·재고예약은 "선택된 진행중 발주서"의 것만 필요하다 → 발주번호로 좁혀 조회.
+    // (예전엔 바코드로 조회해 처리완료 발주서 행까지 읽었고, 정렬 없는 range 페이징이라 1000행을 넘으면
+    //  페이지 사이에 행이 빠지거나 겹칠 수 있었다. pageAll + id 정렬로 안정화.)
+    const targetOrderNos = [...new Set(orders.map(o => String(o.발주번호 || '')).filter(Boolean))];
+    const sumByOrderBc = (rows) => {
+      const m = new Map();   // `${order_number}|${barcode}` -> qty 합
+      for (const r of rows) {
+        if (!r.order_number || !r.barcode) continue;
+        const k = `${r.order_number}|${r.barcode}`;
+        m.set(k, (m.get(k) || 0) + (parseInt(r.qty) || 0));
+      }
+      return m;
+    };
 
     // 스캔수량 = 출고스캔(rk_ship_box_items)의 발주번호+바코드별 합 (scanned_qty 미사용)
-    const shipScanByOrderBc = new Map(); // `${order_number}|${barcode}` -> 스캔합
-    {
-      const bcs = [...barcodesInItems];
-      for (let i = 0; i < bcs.length; i += 200) {
-        const batch = bcs.slice(i, i + 200);
-        let from = 0; const PAGE = 1000;
-        while (true) {
-          const { data, error } = await sb.from('rk_ship_box_items').select('order_number, barcode, qty').in('barcode', batch).range(from, from + PAGE - 1);
-          if (error) throw error;
-          if (!data || !data.length) break;
-          for (const r of data) {
-            if (!r.order_number || !r.barcode) continue;
-            const k = `${r.order_number}|${r.barcode}`;
-            shipScanByOrderBc.set(k, (shipScanByOrderBc.get(k) || 0) + (parseInt(r.qty) || 0));
-          }
-          if (data.length < PAGE) break;
-          from += PAGE;
-        }
-      }
-    }
-
     // 재고건 출고예정 예약 = rk_shipping_list(source='재고', status='출고예정')의 발주번호+바코드별 합.
-    // ⚠ 이걸 빼지 않으면 "재고 준비 → 입고 출고준비" 순서일 때 같은 발주 수량에 재고분과 입고분이
-    //    중복 배정된다(발주 5 = 재고 5 + 입고 3 → 8). 재고 배정 쪽(rkShippingList.js 의 reservedByOrder)은
-    //    source 무관하게 이미 차감하고 있으므로, 여기서도 대칭으로 맞춘다.
-    //    입고분(source='입고')은 rk_cn_shipping 의 미러이므로 consumedMap 과 중복되어 여기서는 제외한다.
-    const stockReservedByOrderBc = new Map(); // `${order_number}|${barcode}` -> 재고 예약합
-    {
-      const bcs = [...barcodesInItems];
-      for (let i = 0; i < bcs.length; i += 200) {
-        const batch = bcs.slice(i, i + 200);
-        let from = 0; const PAGE = 1000;
-        while (true) {
-          const { data, error } = await sb.from('rk_shipping_list')
-            .select('order_number, barcode, qty, source, status')
-            .eq('source', '재고').eq('status', '출고예정')
-            .in('barcode', batch).range(from, from + PAGE - 1);
-          if (error) throw error;
-          if (!data || !data.length) break;
-          for (const r of data) {
-            if (!r.order_number || !r.barcode) continue;
-            const k = `${r.order_number}|${r.barcode}`;
-            stockReservedByOrderBc.set(k, (stockReservedByOrderBc.get(k) || 0) + (parseInt(r.qty) || 0));
-          }
-          if (data.length < PAGE) break;
-          from += PAGE;
-        }
-      }
-    }
+    //   입고분(source='입고')은 rk_cn_shipping 의 미러이므로 consumedMap 과 중복되어 여기서는 제외한다.
+    const [scanRows, stockRows] = await Promise.all([
+      S.chunked(targetOrderNos, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
+        .select('order_number, barcode, qty').in('order_number', nos).order('id', { ascending: true }))),
+      S.chunked(targetOrderNos, 200, (nos) => S.pageAll(() => sb.from('rk_shipping_list')
+        .select('order_number, barcode, qty').eq('source', '재고').eq('status', '출고예정')
+        .in('order_number', nos).order('id', { ascending: true }))),
+    ]);
+    const shipScanByOrderBc = sumByOrderBc(scanRows);
+    const stockReservedByOrderBc = sumByOrderBc(stockRows);
 
     const orderProductMap = new Map(); // barcode -> [{order, availableQuantity}]
     for (const order of orders) {
@@ -333,8 +308,14 @@ router.post('/api/inbound/prepare', async (req, res) => {
         const consumed = consumedMap.has(p.상품바코드) && consumedMap.get(p.상품바코드).has(order.발주번호)
           ? consumedMap.get(p.상품바코드).get(order.발주번호) : 0;
         const 재고예약 = stockReservedByOrderBc.get(`${order.발주번호}|${p.상품바코드}`) || 0;
-        // 가용 = 확정 - 출고스캔 - (이미 배정된 입고 전량) - (재고건 출고예정). 입고1/입고2 미차감.
-        const avail = (parseInt(p.확정수량) || 0) - 스캔 - consumed - 재고예약;
+        // 소진량 = max(예약합, 출고스캔)  ※ 더하지 않는다.
+        //   예약(입고 배정 + 재고 출고예정)된 물건이 출고스캔으로 박스에 담기면 같은 물건이 예약·스캔 양쪽에
+        //   잡힌다(예약 상태가 스캔 후에도 '출고예정'으로 남음). 둘을 더하면 이중 차감돼, 아직 필요한 발주에
+        //   남은상품이 배정되지 않았다. (예: 확정 27 · 입고배정 18 · 스캔 18 → 예전 27-18-18=-9, 지금 27-18=9)
+        //   스캔이 예약보다 많으면 예약 밖에서 추가로 담긴 것이므로 스캔을 소진량으로 본다.
+        //   입고1/입고2 는 미차감(입고1==스캔 이중차감 이력).
+        const 예약 = consumed + 재고예약;
+        const avail = (parseInt(p.확정수량) || 0) - Math.max(예약, 스캔);
         if (avail > 0) {
           if (!orderProductMap.has(p.상품바코드)) orderProductMap.set(p.상품바코드, []);
           orderProductMap.get(p.상품바코드).push({

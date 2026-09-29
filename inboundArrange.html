@@ -111,6 +111,35 @@
             @page { size: A4 landscape; margin: 0.5cm; }
         }
 
+        /* 정렬 버튼 · 모달 */
+        .btn.sort-on{background:#eef2ff;border-color:#c7d2fe;color:var(--primary);font-weight:600;}
+        .btn .sort-cnt{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--primary);color:#fff;font-size:11px;font-weight:700;}
+        th .sort-ind{margin-left:5px;font-size:10.5px;font-weight:700;color:var(--primary);background:#eef2ff;border-radius:5px;padding:1px 4px;}
+        .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:10003;padding:16px;}
+        .modal-back.show{display:flex;}
+        .modal{background:#fff;border-radius:14px;width:540px;max-width:100%;box-shadow:0 20px 50px rgba(15,23,42,.25);}
+        .modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 4px;font-size:16px;font-weight:700;color:var(--ink);}
+        .modal-head button.x{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .modal-desc{padding:0 20px 14px;font-size:12.5px;color:var(--muted);line-height:1.55;}
+        .sort-rows{padding:0 20px;display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;}
+        .sort-row{display:flex;align-items:center;gap:8px;}
+        .sort-rank{flex:0 0 52px;font-size:12px;font-weight:700;color:var(--primary);background:#eef2ff;border-radius:999px;padding:5px 0;text-align:center;}
+        .sort-row select{flex:1;min-width:0;height:34px;padding:0 10px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;font-size:13px;color:#334155;outline:none;cursor:pointer;}
+        .sort-row select:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .dir{display:inline-flex;flex:0 0 auto;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;}
+        .dir button{height:32px;padding:0 10px;border:none;background:#fff;font-size:12.5px;color:#475569;cursor:pointer;}
+        .dir button + button{border-left:1px solid #e2e8f0;}
+        .dir button.on{background:var(--primary);color:#fff;font-weight:600;}
+        .icon-btn{flex:0 0 30px;height:32px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;cursor:pointer;color:#64748b;font-size:12px;}
+        .icon-btn:hover:not(:disabled){background:var(--hover);}
+        .icon-btn:disabled{opacity:.35;cursor:default;}
+        .add-rule{display:block;margin:10px 20px 0;width:calc(100% - 40px);height:36px;border:1px dashed #c7d2fe;background:#f8faff;color:var(--primary);border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;}
+        .add-rule:disabled{opacity:.45;cursor:not-allowed;}
+        .modal-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid #eef2f7;margin-top:18px;}
+        .modal-foot .right{display:flex;gap:8px;}
+        .modal-foot .btn{height:36px;}
+        @media (max-width:560px){ .dir button{padding:0 7px;} .sort-rank{flex-basis:44px;} }
+
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
     </style>
@@ -145,6 +174,7 @@
                 </div>
                 <div class="tabbar-right">
                     <select id="batchFilter" onchange="onBatchFilter()"><option value="all">전체 회차</option></select>
+                    <button class="btn" id="sortBtn" onclick="openSortModal()">정렬</button>
                     <button class="btn" onclick="window.print()">인쇄</button>
                     <button class="btn" id="cancelBtn" onclick="cancelSelected()" disabled>취소</button>
                 </div>
@@ -174,6 +204,23 @@
         <div class="side-foot">
             <button class="btn" onclick="closeOrderPanel()">취소</button>
             <button class="btn primary" onclick="runPrepare()">출고준비 실행</button>
+        </div>
+    </div>
+
+    <!-- 정렬 모달 -->
+    <div class="modal-back" id="sortBack" onclick="if(event.target===this)closeSortModal()">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sortTitle">
+            <div class="modal-head"><span id="sortTitle">정렬</span><button class="x" onclick="closeSortModal()" aria-label="닫기">✕</button></div>
+            <div class="modal-desc">1순위부터 차례로 정렬합니다. 값이 같으면 다음 순위로, 모든 순위가 같으면 기본 순서(회차 › 출고예정일 › 센터 › 출고번호)를 따릅니다. 빈 값은 항상 맨 아래에 둡니다.</div>
+            <div class="sort-rows" id="sortRows"></div>
+            <button class="add-rule" id="addRuleBtn" onclick="addSortRule()">+ 순위 추가</button>
+            <div class="modal-foot">
+                <button class="btn" onclick="resetSort()">기본 정렬로</button>
+                <div class="right">
+                    <button class="btn" onclick="closeSortModal()">취소</button>
+                    <button class="btn primary" onclick="applySort()">적용</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -283,18 +330,23 @@
                 const hay=[r.출고코드,r.박스명,r.중국번호,r.상품명,r.바코드,r.출고번호].map(v=>String(v||'').toLowerCase());
                 return terms.some(t=>hay.some(h=>h.includes(t)));
             });
-            // 정렬: 회차 > 출고예정일 > 센터 > 발주서번호(출고번호)  ※ 위치는 이 화면에 데이터 없음
-            const cmp=(x,y)=>String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true});
-            rows=rows.slice().sort((a,b)=>
+            // 기본 정렬: 회차 > 출고예정일 > 센터 > 발주서번호(출고번호)  ※ 위치는 이 화면에 데이터 없음
+            // [정렬] 모달에서 순위를 지정하면 그 순서로 먼저 비교하고, 모두 같을 때만 기본 정렬을 따른다.
+            const defCmp=(a,b)=>
                 (Number(a.회차)||0)-(Number(b.회차)||0)
-                || cmp(a.출고예정일,b.출고예정일)
-                || cmp(a.센터,b.센터)
-                || cmp(a.출고번호,b.출고번호)
-            );
+                || sortText(a.출고예정일,b.출고예정일)
+                || sortText(a.센터,b.센터)
+                || sortText(a.출고번호,b.출고번호);
+            rows=rows.slice().sort((a,b)=>{
+                for(const r of sortRules){ const c=ruleCmp(r,a,b); if(c) return c; }
+                return defCmp(a,b);
+            });
             const mb=maxBatch();
             const nBatches=new Set(shippingRows.map(r=>r.회차).filter(v=>v!=null)).size;
             const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
-            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차</th><th>출고코드</th><th>박스명</th><th>중국번호</th><th>상품명</th><th class="ctr">수량</th><th>바코드</th><th>출고번호</th><th>센터</th><th class="ctr">출고개수</th><th>출고예정일</th></tr>`;
+            // 헤더에 정렬 순위 표시 (예: 출고예정일 1↑)
+            const ind=k=>{ const i=sortRules.findIndex(r=>r.k===k); return i<0?'':`<span class="sort-ind">${i+1}${sortRules[i].dir>0?'↑':'↓'}</span>`; };
+            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차${ind('회차')}</th><th>출고코드${ind('출고코드')}</th><th>박스명${ind('박스명')}</th><th>중국번호${ind('중국번호')}</th><th>상품명${ind('상품명')}</th><th class="ctr">수량${ind('수량')}</th><th>바코드${ind('바코드')}</th><th>출고번호${ind('출고번호')}</th><th>센터${ind('센터')}</th><th class="ctr">출고개수${ind('출고개수')}</th><th>출고예정일${ind('출고예정일')}</th></tr>`;
             if(rows.length===0){
                 let msg;
                 if(!selectedCode()) msg='연도 · 월 · 출고코드를 선택하세요.';
@@ -344,6 +396,75 @@
                 await loadArranged();
             }catch(e){ toast('취소 실패: '+e.message); }
         }
+
+        // ── 정렬 (순위별 다중 정렬) ──
+        // 페이지를 열면 항상 기본 정렬. 지정한 순위는 이 화면에 머무는 동안만 유지한다(저장 안 함).
+        const SORT_COLS=[
+            {k:'회차',num:true},{k:'출고코드'},{k:'박스명'},{k:'중국번호'},{k:'상품명'},{k:'수량',num:true},
+            {k:'바코드'},{k:'출고번호'},{k:'센터'},{k:'출고개수',num:true},{k:'출고예정일'}];
+        const SORT_NUM=new Set(SORT_COLS.filter(c=>c.num).map(c=>c.k));
+        let sortRules=[];   // 적용된 순위 [{k, dir:1(오름)|-1(내림)}]
+        let sortDraft=[];   // 모달에서 편집 중인 순위 (적용 전)
+
+        function sortText(x,y){ return String(x==null?'':x).localeCompare(String(y==null?'':y),'ko',{numeric:true}); }
+        const isBlank=v=>v==null||v===''||v==='-';
+        // 한 순위 비교: 빈 값은 방향과 상관없이 항상 뒤로
+        function ruleCmp(r,a,b){
+            const va=a[r.k], vb=b[r.k], ea=isBlank(va), eb=isBlank(vb);
+            if(ea||eb) return ea===eb?0:(ea?1:-1);
+            const c=SORT_NUM.has(r.k)?((Number(va)||0)-(Number(vb)||0)):sortText(va,vb);
+            return c*r.dir;
+        }
+
+        function updateSortBtn(){
+            const b=document.getElementById('sortBtn'), n=sortRules.length;
+            b.classList.toggle('sort-on',n>0);
+            b.innerHTML=n?`정렬 <span class="sort-cnt">${n}</span>`:'정렬';
+            b.title=n?sortRules.map((r,i)=>`${i+1}순위 ${r.k} ${r.dir>0?'오름차순':'내림차순'}`).join('\n'):'순위별 정렬';
+        }
+        function openSortModal(){
+            sortDraft=sortRules.length?sortRules.map(r=>({...r})):[{k:'',dir:1}];
+            renderSortModal();
+            document.getElementById('sortBack').classList.add('show');
+        }
+        function closeSortModal(){ document.getElementById('sortBack').classList.remove('show'); }
+        function renderSortModal(){
+            const n=sortDraft.length;
+            document.getElementById('sortRows').innerHTML=sortDraft.map((r,i)=>{
+                // 다른 순위에서 이미 고른 항목은 선택지에서 뺀다 (중복 방지)
+                const used=new Set(sortDraft.filter((_,j)=>j!==i).map(x=>x.k).filter(Boolean));
+                const opts=SORT_COLS.filter(c=>!used.has(c.k))
+                    .map(c=>`<option value="${esc(c.k)}" ${c.k===r.k?'selected':''}>${esc(c.k)}</option>`).join('');
+                return `<div class="sort-row">
+                    <span class="sort-rank">${i+1}순위</span>
+                    <select onchange="setSortKey(${i},this.value)" aria-label="${i+1}순위 항목"><option value="">항목 선택</option>${opts}</select>
+                    <span class="dir">
+                        <button type="button" class="${r.dir>0?'on':''}" onclick="setSortDir(${i},1)">오름차순</button>
+                        <button type="button" class="${r.dir<0?'on':''}" onclick="setSortDir(${i},-1)">내림차순</button>
+                    </span>
+                    <button type="button" class="icon-btn" onclick="moveSortRule(${i},-1)" ${i===0?'disabled':''} title="위로" aria-label="위로">▲</button>
+                    <button type="button" class="icon-btn" onclick="moveSortRule(${i},1)" ${i===n-1?'disabled':''} title="아래로" aria-label="아래로">▼</button>
+                    <button type="button" class="icon-btn" onclick="removeSortRule(${i})" title="삭제" aria-label="삭제">✕</button>
+                </div>`;
+            }).join('') || '<div class="modal-desc" style="padding:6px 0">순위가 없습니다. 기본 정렬로 표시됩니다.</div>';
+            document.getElementById('addRuleBtn').disabled=sortDraft.length>=SORT_COLS.length;
+        }
+        function setSortKey(i,k){ sortDraft[i].k=k; renderSortModal(); }
+        function setSortDir(i,d){ sortDraft[i].dir=d; renderSortModal(); }
+        function moveSortRule(i,d){
+            const j=i+d; if(j<0||j>=sortDraft.length) return;
+            [sortDraft[i],sortDraft[j]]=[sortDraft[j],sortDraft[i]]; renderSortModal();
+        }
+        function removeSortRule(i){ sortDraft.splice(i,1); renderSortModal(); }
+        function addSortRule(){ if(sortDraft.length<SORT_COLS.length){ sortDraft.push({k:'',dir:1}); renderSortModal(); } }
+        function applySort(){
+            sortRules=sortDraft.filter(r=>r.k).map(r=>({k:r.k,dir:r.dir>0?1:-1}));
+            closeSortModal(); updateSortBtn(); render();
+        }
+        function resetSort(){ sortRules=[]; closeSortModal(); updateSortBtn(); render(); }
+        document.addEventListener('keydown',e=>{
+            if(e.key==='Escape' && document.getElementById('sortBack').classList.contains('show')) closeSortModal();
+        });
 
         let batchFilter='all';
         function onBatchFilter(){ batchFilter=document.getElementById('batchFilter').value; render(); }
