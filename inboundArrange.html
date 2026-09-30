@@ -107,6 +107,8 @@
             /* 상품명(6번째) 열만 넓게, 나머지는 내용 너비로 축소 */
             th:nth-child(6), td.pname { white-space: normal !important; width: auto; word-break: break-word; }
             tbody tr.latest td { background: #fff !important; }
+            /* 출고번호 그룹 경계 — 발주서(rocket) 인쇄와 같은 2px 검은 선. 다음 행의 출고번호가 바뀌는 행에 붙는다 */
+            tbody tr.ge td { border-bottom: 2px solid #000 !important; }
             .batch, .newtag { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             @page { size: A4 landscape; margin: 0.5cm; }
         }
@@ -354,13 +356,15 @@
                 else msg='남은상품이 없습니다.';
                 tb.innerHTML=`<tr class="state-row"><td colspan="12">${msg}</td></tr>`;
             }else{
-                tb.innerHTML=rows.map(r=>{
+                tb.innerHTML=rows.map((r,idx)=>{
+                    // 출고번호 그룹 끝(마지막 행 또는 다음 행의 출고번호가 다름) → 인쇄 시 굵은 구분선
+                    const ge=idx===rows.length-1 || String(rows[idx+1].출고번호||'')!==String(r.출고번호||'');
                     const isShip=r.회차!=null;
                     const latest=isShip && r.회차===mb && nBatches>1; // 회차 2개 이상일 때만 최신 강조
                     const batchCell=isShip
                         ? `<span class="batch ${latest?'latest':''}">${r.회차}회차</span>${latest?'<span class="newtag">NEW</span>':''}`
                         : '<span class="dash">-</span>';
-                    return `<tr class="${latest?'latest':''}">
+                    return `<tr class="${latest?'latest':''} ${ge?'ge':''}">
                         <td class="chk">${r.allocId!=null?`<input type="checkbox" class="rowchk" data-allocid="${esc(r.allocId)}" onchange="updateCancelBtn()">`:''}</td>
                         <td class="ctr">${batchCell}</td>
                         <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
