@@ -12,6 +12,7 @@ const multer = require('multer');
 const xlsx = require('xlsx');
 const path = require('path');
 const cors = require('cors');
+const compression = require('compression');
 const http = require('http');
 const socketIo = require('socket.io');
 const Order = require('./models/order');
@@ -27,6 +28,9 @@ const server = http.createServer(app);
 const io = socketIo(server);
 
 const PORT = process.env.PORT || 3001;
+
+// 응답 gzip 압축 — 목록 API 가 수 MB JSON 을 내려주므로 전송량을 1/10 수준으로 줄인다 (정적 파일 포함)
+app.use(compression());
 
 // UTF-8 인코딩 설정
 app.use((req, res, next) => {

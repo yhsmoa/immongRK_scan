@@ -401,24 +401,28 @@ router.post('/api/rocket/scan-detail/save', async (req, res) => {
 });
 
 // 통합 출고리스트 조회 (추후 통합 화면/스캔용)
+// ?source= / ?status= 는 DB 조회 단계에서 거른다.
+// ?active=1 이면 진행중(DONE 아님) 발주서의 행만 읽는다. 처리완료 발주서의 행도 status 가 '출고예정' 으로
+// 남아 계속 쌓이기 때문에(전체의 85% 이상), 진행중만 표시하는 화면(발주서)은 이 옵션을 켜서 호출할 것.
 router.get('/api/shipping-list', async (req, res) => {
   try {
-    const all = [];
-    let from = 0;
-    const size = 1000;
-    while (true) {
-      let q = sb.from('rk_shipping_list').select('*').order('id', { ascending: true }).range(from, from + size - 1);
-      const { data, error } = await q;
-      if (error) throw error;
-      all.push(...data);
-      if (data.length < size) break;
-      from += size;
-    }
     const source = (req.query.source || '').trim();
     const status = (req.query.status || '').trim();
-    let rows = all;
-    if (source) rows = rows.filter(r => r.source === source);
-    if (status) rows = rows.filter(r => r.status === status);
+    const baseQuery = () => {
+      let q = sb.from('rk_shipping_list').select('*');
+      if (source) q = q.eq('source', source);
+      if (status) q = q.eq('status', status);
+      return q;
+    };
+    let rows;
+    if (String(req.query.active || '') === '1') {
+      const active = await S.listActiveOrderNumbers('rk_orders');
+      rows = await S.chunked(active, 200, (nos) =>
+        S.pageAll(() => baseQuery().in('order_number', nos).order('id', { ascending: true })));
+      rows.sort((a, b) => a.id - b.id);
+    } else {
+      rows = await S.pageAll(() => baseQuery().order('id', { ascending: true }));
+    }
     res.json(rows.map(r => ({
       id: r.id, source: r.source, status: r.status,
       barcode: r.barcode, productName: r.product_name,

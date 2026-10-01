@@ -328,7 +328,7 @@
                 // 발주서 + 출고준비(rk_shipping_list) + 출고스캔개수(rk_ship_box_items) 병렬 로드
                 const [res,slRes,scRes]=await Promise.all([
                     fetch('/api/orders'), // Supabase 기반, referer=/rocket → dedup
-                    fetch('/api/shipping-list?status='+encodeURIComponent('출고예정')),
+                    fetch('/api/shipping-list?active=1&status='+encodeURIComponent('출고예정')), // active=1: 진행중 발주서 행만
                     fetch('/api/ship-scan/scanned-map')
                 ]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
