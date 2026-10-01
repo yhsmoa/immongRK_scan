@@ -233,6 +233,11 @@
                         <option value="unscanned">미스캔</option>
                         <option value="stockcheck">재고검사</option>
                     </select>
+                    <select id="orderScanFilter" onchange="applySearch()" title="발주서 단위 스캔 상태">
+                        <option value="all" selected>전체</option>
+                        <option value="need">스캔필요</option>
+                        <option value="done">스캔완료</option>
+                    </select>
                 </div>
             </div>
 
@@ -457,6 +462,25 @@
                     if(r.준비==null) return false;          // 준비 미입력(NULL)은 제외
                     const stock=Number(r.재고)||0, prep=Number(r.준비)||0;
                     return stock>0 && stock>prep;
+                });
+            }
+            // 발주서 단위 스캔 상태 (발주서의 전체 상품 기준 — 검색/행 필터와 무관하게 판정)
+            //   스캔필요: (입고+재고) > 스캔 인 상품이 하나라도 있는 발주서
+            //   스캔완료: 입고+재고 가 있고, 모든 상품이 (입고+재고) = 스캔 인 발주서
+            const orderMode=document.getElementById('orderScanFilter').value;
+            if(orderMode!=='all'){
+                const st=new Map(); // 발주번호 → {need, mismatch, prep}
+                for(const r of allRows){
+                    if(!st.has(r.발주번호)) st.set(r.발주번호,{need:false,mismatch:false,prep:0});
+                    const s=st.get(r.발주번호);
+                    const prep=(Number(r.재고)||0)+(Number(r.입고V2)||0), scan=Number(r.스캔수량)||0;
+                    s.prep+=prep;
+                    if(prep>scan) s.need=true;
+                    if(prep!==scan) s.mismatch=true;
+                }
+                viewRows=viewRows.filter(r=>{
+                    const s=st.get(r.발주번호);
+                    return orderMode==='need' ? s.need : (s.prep>0 && !s.mismatch);
                 });
             }
             currentPage=1;
