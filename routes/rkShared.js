@@ -199,6 +199,25 @@ async function chunked(list, size, fn) {
   return out;
 }
 
+// ── chunked 의 병렬판 — 조각을 최대 concurrency 개씩 동시에 조회 (결과는 조각 순서대로 이어 붙임) ──
+// 조각 하나하나가 왕복 1회(약 70ms+)라 순차로 수십 번 돌면 수 초가 된다.
+// DB 부하를 고려해 동시 개수는 작게 유지할 것. fn 이 throw 하면 전체가 reject 되므로,
+// 실패한 조각만 건너뛰려면 fn 안에서 잡아서 [] 를 돌려줄 것.
+async function chunkedPool(list, size, fn, concurrency = 4) {
+  const parts = [];
+  for (let i = 0; i < list.length; i += size) parts.push(list.slice(i, i + size));
+  const results = new Array(parts.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < parts.length) {
+      const idx = next++;
+      results[idx] = await fn(parts[idx]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, parts.length) }, worker));
+  return results.flat();
+}
+
 // ── 헤더 id 조회 ──
 async function getOrderId(headerTable, orderNumber) {
   const { data, error } = await supabase.from(headerTable).select('id').eq('order_number', orderNumber).limit(1);
@@ -284,7 +303,7 @@ module.exports = {
   dateToYmd, tsToKst, dash, str, ymdToDate, kstToTs,
   emptyToNull, placeholderToNull, toInt, toNum,
   itemToKorean, headerToKorean, fetchAllItems, pageAll,
-  isDoneOrder, excludeDone, notDone, listActiveOrderNumbers, chunked,
+  isDoneOrder, excludeDone, notDone, listActiveOrderNumbers, chunked, chunkedPool,
   listOrdersFull, getOrderFull, getOrderId, recalcHeaderAggregates,
   koreanItemToRow, koreanHeaderToRow,
 };

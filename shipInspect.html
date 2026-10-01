@@ -154,7 +154,7 @@
                 const [res,scRes,slRes]=await Promise.all([
                     fetch('/api/orders'),
                     fetch('/api/ship-scan/scanned-map'),
-                    fetch('/api/shipping-list?source='+encodeURIComponent('재고')+'&status='+encodeURIComponent('출고예정'))
+                    fetch('/api/shipping-list?active=1&source='+encodeURIComponent('재고')+'&status='+encodeURIComponent('출고예정')) // active=1: 진행중 발주서 행만
                 ]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const data=await res.json();

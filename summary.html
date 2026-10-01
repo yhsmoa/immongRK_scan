@@ -232,7 +232,7 @@
             // 1) 출고예정(재고건) 위치
             const slMap=new Map();   // 발주번호|바코드 → [location]
             try{
-                const r=await fetch('/api/shipping-list?source='+encodeURIComponent('재고')+'&status='+encodeURIComponent('출고예정'));
+                const r=await fetch('/api/shipping-list?active=1&source='+encodeURIComponent('재고')+'&status='+encodeURIComponent('출고예정')); // active=1: 진행중 발주서 행만
                 if(r.ok) for(const s of await r.json()){
                     const k=`${s.orderNumber}|${s.barcode}`;
                     if(!slMap.has(k)) slMap.set(k,[]);
