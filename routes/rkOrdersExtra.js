@@ -228,7 +228,11 @@ router.post('/api/shipment/export-cj', async (req, res) => {
 // ── 발주리스트 확정 내보내기 ──
 router.post('/api/orders/export', async (req, res) => {
   try {
-    const { orderNumbers } = req.body;
+    const { orderNumbers, items } = req.body;
+    // items(체크된 행: 발주번호+바코드)가 오면 그 행만 내보낸다. 없으면 발주서 단위.
+    const itemKeys = Array.isArray(items) && items.length > 0
+      ? new Set(items.map((it) => `${it.orderNumber}|${it.barcode}`))
+      : null;
     // 처리완료(DONE) 발주서는 내보내기에서 제외 (DB 조회 단계에서)
     const all = await S.listOrdersFull('rk_orders', 'rk_order_items', { excludeDone: true });
     const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
@@ -268,6 +272,7 @@ router.post('/api/orders/export', async (req, res) => {
     orders.forEach((order) => {
       order.상품정보.forEach((product) => {
         if (product.박스정보) return;
+        if (itemKeys && !itemKeys.has(`${order.발주번호}|${product.상품바코드}`)) return;
         exportData.push({
           발주번호: order.발주번호, 물류센터: order.물류센터, 입고유형: product.입고유형 || '', 발주상태: product.발주상태 || '',
           상품번호: product.상품번호, 상품바코드: product.상품바코드, 상품이름: product.상품이름,

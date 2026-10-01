@@ -587,20 +587,22 @@
 
         // ── 저장(발주리스트 엑셀) ──
         async function saveOrders(){
-            // 체크된 게 있으면 그 발주서, 없으면 현재 검색/필터된 결과의 발주서를 저장
-            let orderNumbers=selectedOrderNumbers();
-            const fromSelection=orderNumbers.length>0;
-            if(!fromSelection) orderNumbers=[...new Set(viewRows.map(r=>r.발주번호))];
+            // 체크된 게 있으면 체크된 행(발주번호+바코드)만, 없으면 현재 검색/필터된 결과의 발주서를 저장
+            const picked=selectedRows();
+            const fromSelection=picked.length>0;
+            const orderNumbers=[...new Set((fromSelection?picked:viewRows).map(r=>r.발주번호))];
             if(!orderNumbers.length){toast('저장할 발주서가 없습니다.');return;}
+            const body={orderNumbers};
+            if(fromSelection) body.items=picked.map(r=>({orderNumber:r.발주번호,barcode:r.상품바코드}));
             try{
-                const res=await fetch('/api/orders/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                const res=await fetch('/api/orders/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
                 if(!res.ok)throw new Error('HTTP '+res.status);
                 const blob=await res.blob();
                 const cd=res.headers.get('Content-Disposition')||'';
                 const m=cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i);
                 const fname=m?decodeURIComponent(m[1]):'발주리스트.xlsx';
                 const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=fname;a.click();URL.revokeObjectURL(a.href);
-                toast(`엑셀 저장 완료 (${orderNumbers.length}건${fromSelection?'':' · 검색결과'})`);
+                toast(fromSelection?`엑셀 저장 완료 (선택 ${picked.length}행)`:`엑셀 저장 완료 (${orderNumbers.length}건 · 검색결과)`);
             }catch(e){toast('저장 실패: '+e.message);}
         }
 
