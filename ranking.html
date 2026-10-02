@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>발주 랭킹</title>
+    <style>
+        /* ================================================================
+           발주 랭킹 — 상품 단위 발주수량 순위 (카드 한 줄 5장 · 두 줄이 한 화면)
+           색은 이 사이트의 기본 톤(따뜻한 흰 배경 · 먹색 글자 · 주황 포인트)을 그대로 쓴다.
+           ================================================================ */
+        :root{
+            --bg:#FBFAF9; --ink:#1C1B1A; --accent:#F0492F; --accent-soft:#FDEBE6; --accent-line:#F7C9BE;
+            --line:#EEECE9; --line2:#EBE8E4; --muted:#6E6A67; --muted2:#918D89; --muted3:#B6B0AA;
+            --danger:#DC2626;
+            --header-h:62px;      /* 상단바(2px) + 헤더(60px) — header.html 과 같은 값 */
+            --card-gap:14px;
+            --card-min-h:330px;   /* 창이 낮아도 카드 줄은 이보다 줄지 않는다 (이미지가 사라지지 않게) */
+            --img-max:230px;      /* 썸네일 원본 한 변 — 이보다 크게 그리면 흐려진다 */
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;background:var(--bg);color:var(--ink);
+            font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;
+            -webkit-font-smoothing:antialiased;}
+
+        /* ── 화면 틀: 헤더를 뺀 한 화면 높이. 제목 줄 아래 영역(.body)이 카드 줄 높이의 기준이 된다 ── */
+        .page{max-width:1480px;width:96%;margin:0 auto;height:calc(100vh - var(--header-h));
+            padding:18px 0 16px;display:flex;flex-direction:column;}
+        .head{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:14px;}
+        .title{margin:0;font-size:24px;font-weight:800;letter-spacing:-.03em;}
+        .subtitle{font-size:13px;color:var(--muted2);font-weight:500;}
+        .tools{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .tools .label{font-size:12.5px;color:var(--muted2);font-weight:600;}
+        .as-of{font-size:12.5px;color:var(--muted3);margin-right:6px;font-variant-numeric:tabular-nums;}
+
+        /* 순위 기준 선택 */
+        .seg{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#fff;}
+        .seg button{height:36px;padding:0 15px;border:0;border-left:1px solid var(--line2);background:transparent;
+            font-family:inherit;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:background .12s,color .12s;}
+        .seg button:first-child{border-left:0;}
+        .seg button:hover{background:#F5F3F1;}
+        .seg button.active{background:var(--accent);color:#fff;font-weight:700;}
+        .btn{height:36px;padding:0 14px;border:1px solid var(--line2);border-radius:10px;background:#fff;
+            font-family:inherit;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;transition:background .12s;}
+        .btn:hover{background:#F5F3F1;}
+        .btn:disabled{opacity:.55;cursor:default;}
+
+        /* ── 본문: 제목 줄을 뺀 나머지 높이. container-type:size 라 안쪽의 100cqh 가 이 높이다.
+              카드 두 줄이 이 높이에 꼭 맞고, [더보기]·안내는 아래로 넘쳐 스크롤로 본다 ── */
+        .body{flex:1 0 0;min-height:0;container-type:size;}
+        .cards{display:grid;grid-template-columns:repeat(5,minmax(180px,1fr));gap:var(--card-gap);
+            grid-auto-rows:400px;   /* cqh 를 모르는 브라우저용 */
+            grid-auto-rows:max(calc((100cqh - var(--card-gap)) / 2), var(--card-min-h));}
+
+        /* ── 카드 ── */
+        .rk-card{display:flex;flex-direction:column;min-width:0;overflow:hidden;background:#fff;
+            border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 3px rgba(28,27,26,.04);
+            transition:border-color .2s,box-shadow .2s;}
+        .rk-card:hover{border-color:var(--accent-line);box-shadow:0 14px 30px -18px rgba(28,27,26,.28);}
+        /* 머리줄: 순위(왼쪽) · 기준 값(오른쪽) */
+        .rk-top{flex:none;display:flex;align-items:center;justify-content:space-between;padding:10px 14px 8px;}
+        .rk-rank{min-width:28px;height:28px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;
+            border-radius:8px;font-size:15px;font-weight:800;background:#F5F3F1;color:var(--muted);}
+        .rk-rank.top{background:var(--accent);color:#fff;}          /* 1~3위 */
+        /* 순위 바로 옆 별점 (쿠팡 별점 · 리뷰 수) */
+        .rk-left{display:inline-flex;align-items:center;gap:8px;min-width:0;}
+        .rk-rating{display:inline-flex;align-items:baseline;gap:3px;font-size:12px;white-space:nowrap;}
+        .rk-rating b{font-size:13.5px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;}
+        .rk-rating i{font-style:normal;color:var(--muted3);font-variant-numeric:tabular-nums;}
+        .rk-basis{display:inline-flex;align-items:baseline;gap:6px;}
+        .rk-basis span{font-size:12.5px;color:var(--muted2);font-weight:600;}
+        .rk-basis b{font-size:21px;font-weight:800;line-height:1.1;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+        /* 이미지: 글자·수량 칸이 쓰고 남은 높이만큼 (원본 크기 이내) */
+        .rk-img{position:relative;flex:1 1 0;min-height:0;max-height:var(--img-max);margin:0 14px;
+            display:flex;align-items:center;justify-content:center;}
+        .rk-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
+        .rk-img .none{font-size:12.5px;color:var(--muted3);}
+        .rk-info{flex:none;padding:8px 14px 10px;}
+        .rk-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+            font-size:13.5px;font-weight:700;line-height:1.4;letter-spacing:-.01em;word-break:break-all;}
+        /* 수량 칸 4 × 2 */
+        .rk-stats{margin-top:8px;display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);}
+        .rk-stat{padding:5px 2px;text-align:center;}
+        .rk-stat.row2{border-top:1px solid #F5F3F1;}
+        .rk-stat .k{font-size:11.5px;color:var(--muted2);font-weight:600;}
+        .rk-stat .v{margin-top:2px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;}
+        .rk-stat .v.zero{color:var(--muted3);font-weight:500;}
+        .rk-stat .v.neg{color:var(--danger);}
+        .rk-stat.basis{background:var(--accent-soft);}
+        .rk-stat.basis .k,.rk-stat.basis .v{color:var(--accent);font-weight:800;}
+
+        /* ── 안내 · 더보기 ── */
+        .notice{background:#fff;border:1px solid var(--line);border-radius:14px;padding:44px 20px;text-align:center;
+            font-size:14px;color:var(--muted2);}
+        .notice.error{color:var(--danger);}
+        .more-row{margin-top:16px;text-align:center;}
+        .more-row .btn{height:42px;padding:0 32px;font-size:14px;font-weight:700;color:var(--ink);}
+        .foot{margin:0;padding:12px 0 20px;font-size:12.5px;line-height:1.6;color:var(--muted3);}
+
+        @media (max-width:900px){
+            .page{height:auto;}
+            .body{container-type:normal;}
+            .cards{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:var(--card-min-h);}
+        }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <!-- 제목 줄: 제목 · 기준 시각 · 순위 기준 · 새로고침 -->
+        <div class="head">
+            <h1 class="title">🏆 발주 랭킹</h1>
+            <span class="subtitle" id="subtitle">1~10위 · 상품 단위 발주수량</span>
+            <div class="tools">
+                <span class="as-of" id="asOf"></span>
+                <span class="label">순위 기준</span>
+                <div class="seg" id="basisSeg" role="group" aria-label="순위 기준"></div>
+                <button type="button" class="btn" id="reloadBtn">새로고침</button>
+            </div>
+        </div>
+
+        <div class="body">
+            <div id="content"></div>
+            <div class="more-row" id="moreRow" style="display:none">
+                <button type="button" class="btn" id="moreBtn"></button>
+            </div>
+            <p class="foot" id="foot"></p>
+        </div>
+    </div>
+
+    <script>
+        // ══════════════════════════════════════════════════════════════
+        // 상수
+        // ══════════════════════════════════════════════════════════════
+        const PAGE_SIZE = 10;                     // 처음 보여 주는 순위 수 — [더보기] 를 누르면 같은 수만큼 더
+        const MAX_SIZE = PAGE_SIZE * 2;           // 서버에서 한 번에 받는 순위 수 (1~10위 + 11~20위)
+        const TOP_RANK = 3;                       // 1~3위만 배지에 색
+        const BASIS_STORAGE_KEY = 'rk_ranking_basis';   // 고른 기준을 이 브라우저에 기억
+        const DEFAULT_BASIS = 'd7';
+
+        /** 순위 기준 — 서버(routes/rkRanking.js)·DB 함수(rk_order_ranking)의 basis 값과 같아야 한다 */
+        const BASES = [
+            { key: 'd1',  label: '오늘', hint: '오늘 등록된 발주서의 발주수량' },
+            { key: 'd7',  label: '7일',  hint: '오늘 포함 최근 7일 발주수량' },
+            { key: 'd30', label: '30일', hint: '오늘 포함 최근 30일 발주수량' },
+            { key: 'd90', label: '90일', hint: '오늘 포함 최근 90일 발주수량' },
+        ];
+
+        /** 수량 칸 — 윗줄은 기간별 발주수량(기준이 될 수 있는 넷), 아랫줄은 기준 기간의 부가 값 */
+        const STATS = [
+            { key: 'd1',  label: '오늘', title: '오늘 발주수량',        basis: 'd1' },
+            { key: 'd7',  label: '7일',  title: '최근 7일 발주수량',    basis: 'd7' },
+            { key: 'd30', label: '30일', title: '최근 30일 발주수량',   basis: 'd30' },
+            { key: 'd90', label: '90일', title: '최근 90일 발주수량',   basis: 'd90' },
+            { key: 'orderCount',  label: '발주서', title: '기준 기간에 이 상품이 들어 있던 발주서 수', row2: true },
+            { key: 'confirmed',   label: '확정',   title: '기준 기간의 확정수량',                     row2: true },
+            { key: 'stock',       label: '재고',   title: '현재 창고 재고 (전체재고 합)',             row2: true },
+            { key: 'optionCount', label: '옵션',   title: '최근 90일 안에 발주된 옵션(색상·사이즈) 수', row2: true },
+        ];
+
+        // ══════════════════════════════════════════════════════════════
+        // 상태
+        // ══════════════════════════════════════════════════════════════
+        const state = {
+            basis: readBasis(),
+            items: [],          // 지금 기준의 순위 (최대 MAX_SIZE)
+            expanded: false,    // [더보기] 를 눌렀는가
+            loading: false,
+            error: '',
+            generatedAt: null,
+            requestSeq: 0,      // 기준을 빠르게 바꿀 때, 늦게 온 예전 응답을 버리기 위한 번호
+        };
+
+        function readBasis() {
+            try {
+                const saved = localStorage.getItem(BASIS_STORAGE_KEY);
+                return BASES.some((b) => b.key === saved) ? saved : DEFAULT_BASIS;
+            } catch (e) { return DEFAULT_BASIS; }
+        }
+        function saveBasis(basis) {
+            try { localStorage.setItem(BASIS_STORAGE_KEY, basis); } catch (e) { /* 기억만 안 될 뿐 */ }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // 조회
+        // ══════════════════════════════════════════════════════════════
+        async function load() {
+            const seq = ++state.requestSeq;
+            state.loading = true;
+            state.error = '';
+            render();
+            try {
+                const res = await fetch(`/api/ranking?basis=${encodeURIComponent(state.basis)}&limit=${MAX_SIZE}`);
+                const json = await res.json().catch(() => ({}));
+                if (seq !== state.requestSeq) return;            // 그사이 다른 기준을 눌렀다
+                if (!res.ok) throw new Error(json.error || `요청 실패 (${res.status})`);
+                state.items = Array.isArray(json.items) ? json.items : [];
+                state.generatedAt = json.generatedAt || null;
+            } catch (e) {
+                if (seq !== state.requestSeq) return;
+                console.error('[ranking] 조회 실패:', e);
+                state.items = [];
+                state.error = e.message || '랭킹을 불러오지 못했습니다.';
+            } finally {
+                if (seq === state.requestSeq) { state.loading = false; render(); }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // 그리기
+        // ══════════════════════════════════════════════════════════════
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+            (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const num = (v) => (Number(v) || 0);
+        const fmt = (v) => (num(v) !== 0 ? num(v).toLocaleString() : '-');
+        const valueClass = (v) => (num(v) > 0 ? '' : num(v) < 0 ? ' neg' : ' zero');
+
+        /** 순위 옆 별점 — 쿠팡 별점이 수집된 상품만 (없으면 아무것도 안 그린다) */
+        function ratingHtml(item) {
+            if (!(num(item.rating) > 0)) return '';
+            const reviews = num(item.reviewCount);
+            const title = `쿠팡 별점 ${num(item.rating).toFixed(1)}` + (reviews > 0 ? ` · 리뷰 ${reviews.toLocaleString()}개` : '');
+            return `<span class="rk-rating" title="${esc(title)}">⭐<b>${num(item.rating).toFixed(1)}</b>` +
+                (reviews > 0 ? `<i>(${reviews.toLocaleString()})</i>` : '') + '</span>';
+        }
+
+        function cardHtml(item) {
+            const basisInfo = BASES.find((b) => b.key === state.basis);
+            const name = item.productName || '(상품명 없음)';
+            const stats = STATS.map((s) => {
+                const cls = 'rk-stat' + (s.row2 ? ' row2' : '') + (s.basis === state.basis ? ' basis' : '');
+                return `<div class="${cls}" title="${esc(s.title)}">
+                            <div class="k">${esc(s.label)}</div>
+                            <div class="v${valueClass(item[s.key])}">${fmt(item[s.key])}</div>
+                        </div>`;
+            }).join('');
+            // 이미지를 못 불러오면(삭제된 이미지 등) '이미지 없음' 으로 바꾼다
+            const img = item.img
+                ? `<img src="${esc(item.img)}" alt="${esc(name)}" loading="lazy"
+                        onerror="this.outerHTML='<span class=&quot;none&quot;>이미지 없음</span>'">`
+                : '<span class="none">이미지 없음</span>';
+            return `<article class="rk-card">
+                        <div class="rk-top">
+                            <span class="rk-left">
+                                <span class="rk-rank${item.rank <= TOP_RANK ? ' top' : ''}">${esc(item.rank)}</span>
+                                ${ratingHtml(item)}
+                            </span>
+                            <span class="rk-basis"><span>${esc(basisInfo.label)}</span><b>${num(item[state.basis]).toLocaleString()}</b></span>
+                        </div>
+                        <div class="rk-img">${img}</div>
+                        <div class="rk-info">
+                            <div class="rk-name" title="${esc(name)}">${esc(name)}</div>
+                            <div class="rk-stats">${stats}</div>
+                        </div>
+                    </article>`;
+        }
+
+        function render() {
+            const basisInfo = BASES.find((b) => b.key === state.basis);
+
+            // ── 기준 선택 버튼 ──
+            document.getElementById('basisSeg').innerHTML = BASES.map((b) =>
+                `<button type="button" data-basis="${b.key}" title="${esc(b.hint)}"
+                    class="${b.key === state.basis ? 'active' : ''}" aria-pressed="${b.key === state.basis}">${esc(b.label)}</button>`
+            ).join('');
+
+            // ── 제목 줄 ──
+            const shown = state.expanded ? state.items : state.items.slice(0, PAGE_SIZE);
+            document.getElementById('subtitle').textContent =
+                `1~${Math.max(shown.length, PAGE_SIZE)}위 · 상품 단위 발주수량`;
+            document.getElementById('asOf').textContent = state.generatedAt
+                ? new Date(state.generatedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' 기준'
+                : '';
+            const reloadBtn = document.getElementById('reloadBtn');
+            reloadBtn.disabled = state.loading;
+            reloadBtn.textContent = state.loading ? '불러오는 중…' : '새로고침';
+
+            // ── 본문: 안내 문구 또는 카드 ──
+            const content = document.getElementById('content');
+            if (shown.length === 0) {
+                const text = state.loading ? '랭킹을 불러오는 중…'
+                    : state.error || `'${basisInfo.label}' 기간에 들어온 발주가 없습니다.`;
+                content.innerHTML = `<div class="notice${state.error && !state.loading ? ' error' : ''}">${esc(text)}</div>`;
+            } else {
+                content.innerHTML = `<div class="cards">${shown.map(cardHtml).join('')}</div>`;
+            }
+
+            // ── [더보기] ──
+            const hasMore = !state.expanded && state.items.length > PAGE_SIZE;
+            document.getElementById('moreRow').style.display = hasMore ? '' : 'none';
+            document.getElementById('moreBtn').textContent = `더보기 (${PAGE_SIZE + 1}~${MAX_SIZE}위)`;
+
+            // ── 출처 안내 ──
+            document.getElementById('foot').textContent =
+                '발주서(전체 발주서 · 처리완료 포함)의 발주수량을 발주등록일 기준으로 합쳤습니다. ' +
+                '상품명에서 색상·사이즈를 뗀 이름이 같으면 한 상품으로 묶습니다. ' +
+                `지금 기준: ${basisInfo.hint}. 발주서 · 확정은 이 기간의 값입니다.`;
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // 이벤트 · 시작
+        // ══════════════════════════════════════════════════════════════
+        document.getElementById('basisSeg').addEventListener('click', (ev) => {
+            const btn = ev.target.closest('button[data-basis]');
+            if (!btn || btn.dataset.basis === state.basis) return;
+            state.basis = btn.dataset.basis;
+            saveBasis(state.basis);
+            load();
+        });
+        document.getElementById('reloadBtn').addEventListener('click', load);
+        document.getElementById('moreBtn').addEventListener('click', () => { state.expanded = true; render(); });
+
+        fetch('/header').then((r) => r.text()).then((h) => { document.getElementById('header-container').innerHTML = h; }).catch(() => {});
+        load();
+    </script>
+</body>
+</html>

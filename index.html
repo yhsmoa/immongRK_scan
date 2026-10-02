@@ -23,6 +23,16 @@
         .hero h1{margin:0;font-size:42px;line-height:1.08;font-weight:800;letter-spacing:-.035em;}
         .hero p{margin:14px 0 0;font-size:16px;line-height:1.6;color:var(--muted);font-weight:500;}
 
+        /* 바로가기 버튼 줄 — 오른쪽 정렬이라 3열 그리드의 마지막 카드(출고스캔) 바로 위에 온다 */
+        .quick-row{display:flex;justify-content:flex-end;margin:-28px 0 14px;}
+        .quick-btn{display:inline-flex;align-items:center;gap:8px;height:42px;padding:0 18px;
+            border:1px solid var(--line2);border-radius:12px;background:#fff;color:var(--ink);
+            font-size:14.5px;font-weight:700;letter-spacing:-.01em;text-decoration:none;
+            transition:transform .2s,box-shadow .2s,border-color .2s,background .2s,color .2s;}
+        .quick-btn .e{font-size:17px;line-height:1;}
+        .quick-btn:hover{transform:translateY(-2px);border-color:#F7C9BE;background:var(--accent-soft);color:var(--accent);
+            box-shadow:0 12px 26px -16px rgba(28,27,26,.3);}
+
         .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
         .card{position:relative;display:flex;flex-direction:column;padding:26px;background:#fff;
             border:1px solid var(--line);border-radius:18px;min-height:188px;text-decoration:none;
@@ -60,6 +70,11 @@
             <h1>아이엠몽 님</h1>
             <p>안녕하세요 :)</p>
         </section>
+
+        <!-- 랭킹 바로가기 — 카드 그리드 오른쪽 끝(출고스캔 카드) 바로 위 -->
+        <div class="quick-row">
+            <a class="quick-btn" href="/ranking"><span class="e">🏆</span>랭킹</a>
+        </div>
 
         <!-- 상단 메뉴와 동일한 구성·순서 -->
         <section class="grid">

@@ -113,6 +113,7 @@ app.use(require('./routes/rkShippingList'));
 app.use(require('./routes/rkShipScan'));
 app.use(require('./routes/rkAdItems'));
 app.use(require('./routes/rkLabel'));   // 라벨 출력 연동 (label-service 임베드)
+app.use(require('./routes/rkRanking')); // 발주 랭킹 (/ranking · /api/ranking)
 
 // 발주서 목록 가져오기
 app.get('/api/orders', async (req, res) => {
