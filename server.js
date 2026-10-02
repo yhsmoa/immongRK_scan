@@ -3295,9 +3295,9 @@ app.get('/api/shortage', async (req, res) => {
         // 5.8단계: 재고부족 판정 — 발주수량이 확보 가능한 물량보다 많은 것만 남긴다.
         //   총발주수량 > 잔여(remainQty) + 주문(yiwuTotalQty) + 재고(재고)
         //   스캔수량은 차감하지 않는다(이미 나간 분도 발주는 발주로 본다).
-        //   재고가 비어있으면(null) 0 으로 본다. 입고재고(pending) 모드는 이 조건을 적용하지 않는다.
+        //   재고가 비어있으면(null) 0 으로 본다. 입고재고(pending)·전체(all) 모드는 이 조건을 적용하지 않는다.
         //   ※ 6단계(발주내역 조회)보다 먼저 걸러야 불필요한 조회를 안 한다.
-        if (viewMode !== 'pending') {
+        if (viewMode !== 'pending' && viewMode !== 'all') {
             for (let i = shortageList.length - 1; i >= 0; i--) {
                 const it = shortageList[i];
                 const 확보 = (Number(it.remainQty) || 0) + (Number(it.yiwuTotalQty) || 0) + (Number(it.재고) || 0);

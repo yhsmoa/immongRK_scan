@@ -617,7 +617,8 @@
                     <input type="date" class="date-filter" id="endDate" min="2020-01-01" max="2099-12-31">
                     <button class="btn btn-load" onclick="loadData()">불러오기</button>
                     <select id="viewMode" class="date-filter" onchange="onModeChange()" style="cursor:pointer;">
-                        <option value="shortage">재고부족</option>
+                        <option value="all">전체</option>
+                        <option value="shortage" selected>재고부족</option>
                         <option value="pending">입고재고</option>
                     </select>
                 </div>
@@ -915,7 +916,8 @@
         /* ========== 다른 화면에서 넘어온 조건 적용 (예: 발주 랭킹 카드 클릭) ==========
            /shortage?search=상품명&days=30
              · search : 검색창에 넣고 바로 검색
-             · days   : 오늘 포함 최근 N일로 기간을 잡고 재고부족을 새로 불러온다 (없으면 지금 보이는 데이터에서 검색만)
+             · days   : 오늘 포함 최근 N일로 기간을 잡고 '전체' 조건으로 새로 불러온다 (없으면 지금 보이는 데이터에서 검색만)
+                        — 재고부족이 아닌 상품도 찾을 수 있어야 하므로 전체로 조회
            적용한 뒤에는 주소에서 조건을 지운다 — 새로고침할 때마다 다시 불러오지 않도록. */
         const LINK_DAYS_MAX = 366;
         const toDateInputValue = (d) =>
@@ -934,7 +936,7 @@
             if (hasDays) {
                 const end = new Date();
                 const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (days - 1));
-                document.getElementById('viewMode').value = 'shortage';
+                document.getElementById('viewMode').value = 'all';
                 updateModeUI();
                 document.getElementById('startDate').value = toDateInputValue(start);
                 document.getElementById('endDate').value = toDateInputValue(end);
@@ -970,7 +972,8 @@
             }
         }
 
-        /* ========== 조회 모드 (재고부족 / 입고재고) ========== */
+        /* ========== 조회 모드 (전체 / 재고부족 / 입고재고) ==========
+           전체 = 재고부족과 같은 기간·발주서 기준이되, 재고부족 판정으로 거르지 않고 전부 표시 */
         function getViewMode() {
             const el = document.getElementById('viewMode');
             return el ? el.value : 'shortage';
@@ -1003,6 +1006,7 @@
 
                 // 기간 필터 파라미터 구성
                 const params = new URLSearchParams();
+                if (mode === 'all') params.set('mode', 'all');
                 const startDate = document.getElementById('startDate').value;
                 const endDate = document.getElementById('endDate').value;
                 if (startDate) params.set('startDate', startDate);
