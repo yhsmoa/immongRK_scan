@@ -908,7 +908,41 @@
 
             setupImgPreview();
             setupBadgeCopy();
+
+            await applyLinkParams();
         });
+
+        /* ========== 다른 화면에서 넘어온 조건 적용 (예: 발주 랭킹 카드 클릭) ==========
+           /shortage?search=상품명&days=30
+             · search : 검색창에 넣고 바로 검색
+             · days   : 오늘 포함 최근 N일로 기간을 잡고 재고부족을 새로 불러온다 (없으면 지금 보이는 데이터에서 검색만)
+           적용한 뒤에는 주소에서 조건을 지운다 — 새로고침할 때마다 다시 불러오지 않도록. */
+        const LINK_DAYS_MAX = 366;
+        const toDateInputValue = (d) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        async function applyLinkParams() {
+            const params = new URLSearchParams(location.search);
+            const search = (params.get('search') || '').trim();
+            const days = parseInt(params.get('days'), 10);
+            const hasDays = Number.isInteger(days) && days >= 1 && days <= LINK_DAYS_MAX;
+            if (!search && !hasDays) return;
+
+            history.replaceState(null, '', location.pathname);
+            document.getElementById('searchInput').value = search;
+
+            if (hasDays) {
+                const end = new Date();
+                const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (days - 1));
+                document.getElementById('viewMode').value = 'shortage';
+                updateModeUI();
+                document.getElementById('startDate').value = toDateInputValue(start);
+                document.getElementById('endDate').value = toDateInputValue(end);
+                await loadData();
+            }
+            // 불러오기에 실패했거나 아직 불러온 데이터가 없으면 검색할 대상이 없다
+            if (search && allData.length > 0) applyFilter();
+        }
 
         /* ========== 임시저장 데이터 로드 ========== */
         async function loadSavedInputs() {

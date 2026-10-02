@@ -53,7 +53,7 @@
             grid-auto-rows:max(calc((100cqh - var(--card-gap)) / 2), var(--card-min-h));}
 
         /* ── 카드 ── */
-        .rk-card{display:flex;flex-direction:column;min-width:0;overflow:hidden;background:#fff;
+        .rk-card{display:flex;flex-direction:column;min-width:0;overflow:hidden;background:#fff;color:inherit;text-decoration:none;
             border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 3px rgba(28,27,26,.04);
             transition:border-color .2s,box-shadow .2s;}
         .rk-card:hover{border-color:var(--accent-line);box-shadow:0 14px 30px -18px rgba(28,27,26,.28);}
@@ -138,6 +138,7 @@
         const TOP_RANK = 3;                       // 1~3위만 배지에 색
         const BASIS_STORAGE_KEY = 'rk_ranking_basis';   // 고른 기준을 이 브라우저에 기억
         const DEFAULT_BASIS = 'd7';
+        const SHORTAGE_DAYS = 30;                 // 카드를 누르면 상품부족을 최근 며칠 발주서 기준으로 열지
 
         /** 순위 기준 — 서버(routes/rkRanking.js)·DB 함수(rk_order_ranking)의 basis 값과 같아야 한다 */
         const BASES = [
@@ -240,7 +241,9 @@
                 ? `<img src="${esc(item.img)}" alt="${esc(name)}" loading="lazy"
                         onerror="this.outerHTML='<span class=&quot;none&quot;>이미지 없음</span>'">`
                 : '<span class="none">이미지 없음</span>';
-            return `<article class="rk-card">
+            // 카드 전체가 링크 — 상품부족 화면이 이 상품명을 검색하고 최근 30일 발주서 기준으로 불러온다
+            const href = `/shortage?search=${encodeURIComponent(item.productName || '')}&days=${SHORTAGE_DAYS}`;
+            return `<a class="rk-card" href="${esc(href)}" title="상품부족에서 최근 ${SHORTAGE_DAYS}일 발주서 기준으로 보기">
                         <div class="rk-top">
                             <span class="rk-left">
                                 <span class="rk-rank${item.rank <= TOP_RANK ? ' top' : ''}">${esc(item.rank)}</span>
@@ -253,7 +256,7 @@
                             <div class="rk-name" title="${esc(name)}">${esc(name)}</div>
                             <div class="rk-stats">${stats}</div>
                         </div>
-                    </article>`;
+                    </a>`;
         }
 
         function render() {
@@ -295,6 +298,7 @@
             document.getElementById('foot').textContent =
                 '발주서(전체 발주서 · 처리완료 포함)의 발주수량을 발주등록일 기준으로 합쳤습니다. ' +
                 '상품명에서 색상·사이즈를 뗀 이름이 같으면 한 상품으로 묶습니다. ' +
+                `카드를 누르면 상품부족 화면에서 그 상품을 최근 ${SHORTAGE_DAYS}일 발주서 기준으로 봅니다. ` +
                 `지금 기준: ${basisInfo.hint}. 발주서 · 확정은 이 기간의 값입니다.`;
         }
 
