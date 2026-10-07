@@ -110,6 +110,18 @@
         /* 토스트 */
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+        /* 프로모션 대상조회 결과 모달 */
+        .promo-back{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:10000;}
+        .promo-back.show{display:flex;}
+        .promo-modal{background:#fff;border-radius:14px;box-shadow:0 20px 50px rgba(15,23,42,.25);width:620px;max-width:94vw;max-height:84vh;display:flex;flex-direction:column;}
+        .promo-stats{display:flex;flex-wrap:wrap;gap:10px;padding:14px 18px 4px;}
+        #promoBody td.l{white-space:normal;}
+        .promo-stat{flex:1 1 120px;border:1px solid #eef2f7;border-radius:10px;padding:10px 12px;}
+        .promo-stat .k{font-size:12px;color:#94a3b8;}
+        .promo-stat .v{font-size:19px;font-weight:700;color:var(--ink);margin-top:2px;font-variant-numeric:tabular-nums;}
+        .promo-stat.hit{background:#fefce8;border-color:#fde68a;}
+        .promo-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 18px;border-top:1px solid #eef2f7;}
     </style>
 </head>
 <body>
@@ -126,6 +138,7 @@
                     <button class="btn" id="locSaveBtn" onclick="saveSelectedLoc()">위치저장</button>
                     <button class="btn" id="refreshBtn" onclick="refreshData()">새로고침</button>
                     <button class="btn" onclick="location.href='/stockScan'">재고스캔</button>
+                    <button class="btn" id="promoBtn" onclick="document.getElementById('promoFile').click()">프로모션 대상조회 xlsx</button>
                     <div class="xlsx-drop">
                         <button class="btn primary">
                             xlsx
@@ -143,6 +156,7 @@
                 </div>
             </div>
             <input type="file" id="stockFile" accept=".xlsx" style="display:none">
+            <input type="file" id="promoFile" accept=".xlsx" style="display:none">
             <div id="toast"></div>
 
             <div class="search">
@@ -570,6 +584,50 @@
             uploadMode=null;
         });
 
+        // ── 프로모션 대상조회 (쿠팡 프로모션 엑셀 SKUID ↔ 재고 상품번호) ──
+        let promoResult=null;
+        document.getElementById('promoFile').addEventListener('change', async function(){
+            const file=this.files[0];
+            this.value='';
+            if(!file)return;
+            if(!/\.xlsx$/i.test(file.name)){toast('Excel(.xlsx) 파일만 업로드 가능합니다.');return;}
+            const btn=document.getElementById('promoBtn');
+            btn.disabled=true; btn.textContent='조회 중…';
+            const fd=new FormData();fd.append('file',file);
+            try{
+                const res=await fetch('/api/stocks/promo-check',{method:'POST',body:fd});
+                const data=await res.json();
+                if(!res.ok)throw new Error(data.error||'조회 실패');
+                promoResult=data;
+                openPromo(data);
+            }catch(e){toast('프로모션 대상조회 실패: '+e.message);}
+            finally{ btn.disabled=false; btn.textContent='프로모션 대상조회 xlsx'; }
+        });
+        function openPromo(d){
+            document.getElementById('promoTotal').textContent=d.total.toLocaleString();
+            document.getElementById('promoHit').textContent=d.matched.toLocaleString();
+            document.getElementById('promoMiss').textContent=(d.total-d.matched).toLocaleString();
+            document.getElementById('promoQty').textContent=d.totalQty.toLocaleString();
+            document.getElementById('promoBody').innerHTML=d.items.length
+                ? `<table><thead><tr><th>SKUID</th><th>SKU 이름</th><th>재고</th></tr></thead><tbody>${
+                    d.items.map(x=>`<tr><td>${esc(x.sku)}</td><td class="l">${esc(x.name)}</td><td>${esc(x.qty)}</td></tr>`).join('')
+                  }</tbody></table>`
+                : '<div class="hist-empty">재고가 있는 대상 상품이 없습니다.</div>';
+            document.getElementById('promoBack').classList.add('show');
+        }
+        function closePromo(){ document.getElementById('promoBack').classList.remove('show'); }
+        function downloadPromo(){
+            if(!promoResult)return;
+            const bin=atob(promoResult.file);
+            const bytes=new Uint8Array(bin.length);
+            for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+            const url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+            const a=document.createElement('a');
+            a.href=url;a.download=promoResult.filename;
+            document.body.appendChild(a);a.click();a.remove();
+            setTimeout(()=>URL.revokeObjectURL(url),1000);
+        }
+
         // ── 재고 변경 이력 (상품명 클릭) ──
         const TYPE_LABEL={add:['입고/추가','ht-add'],deduct:['차감','ht-deduct'],adjust:['직접수정','ht-edit']};
         function fmtTs(ts){
@@ -623,6 +681,27 @@
                 <button onclick="closeHistory()">✕</button>
             </div>
             <div class="hist-body" id="histBody"></div>
+        </div>
+    </div>
+
+    <!-- 프로모션 대상조회 결과 모달 -->
+    <div class="promo-back" id="promoBack" onclick="if(event.target.id==='promoBack')closePromo()">
+        <div class="promo-modal">
+            <div class="hist-head">
+                <h3>프로모션 대상조회 결과</h3>
+                <button onclick="closePromo()">✕</button>
+            </div>
+            <div class="promo-stats">
+                <div class="promo-stat"><div class="k">전체 상품</div><div class="v" id="promoTotal">0</div></div>
+                <div class="promo-stat hit"><div class="k">재고 있음 (노란색)</div><div class="v" id="promoHit">0</div></div>
+                <div class="promo-stat"><div class="k">재고 없음</div><div class="v" id="promoMiss">0</div></div>
+                <div class="promo-stat"><div class="k">재고 수량 합계</div><div class="v" id="promoQty">0</div></div>
+            </div>
+            <div class="hist-body" id="promoBody"></div>
+            <div class="promo-foot">
+                <button class="btn" onclick="closePromo()">닫기</button>
+                <button class="btn primary" id="promoDlBtn" onclick="downloadPromo()">엑셀 다운로드</button>
+            </div>
         </div>
     </div>
 </body>

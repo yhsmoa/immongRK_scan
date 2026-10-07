@@ -454,4 +454,115 @@ router.post('/api/stocks/batch-update-location', async (req, res) => {
   }
 });
 
+// 프로모션 대상조회 — 쿠팡 프로모션 엑셀(SKUID 열)을 받아 재고(rk_stocks.sku_id, qty>0)가 있는 행을
+// 노란 배경 + 상단 정렬한 엑셀을 돌려준다. 원본 양식(머리글·안내 행)은 그대로 둔다.
+router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
+
+    // 쓰기·스타일은 xlsx-populate, 값 읽기는 SheetJS.
+    // (xlsx-populate 는 '76358544' 같은 숫자 모양 텍스트를 숫자로 읽어, 그대로 다시 쓰면 텍스트 → 숫자로 바뀐다)
+    const wb = await XlsxPopulate.fromDataAsync(req.file.buffer);
+    const sheet = wb.sheet(0);
+    const used = sheet.usedRange();
+    if (!used) return res.status(400).json({ error: '시트가 비어 있습니다.' });
+    const lastRow = used.endCell().rowNumber();
+    const lastCol = used.endCell().columnNumber();
+    const sjBook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sjSheet = sjBook.Sheets[sjBook.SheetNames[0]];
+    const valueAt = (r, c) => {
+      const cell = sjSheet[xlsx.utils.encode_cell({ r: r - 1, c: c - 1 })];
+      if (!cell || cell.t === 'z') return undefined;
+      if (cell.t === 's') return String(cell.v);
+      if (cell.t === 'e') return sheet.cell(r, c).value(); // 오류값은 원본 그대로
+      return cell.v;
+    };
+    const textAt = (r, c) => String(valueAt(r, c) ?? '').trim();
+
+    // SKUID 머리글 위치 찾기 (상단 10행 안)
+    let headRow = 0, skuCol = 0;
+    for (let r = 1; r <= Math.min(10, lastRow) && !skuCol; r++) {
+      for (let c = 1; c <= lastCol; c++) {
+        if (textAt(r, c).toUpperCase() === 'SKUID') { headRow = r; skuCol = c; break; }
+      }
+    }
+    if (!skuCol) return res.status(400).json({ error: "'SKUID' 열을 찾을 수 없습니다." });
+    // 결과 모달 표시용 상품명 열 (없으면 생략)
+    let nameCol = 0;
+    for (let c = 1; c <= lastCol; c++) {
+      if (textAt(headRow, c).replace(/\s/g, '').toUpperCase() === 'SKU이름') { nameCol = c; break; }
+    }
+
+    // 머리글 아래 안내/예시 행은 건너뛰고, SKUID 가 숫자인 첫 행부터 데이터로 본다
+    const skuOf = (r) => textAt(r, skuCol);
+    let dataStart = headRow + 1;
+    while (dataStart <= lastRow && !/^\d+$/.test(skuOf(dataStart))) dataStart++;
+    if (dataStart > lastRow) return res.status(400).json({ error: '데이터 행(SKUID)이 없습니다.' });
+
+    // 재고 있는 상품번호별 수량 합계 (위치가 여러 개면 합산)
+    const stockQty = new Map();
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from('rk_stocks').select('id,sku_id,qty')
+        .gt('qty', 0).order('id', { ascending: true }).range(from, from + 999);
+      if (error) throw error;
+      for (const s of data) {
+        const k = String(s.sku_id ?? '').trim();
+        if (k) stockQty.set(k, (stockQty.get(k) || 0) + (Number(s.qty) || 0));
+      }
+      if (data.length < 1000) break;
+    }
+
+    // 행 값 읽기 → 재고 있는 행을 위로 (원래 순서 유지)
+    // 셀 스타일은 행과 함께 옮긴다. xlsx-populate 의 cell.style(name, v) 는 셀마다 새 스타일을 만들어
+    // (조회만 해도 생성) 파일이 비대해지므로, 스타일 id(_styleId)를 직접 옮기고 노란 스타일은 원본 스타일별 1개만 만든다.
+    const rows = [];
+    for (let r = dataStart; r <= lastRow; r++) {
+      const values = [], styleIds = [];
+      for (let c = 1; c <= lastCol; c++) {
+        values.push(valueAt(r, c));
+        styleIds.push(sheet.cell(r, c)._styleId);
+      }
+      const sku = skuOf(r);
+      rows.push({ values, styleIds, sku, qty: stockQty.get(sku) || 0 });
+    }
+    const hits = rows.filter((x) => x.qty > 0);
+    const sorted = hits.concat(rows.filter((x) => !(x.qty > 0)));
+
+    const yellowByBase = new Map();
+    const yellowStyleId = (baseId) => {
+      const key = baseId == null ? -1 : baseId;
+      if (!yellowByBase.has(key)) {
+        const st = wb.styleSheet().createStyle(baseId);
+        st.style('fill', 'FFFFFF00');
+        yellowByBase.set(key, st.id());
+      }
+      return yellowByBase.get(key);
+    };
+
+    sorted.forEach((row, i) => {
+      const r = dataStart + i;
+      row.values.forEach((v, j) => {
+        const cell = sheet.cell(r, j + 1);
+        cell.value(v == null ? undefined : v);
+        cell._style = undefined;
+        cell._styleId = row.qty > 0 ? yellowStyleId(row.styleIds[j]) : row.styleIds[j];
+      });
+    });
+
+    const buffer = await wb.outputAsync();
+    const base = String(req.file.originalname || '프로모션').replace(/\.xlsx$/i, '');
+    res.json({
+      total: rows.length,
+      matched: hits.length,
+      totalQty: hits.reduce((s, x) => s + x.qty, 0),
+      items: hits.map((x) => ({ sku: x.sku, name: nameCol ? String(x.values[nameCol - 1] ?? '') : '', qty: x.qty })),
+      filename: `${base}_재고대상.xlsx`,
+      file: Buffer.from(buffer).toString('base64'),
+    });
+  } catch (e) {
+    console.error('[rk] stocks/promo-check:', e);
+    res.status(500).json({ error: '프로모션 대상조회 실패: ' + e.message });
+  }
+});
+
 module.exports = router;
