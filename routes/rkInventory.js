@@ -137,6 +137,97 @@ router.post('/api/inventory/upload', upload.single('file'), async (req, res) => 
   }
 });
 
+// ── coupang_items 동기화 (쿠팡 SKU 다운로드 엑셀의 사이즈·무게) ──
+// 라벨 출력(/api/label/items)이 바코드로 읽는 표. 키는 바코드 (DB에 unique 제약은 없지만 현재 1바코드 1행).
+// 기존 행: 길이·넓이·높이·중량만, 값이 실제로 다를 때만 갱신 (id 기준 배치 upsert — 1000건당 요청 1회)
+// 없는 행: 엑셀의 쿠팡 정보 전체로 신규 삽입
+// 열 매핑은 기존 데이터와 같게 — size_width = 길이(mm), size_length = 넓이(mm) (라벨에서는 가로/세로)
+const CI_SIZE_FIELDS = ['size_width', 'size_length', 'size_height', 'weight'];
+const toInt = (v) => {
+  const n = parseInt(String(v == null ? '' : v).replace(/,/g, '').trim(), 10);
+  return Number.isFinite(n) ? n : null;
+};
+const toText = (v) => {
+  const s = String(v == null ? '' : v).trim();
+  return s || null;
+};
+async function syncCoupangItems(rows) {
+  const items = [];
+  const seen = new Set();
+  for (const r of rows) {
+    const barcode = String(r.barcode == null ? '' : r.barcode).trim();
+    if (!barcode || seen.has(barcode)) continue;
+    const size = {
+      size_width: toInt(r.sizeLength),
+      size_length: toInt(r.sizeWidth),
+      size_height: toInt(r.sizeHeight),
+      weight: toInt(r.weight),
+    };
+    // 사이즈·무게 열이 없는 엑셀(다른 양식)이면 이 동기화는 건너뛴다
+    if (CI_SIZE_FIELDS.every((f) => size[f] == null)) continue;
+    seen.add(barcode);
+    items.push({ barcode, size, r });
+  }
+  if (!items.length) return { ciAdded: 0, ciUpdated: 0, ciSkipped: 0 };
+
+  // 이 청크의 바코드만 조회 (200개씩 병렬)
+  const bcs = items.map((i) => i.barcode);
+  const lookups = [];
+  for (let i = 0; i < bcs.length; i += 200) {
+    lookups.push(sb.from('coupang_items').select('id, barcode, sku_id, ' + CI_SIZE_FIELDS.join(', ')).in('barcode', bcs.slice(i, i + 200)));
+  }
+  const byBarcode = new Map();
+  for (const { data, error } of await Promise.all(lookups)) {
+    if (error) throw error;
+    for (const x of data || []) if (!byBarcode.has(x.barcode)) byBarcode.set(x.barcode, x);
+  }
+
+  const toInsert = [];
+  const toUpdate = [];
+  for (const { barcode, size, r } of items) {
+    const cur = byBarcode.get(barcode);
+    if (cur) {
+      // 엑셀에 값이 있는 칸만 비교·반영 (빈 칸으로 기존 값을 지우지 않는다)
+      const patch = {};
+      for (const f of CI_SIZE_FIELDS) if (size[f] != null && size[f] !== cur[f]) patch[f] = size[f];
+      // upsert 는 INSERT 를 먼저 검사하므로 NOT NULL 인 sku_id 를 기존 값으로 같이 보낸다.
+      // 배치 upsert 는 모든 행의 열이 같아야 해서 사이즈 4개 열도 항상 채워 보낸다 (안 바뀐 열은 기존 값)
+      if (Object.keys(patch).length) toUpdate.push({ id: cur.id, sku_id: cur.sku_id, ...CI_SIZE_FIELDS.reduce((o, f) => ({ ...o, [f]: cur[f] }), {}), ...patch });
+    } else {
+      if (!toText(r.skuId)) continue; // sku_id NOT NULL
+      toInsert.push({
+        barcode,
+        sku_id: toText(r.skuId),
+        request_number: toText(r.requestNumber),
+        product_name: toText(r.name),
+        order_status: toText(r.orderStatus),
+        brand_manager: toText(r.brandManager),
+        instock_manager: toText(r.instockManager),
+        ...size,
+        MOQ: toInt(r.moq),
+        box_barcode: toText(r.boxBarcode),
+        inner_qty: toInt(r.innerQty),
+        box_qty: toInt(r.boxQty),
+      });
+    }
+  }
+
+  let ciAdded = 0, ciUpdated = 0, ciSkipped = 0;
+  const BATCH = 1000;
+  for (let i = 0; i < toInsert.length; i += BATCH) {
+    const chunk = toInsert.slice(i, i + BATCH);
+    const { error } = await sb.from('coupang_items').insert(chunk);
+    if (error) { console.error('[rk] coupang_items insert:', error.message); ciSkipped += chunk.length; } else ciAdded += chunk.length;
+  }
+  // 바뀐 행만 id 기준 upsert — 보낸 열(사이즈·무게)만 덮어쓰고 나머지 열은 그대로
+  for (let i = 0; i < toUpdate.length; i += BATCH) {
+    const chunk = toUpdate.slice(i, i + BATCH);
+    const { error } = await sb.from('coupang_items').upsert(chunk, { onConflict: 'id' });
+    if (error) { console.error('[rk] coupang_items update:', error.message); ciSkipped += chunk.length; } else ciUpdated += chunk.length;
+  }
+  return { ciAdded, ciUpdated, ciSkipped };
+}
+
 // 청크 업로드 (클라이언트가 파싱한 행을 나눠 전송 → 진행률 표시 + write 최소화)
 // body: { rows:[{skuId,name,barcode,orderStatus}] }  → 실제로 바뀐 행만 update, 나머지는 unchanged로 skip
 router.post('/api/inventory/upload-chunk', async (req, res) => {
@@ -229,7 +320,8 @@ router.post('/api/inventory/upload-chunk', async (req, res) => {
       skipped += results.filter((x) => x === 'err').length;
     }
 
-    res.json({ added, updated, unchanged, skipped });
+    const ci = await syncCoupangItems(rows);
+    res.json({ added, updated, unchanged, skipped, ...ci });
   } catch (e) {
     console.error('[rk] inventory/upload-chunk:', e);
     res.status(500).json({ error: '청크 업로드 오류: ' + e.message });

@@ -985,7 +985,10 @@
             if (ov) ov.classList.add('active');
 
             try {
-                // 1) 클라이언트 파싱 (A=SKU, C=상품명, D=바코드, E=발주가능상태, 첫 행 헤더)
+                // 1) 클라이언트 파싱 (쿠팡 SKU 다운로드 양식, 첫 행 헤더)
+                //    A=SKU, B=요청, C=상품명, D=바코드, E=발주가능상태, F=담당BM, G=발주담당자,
+                //    H=길이, I=넓이, J=높이(mm), K=MOQ, L=중량(g), M=Box바코드, N=Inner Case 수량, O=Box 내 총수량
+                //    → A·C·D·E 는 상품관리(rk_inventories), 나머지는 쿠팡 상품정보(coupang_items)
                 const buf = await file.arrayBuffer();
                 const wb = XLSX.read(new Uint8Array(buf), { type: 'array' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
@@ -995,6 +998,9 @@
                     name: r.C != null ? String(r.C) : '',
                     barcode: r.D != null ? String(r.D).trim() : '',
                     orderStatus: r.E != null ? String(r.E) : '',
+                    requestNumber: r.B, brandManager: r.F, instockManager: r.G,
+                    sizeLength: r.H, sizeWidth: r.I, sizeHeight: r.J, moq: r.K, weight: r.L,
+                    boxBarcode: r.M, innerQty: r.N, boxQty: r.O,
                 })).filter(r => r.skuId);
 
                 const total = rows.length;
@@ -1002,7 +1008,7 @@
 
                 // 2) 2000건씩 청크 전송 + 진행률
                 const CHUNK = 2000;
-                const agg = { added: 0, updated: 0, unchanged: 0, skipped: 0 };
+                const agg = { added: 0, updated: 0, unchanged: 0, skipped: 0, ciAdded: 0, ciUpdated: 0, ciSkipped: 0 };
                 let done = 0;
                 if (tx) tx.textContent = `업로드 중… (${file.name})`;
                 if (wrap) { wrap.style.display = 'block'; setBar(0, total); }
@@ -1018,12 +1024,14 @@
                     if (!res.ok) throw new Error(d.error || '업로드 실패');
                     agg.added += d.added || 0; agg.updated += d.updated || 0;
                     agg.unchanged += d.unchanged || 0; agg.skipped += d.skipped || 0;
+                    agg.ciAdded += d.ciAdded || 0; agg.ciUpdated += d.ciUpdated || 0; agg.ciSkipped += d.ciSkipped || 0;
                     done += part.length;
                     setBar(done, total);
                 }
 
                 if (ov) ov.classList.remove('active');
-                alert(`업로드 완료 (총 ${total.toLocaleString()}건)\n신규 ${agg.added} · 갱신 ${agg.updated} · 변경없음 ${agg.unchanged}${agg.skipped ? ` · 건너뜀 ${agg.skipped}` : ''}`);
+                alert(`업로드 완료 (총 ${total.toLocaleString()}건)\n신규 ${agg.added} · 갱신 ${agg.updated} · 변경없음 ${agg.unchanged}${agg.skipped ? ` · 건너뜀 ${agg.skipped}` : ''}`
+                    + `\n\n[쿠팡 상품정보 · 사이즈/무게]\n신규 ${agg.ciAdded} · 사이즈/무게 갱신 ${agg.ciUpdated}${agg.ciSkipped ? ` · 실패 ${agg.ciSkipped}` : ''}`);
                 loadInventoryData();
             } catch (error) {
                 if (ov) ov.classList.remove('active');
