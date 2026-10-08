@@ -71,27 +71,78 @@ test('목표 = min(배정, 확정) − 스캔 · 배정 없음/이미 완료 제
   assert.ok(p.warnings.some((w) => w.includes('확정수량까지만')));
 });
 
-test('기존 박스(저장됨) 남은 용량부터 채운다', () => {
-  // 박스1 중: 이미 5개(50 L) → 남은 82 L → 8개 더. 신규 20개 → 박스1 +8, 나머지 12개(120 L) → 박스2 중
-  const p = run([prod('A', 20)], { savedBoxes: [{ boxNo: 1, boxSize: '중' }], boxItems: [{ boxNo: 1, barcode: 'Z', qty: 5 }],
-    products: undefined }, undefined);
-  // run() 의 products 인자가 extra.products(undefined) 로 덮이지 않도록 다시 호출
-  const p2 = planVirtualScan({ products: [prod('A', 20), prod('Z', 5, { scanned: 5 })], boxItems: [{ boxNo: 1, barcode: 'Z', qty: 5 }],
-    savedBoxes: [{ boxNo: 1, boxSize: '중' }], boxSizeMap: new Map() });
-  void p;
-  assert.strictEqual(shape(p2), '1:중:8 2:중:12');
-  assert.strictEqual(p2.boxes[0].isNew, false);
-  assert.strictEqual(p2.boxes[0].usedQty0, 5);
-  assert.strictEqual(p2.totals.topUpBoxes, 1);
-  assert.strictEqual(p2.totals.newBoxes, 1);
+const withBox1 = (size, usedQty, products) => ({ products: [...products, prod('Z', usedQty, { scanned: usedQty })],
+  boxItems: [{ boxNo: 1, barcode: 'Z', qty: usedQty }], savedBoxes: [{ boxNo: 1, boxSize: size }], boxSizeMap: new Map() });
+
+test('기존 박스(저장됨) 남은 용량부터 채운다 — 다 들어가면 크기 그대로', () => {
+  // 박스1 중: 이미 5개(50 L) → 남은 82 L → 신규 6개(60 L) 는 전부 들어감
+  const p = planVirtualScan(withBox1('중', 5, [prod('A', 6)]));
+  assert.strictEqual(shape(p), '1:중:6');
+  assert.strictEqual(p.boxes[0].isNew, false);
+  assert.strictEqual(p.boxes[0].usedQty0, 5);
+  assert.strictEqual(p.boxes[0].sizeFrom, null);
+  assert.strictEqual(p.totals.topUpBoxes, 1);
+  assert.strictEqual(p.totals.newBoxes, 0);
 });
 
-test('세션 박스(미저장, boxSizeMap) 도 기존 박스로 채운다 · 꽉 찬 박스는 건너뛴다', () => {
-  const p = planVirtualScan({ products: [prod('A', 5), prod('Z', 3, { scanned: 3 })],
+test('크기 UP: 마지막 박스에 다 안 들어가면 다 들어가는 가장 작은 크기로 올린다', () => {
+  // 박스1 중 5개(50 L) + 신규 20개(200 L) = 250 L > 중 132 → 대2(308) 로 올리고 전부 담는다
+  const p = planVirtualScan(withBox1('중', 5, [prod('A', 20)]));
+  assert.strictEqual(shape(p), '1:대2:20');
+  assert.strictEqual(p.boxes[0].sizeFrom, '중');
+  assert.strictEqual(p.totals.upgradedBoxes, 1);
+  assert.ok(p.boxes[0].warnings.some((w) => w.includes('크기 변경 중 → 대2')));
+  // 극소 3개(30 L) + 5개(50 L) = 80 L → 중 (대2 까지 갈 필요 없음). 세션(미저장) 박스여도 동일
+  const p2 = planVirtualScan({ products: [prod('A', 5), prod('Z', 3, { scanned: 3 })],
     boxItems: [{ boxNo: 2, barcode: 'Z', qty: 3 }], savedBoxes: [], boxSizeMap: new Map([[2, '극소']]) });
-  // 박스2 극소 39.6 L 에 30 L 사용 → 0개 추가 가능 → 그대로 둠, 신규는 박스1(비어 있는 가장 작은 번호) 중 5개
-  assert.strictEqual(shape(p), '2:극소:0 1:중:5');
+  assert.strictEqual(shape(p2), '2:중:5');
+  assert.strictEqual(p2.boxes[0].sizeFrom, '극소');
+});
+
+test('크기 UP: 대2 로도 다 안 들어가면 대2 로 올리고 나머지는 새 박스', () => {
+  // 박스1 극소 1개(10 L) + 60개(600 L) → 대2(308) 에 29개 더, 나머지 31개 → 대2 30 + 극소 1
+  const p = planVirtualScan(withBox1('극소', 1, [prod('A', 60)]));
+  assert.strictEqual(shape(p), '1:대2:29 2:대2:30 3:극소:1');
+  assert.strictEqual(p.boxes[0].sizeFrom, '극소');
+});
+
+test('크기 UP 은 부피 기준 — 무게 때문에 못 담는 건 올리지 않는다', () => {
+  const heavy = { w: 1000, l: 1000, h: 10, g: 2500 };
+  // 박스1 중 1개(10 L · 2.5 kg) + 10개(100 L · 25 kg): 부피 110 ≤ 132 → 크기 유지, 무게로 8개까지 → 나머지 2개 새 박스
+  const p = planVirtualScan({ products: [prod('A', 10, { size: heavy }), prod('Z', 1, { scanned: 1, size: heavy })],
+    boxItems: [{ boxNo: 1, barcode: 'Z', qty: 1 }], savedBoxes: [{ boxNo: 1, boxSize: '중' }], boxSizeMap: new Map() });
+  assert.strictEqual(shape(p), '1:중:8 2:극소:2');
+  assert.strictEqual(p.boxes[0].sizeFrom, null);
+});
+
+test('이미 가장 큰 크기(대2)가 꽉 찼으면 그대로 두고 새 박스 (경고)', () => {
+  // 박스1 대2 에 31개(310 L > 308) → 0개 추가, 신규 5개(50 L > 극소 39.6) → 중
+  const p = planVirtualScan(withBox1('대2', 31, [prod('A', 5)]));
+  assert.strictEqual(shape(p), '1:대2:0 2:중:5');
   assert.ok(p.warnings.some((w) => w.includes('그대로 둔 기존 박스')));
+});
+
+test('옵션 upgradeLastBox=false — 크기를 올리지 않고 남은 용량만 채운다', () => {
+  const p = planVirtualScan(withBox1('중', 5, [prod('A', 20)]), { upgradeLastBox: false });
+  assert.strictEqual(shape(p), '1:중:8 2:중:12');
+  assert.strictEqual(p.boxes[0].sizeFrom, null);
+});
+
+test('기존 박스가 여러 개면 마지막 박스만 채운다 (앞 박스는 마감)', () => {
+  // 박스1(중) 2개, 박스2(중) 3개, 박스3(중) 5개 — 1·2 는 여유가 많아도 건드리지 않고 3 만 8개 더
+  const p = planVirtualScan({
+    products: [prod('A', 20), prod('Z', 10, { scanned: 10 })],
+    boxItems: [{ boxNo: 1, barcode: 'Z', qty: 2 }, { boxNo: 2, barcode: 'Z', qty: 3 }, { boxNo: 3, barcode: 'Z', qty: 5 }],
+    savedBoxes: [{ boxNo: 1, boxSize: '중' }, { boxNo: 2, boxSize: '중' }, { boxNo: 3, boxSize: '중' }], boxSizeMap: new Map() });
+  assert.strictEqual(shape(p), '3:대2:20');                 // 3 만 채우되 다 안 들어가므로 대2 로 크기 UP
+  assert.ok(!p.boxes.some((b) => b.boxNo === 1 || b.boxNo === 2));
+  assert.ok(p.warnings.some((w) => w.includes('앞 박스 📦1, 📦2') && w.includes('마지막 박스 📦3')));
+  // 마지막 박스가 세션(미저장) 박스여도 같은 규칙
+  const p2 = planVirtualScan({
+    products: [prod('A', 5), prod('Z', 3, { scanned: 3 })],
+    boxItems: [{ boxNo: 1, barcode: 'Z', qty: 1 }, { boxNo: 2, barcode: 'Z', qty: 2 }],
+    savedBoxes: [{ boxNo: 1, boxSize: '중' }], boxSizeMap: new Map([[2, '중']]) });
+  assert.strictEqual(shape(p2), '2:중:5');
 });
 
 test('옵션 topUpExisting=false — 기존 박스는 그대로 두고 새 박스만 (번호는 비켜 감)', () => {
@@ -99,7 +150,7 @@ test('옵션 topUpExisting=false — 기존 박스는 그대로 두고 새 박�
     savedBoxes: [{ boxNo: 1, boxSize: '중' }], boxSizeMap: new Map() };
   const on = planVirtualScan(input);
   const off = planVirtualScan(input, { topUpExisting: false });
-  assert.strictEqual(shape(on), '1:중:8 2:중:12');
+  assert.strictEqual(shape(on), '1:대2:20');                  // 박스1 을 대2 로 올려 전부
   assert.strictEqual(shape(off), '2:대2:20');                 // 200 L > 중 132 → 대2, 박스1은 건드리지 않음
   assert.ok(off.boxes.every((b) => b.isNew));
   assert.strictEqual(off.totals.topUpBoxes, 0);

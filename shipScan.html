@@ -144,6 +144,16 @@
         .vs-tags{display:flex;gap:6px;}
         .vs-tag{font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:#f1f2f5;color:#3b3d47;white-space:nowrap;}
         .vs-tag.new{background:#e6f4ea;color:#1f7a3a;}
+        .vs-tag.sz-xs{background:#efe7fb;color:#6d3fc4;}   /* 극소 = 보라 */
+        .vs-tag.sz-m{background:#fdebd3;color:#b45309;}    /* 중 = 주황 */
+        .vs-tag.sz-xl{background:#efe3d8;color:#7a4b1d;}   /* 대2 = 갈색 */
+        .vs-tag.from{text-decoration:line-through;opacity:.55;}
+        .vs-tags{align-items:center;}
+        .vs-tags .arrow{font-size:12px;color:#70727c;}
+        .vs-box.old{background:#f3f4f7;}                   /* 기존 박스에 추가하는 카드 = 회색 보드 */
+        .vs-box.old .vs-items{border-top-color:#dfe1e8;}
+        .vs-box.old .vs-row{border-top-color:#e3e5ec;}
+        .vs-box.old .vs-row.hd{background:#eceef3;}
         .vs-prog{display:flex;flex-direction:column;gap:6px;min-width:0;}
         .vs-prog .lab{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#70727c;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;}
         .vs-bar{position:relative;height:6px;border-radius:3px;background:#eceef3;overflow:hidden;}
@@ -157,7 +167,7 @@
         .vs-items{border-top:1px solid #e6e7eb;}
         .vs-row{display:grid;grid-template-columns:140px 1fr 90px 72px;gap:12px;align-items:center;padding:12px 20px;border-top:1px solid #f0f1f4;font-size:14px;}
         .vs-row.hd{padding:8px 20px;border-top:0;font-size:11px;font-weight:600;color:#9a9ca6;letter-spacing:.02em;background:#fafafc;}
-        .vs-row .bc{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;color:#5d5f69;}
+        .vs-row .bc{justify-self:start;display:inline-block;background:#fff1e3;color:#9a4b00;border-radius:6px;padding:2px 8px;font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;font-weight:600;} /* 바코드 = 연주황 배지 */
         .vs-row .nm{line-height:1.45;color:#1a1b20;word-break:break-word;}
         .vs-row .nm .name-badge{font-size:12px;font-weight:600;color:#3f49c4;background:#eef0fb;border:0;padding:1px 6px;border-radius:4px;margin:0 3px;}
         .vs-row .lc{font-size:13px;color:#70727c;}
@@ -874,7 +884,7 @@
             const a=plan.assumptions, t=plan.totals;
             document.getElementById('vsSub').textContent=`${currentOrder} · ${document.getElementById('odCenter').textContent||''}`;
             const capTxt=Object.entries(a.cap).map(([s,c])=>`${s} ${fmtL(c)} L`).join(' · ');
-            const existCnt=boxNosAll().length;
+            const existNos=boxNosAll(), existCnt=existNos.length, lastNo=existCnt?existNos[existNos.length-1]:null;
             const boxCnt=plan.boxes.filter(b=>b.items.length).length;
             // ── 상단(고정): 옵션 · 3칸 요약 · 가정 문구 ──
             let top=`<div class="vs-opt">
@@ -883,12 +893,12 @@
                     <button type="button" class="${vsTopUp?'on':''}" onclick="setVsTopUp(true)">기존 박스 채우기</button>
                     <button type="button" class="${vsTopUp?'':'on'}" onclick="setVsTopUp(false)">새 박스만</button>
                 </div>
-                <span class="hint">${existCnt?`이 발주서에 박스 ${existCnt}개가 있습니다. ${vsTopUp?'남은 용량부터 채웁니다.':'그대로 두고 새 박스에만 담습니다.'}`:'아직 박스가 없어 어느 쪽이든 새 박스에 담습니다.'}</span>
+                <span class="hint">${existCnt?`이 발주서에 박스 ${existCnt}개가 있습니다. ${vsTopUp?(existCnt>1?`마지막 박스(📦${lastNo})만 남은 용량부터 채우고, 앞 박스는 마감으로 봅니다.`:`📦${lastNo}의 남은 용량부터 채웁니다.`):'그대로 두고 새 박스에만 담습니다.'}`:'아직 박스가 없어 어느 쪽이든 새 박스에 담습니다.'}</span>
             </div>`;
             top+=`<div class="vs-stats">
                 <div class="vs-stat"><div class="k">대상 상품</div><div class="v">${t.qty.toLocaleString()}<small>개</small><small class="gap">${t.skus}종</small></div></div>
                 <div class="vs-stat"><div class="k">총 부피 · 무게</div><div class="v">${fmtL(t.L)}<small>L</small><small class="gap">${fmtKg(t.kg)} kg</small></div></div>
-                <div class="vs-stat"><div class="k">필요 박스</div><div class="v hi">${boxCnt}<small>개</small><small class="gap">기존 ${t.topUpBoxes} · 신규 ${t.newBoxes}</small></div></div>
+                <div class="vs-stat"><div class="k">필요 박스</div><div class="v hi">${boxCnt}<small>개</small><small class="gap">기존 ${t.topUpBoxes} · 신규 ${t.newBoxes}${t.upgradedBoxes?` · 크기 UP ${t.upgradedBoxes}`:''}</small></div></div>
             </div>`;
             top+=`<div class="vs-assume"><span class="i">!</span><div>
                 옷 포장 보정으로 용량의 <strong>${Math.round(a.overfill*100)}%를 더 담는 것</strong>으로 계산했습니다.
@@ -900,23 +910,26 @@
             // ── 본문(스크롤): 박스 카드 · 경고 · 제외 ──
             let html='';
             if(!plan.ok) html+=`<div class="vs-warn">계산을 끝내지 못했습니다: ${esc(plan.reason)}</div>`;
+            const szCls=s=>({'극소':'sz-xs','중':'sz-m','대2':'sz-xl'}[s]||'');   // 크기 배지 색: 극소 보라 · 중 주황 · 대2 갈색
+            const szTag=s=>`<span class="vs-tag ${szCls(s)}">${esc(s)}</span>`;
             for(const b of plan.boxes){
                 if(!b.items.length && b.isNew) continue;
                 const p0=Math.min(100,b.fillPct0), p1=Math.min(100,b.fillPct);
                 const pctLabel=b.isNew||!b.items.length ? `${Math.round(b.fillPct)}% 채움` : `${Math.round(b.fillPct0)}% → ${Math.round(b.fillPct)}%`;
-                html+=`<div class="vs-box">
+                const sizeTags=b.sizeFrom ? `<span class="vs-tag ${szCls(b.sizeFrom)} from">${esc(b.sizeFrom)}</span><span class="arrow">→</span>${szTag(b.size)}` : szTag(b.size);
+                html+=`<div class="vs-box${b.isNew?'':' old'}">
                     <div class="vs-box-h">
                         <span class="vs-box-no"><small>박스</small>${b.boxNo}</span>
-                        <div class="vs-tags"><span class="vs-tag">${esc(b.size)}</span><span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span></div>
+                        <div class="vs-tags">${sizeTags}<span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span></div>
                         <div class="vs-prog">
                             <div class="lab"><span>${pctLabel}</span><span>${fmtL(b.usedL)}/${fmtL(b.cap)} L · ${fmtKg(b.usedKg)} kg</span></div>
                             <div class="vs-bar"><i class="after" style="width:${p1}%"></i><i style="width:${p0}%"></i></div>
                         </div>
-                        <div class="vs-add"><div class="n ${b.addQty?'':'zero'}">+${b.addQty}개</div><div class="b">${b.isNew?'새 박스':`기존 ${b.usedQty0}개`}</div></div>
+                        <div class="vs-add"><div class="n ${b.addQty?'':'zero'}">+${b.addQty}개</div><div class="b">${b.isNew?'새 박스':`기존 ${b.usedQty0}개${b.sizeFrom?' · 크기 UP':''}`}</div></div>
                     </div>`;
                 if(b.items.length){
                     html+=`<div class="vs-items">
-                        <div class="vs-row hd"><span>바코드</span><span>상품명</span><span>위치</span><span style="text-align:right">담을 개수</span></div>`
+                        <div class="vs-row hd"><span>바코드</span><span>상품명</span><span class="lc">위치</span><span style="text-align:right">담을 개수</span></div>`
                         +b.items.map(it=>`<div class="vs-row"><span class="bc">${esc(it.barcode)}</span><span class="nm">${pnameHtml(it.productName)}${it.flag?' <span class="vs-assume-flag" title="사이즈 가정">⚠</span>':''}</span><span class="lc">${esc(it.location||'-')}</span><span class="q">${it.qty}</span></div>`).join('')
                         +`</div>`;
                 }else{
@@ -945,11 +958,17 @@
             const btn=document.getElementById('vsConfirmBtn'), cancel=document.getElementById('vsCancelBtn'), note=document.getElementById('vsNote');
             btn.disabled=true; cancel.disabled=true; btn.dataset.busy='1'; btn.textContent='반영 중…';
             // 1) 화면 상태에 반영 — doScan 과 같은 구조 (boxItems 합산 · boxSizeMap · records)
-            let addQty=0, boxCnt=0;
+            let addQty=0, boxCnt=0, upCnt=0;
             for(const b of plan.boxes){
                 if(!b.items.length) continue;
                 boxCnt++;
-                if(b.isNew || !boxSizeMap.has(b.boxNo)) boxSizeMap.set(b.boxNo,b.size);
+                if(b.isNew || b.sizeFrom || !boxSizeMap.has(b.boxNo)) boxSizeMap.set(b.boxNo,b.size);
+                // 크기 UP: 저장된 박스의 크기도 바꿔 saveShip() 이 새 크기로 보내게 한다 (selectSize 와 같은 처리) → 서버가 box_size 갱신
+                if(b.sizeFrom){
+                    upCnt++;
+                    const sv=savedBoxes.find(x=>x.boxNo===b.boxNo); if(sv) sv.boxSize=b.size;
+                    if(currentBoxNo===b.boxNo){ currentBoxSize=b.size; setSizeActive(); }
+                }
                 for(const it of b.items){
                     const prod=prodByBarcode(it.barcode);
                     let x=boxItemFor(b.boxNo,it.barcode);
@@ -963,7 +982,7 @@
             const ok=await saveShip();
             if(ok){
                 closeVirtual();
-                toast(`가상스캔 ${addQty}개 → 박스 ${boxCnt}개 반영 · 저장 완료`);
+                toast(`가상스캔 ${addQty}개 → 박스 ${boxCnt}개 반영${upCnt?` · 크기 변경 ${upCnt}박스`:''} · 저장 완료`);
                 openList();
             }else{
                 // 화면에는 반영됐지만 저장 실패 — 다시 확정하면 중복 반영되므로 막고 [저장] 재시도로 안내

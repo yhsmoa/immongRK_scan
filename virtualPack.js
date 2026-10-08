@@ -10,7 +10,8 @@
  *  · 부피 = coupang_items 가로×세로×높이(mm) → L. 임시값(300×300×20)·누락은 측정 중앙값(2.85 L)으로 가정
  *  · 용량 = 과거 출고 박스의 명목 부피 합으로 보정한 base × (1 + 10%)  — 박스 치수가 아니다 (옷이 눌림)
  *  · 박스당 무게는 25 kg 미만. 넘치면 다음 박스
- *  · 이미 있는 박스(저장분·세션분, 극소/중/대2)는 남은 용량부터 채운다
+ *  · 이미 있는 박스는 **마지막 박스(가장 큰 번호) 하나만** 남은 용량부터 채운다 — 앞 박스들은 이미 마감(테이핑)된 것으로 본다
+ *  · 마지막 박스가 극소/중인데 남은 상품이 다 안 들어가면 크기를 올린다 (극소→중→대2). 확정 시 DB 의 box_size 도 바뀐다
  *  · 신규 박스는 남은 전체가 들어가는 가장 작은 크기(극소→중→대2), 안 들어가면 대2
  *  · 상품은 수량 많은 것부터 담는다 (찾아 담기 편한 순서)
  */
@@ -30,6 +31,7 @@
     placeholder: { w: 300, l: 300, h: 20 },           // 쿠팡 등록 시 넣어 둔 임시 사이즈
     maxBoxNo: 20,                                     // 박스 번호 1~20 (화면 그리드와 동일)
     topUpExisting: true,                              // true = 기존 박스 남은 용량부터 채움 · false = 기존 박스는 그대로 두고 새 박스만
+    upgradeLastBox: true,                             // 마지막 기존 박스(극소/중)에 남은 상품이 다 안 들어가면 크기를 올린다 (극소→중→대2). 확정 시 DB box_size 도 바뀜
   };
 
   const EPS = 1e-9;
@@ -125,23 +127,35 @@
       .filter((n) => Number.isFinite(n) && n >= 1).sort((a, b) => a - b);
     const usedNos = new Set(existingNos);
     const boxes = [];
-    const skippedExisting = [];
-    for (const no of existingNos) {
-      if (!cfg.topUpExisting) continue;              // 새 박스만: 기존 박스는 번호만 비켜 가고 채우지 않는다
-      const size = sizeOfExisting(no, savedBoxes, input.boxSizeMap);
-      const cap = capL(size, cfg);
+    // 기존 박스 중 채울 수 있는 것은 마지막 박스(가장 큰 번호) 하나뿐 — 앞 박스들은 이미 마감된 것으로 본다.
+    // 새 박스만 모드면 기존 박스는 번호만 비켜 가고 채우지 않는다.
+    const lastNo = existingNos.length ? existingNos[existingNos.length - 1] : null;
+    const closedNos = existingNos.filter((n) => n !== lastNo);
+    if (cfg.topUpExisting && lastNo != null) {
+      const size0 = sizeOfExisting(lastNo, savedBoxes, input.boxSizeMap);
+      let size = size0, cap = capL(size0, cfg);
       let usedL = 0, usedKg = 0, usedQty = 0;
       for (const it of boxItems) {
-        if (Number(it.boxNo) !== no) continue;
+        if (Number(it.boxNo) !== lastNo) continue;
         const u = unitByBc.get(String(it.barcode)) || unitOf(null, cfg);
         const q = parseInt(it.qty, 10) || 0;
         usedL += q * u.L; usedKg += q * u.kg; usedQty += q;
       }
-      if (cap == null) { skippedExisting.push({ boxNo: no, size }); continue; } // 소/대 등 용량 미정 → 채우지 않음
-      boxes.push({ boxNo: no, size, isNew: false, cap, usedL0: usedL, usedKg0: usedKg, usedQty0: usedQty,
-        usedL, usedKg, items: [], warnings: [] });
+      // 크기 UP: 지금 크기로는 남은 상품이 다 안 들어가면, 다 들어가는 가장 작은 큰 크기로 (없으면 가장 큰 크기로) 바꾼다.
+      // 부피 기준으로만 판단한다 — 무게 때문에 안 들어가는 건 박스를 키워도 해결되지 않으므로.
+      if (cap != null && cfg.upgradeLastBox) {
+        const needL = usedL + totals.L;
+        if (needL > cap + EPS) {
+          const bigger = cfg.newSizes.slice(cfg.newSizes.indexOf(size0) + 1);
+          const pick = bigger.find((s) => capL(s, cfg) >= needL - EPS) || bigger[bigger.length - 1];
+          if (pick) { size = pick; cap = capL(pick, cfg); }
+        }
+      }
+      if (cap == null) warnings.push(`마지막 박스 📦${lastNo}(${size0})는 용량 기준이 없는 크기라 채우지 않았습니다.`); // 소/대 등 용량 미정
+      else boxes.push({ boxNo: lastNo, size, sizeFrom: size !== size0 ? size0 : null, isNew: false, cap,
+        usedL0: usedL, usedKg0: usedKg, usedQty0: usedQty, usedL, usedKg, items: [], warnings: [] });
     }
-    if (skippedExisting.length) warnings.push(`용량 기준이 없는 기존 박스는 채우지 않았습니다: ${skippedExisting.map((b) => `📦${b.boxNo}(${b.size})`).join(', ')}`);
+    if (cfg.topUpExisting && closedNos.length) warnings.push(`앞 박스 ${closedNos.map((n) => `📦${n}`).join(', ')}는 마감된 것으로 보고 채우지 않았습니다 (마지막 박스 📦${lastNo}만 채움).`);
     if (!cfg.topUpExisting && existingNos.length) warnings.push(`기존 박스 ${existingNos.length}개(${existingNos.map((n) => `📦${n}`).join(', ')})는 그대로 두고 새 박스만 썼습니다.`);
 
     // ── 3. 채우기 ──
@@ -200,11 +214,13 @@
       b.fillPct = b.cap ? (b.usedL / b.cap) * 100 : 0;
       b.fillPct0 = b.cap ? (b.usedL0 / b.cap) * 100 : 0;
       b.addQty = b.items.reduce((s, i) => s + i.qty, 0);
+      if (b.sizeFrom) b.warnings.push(`크기 변경 ${b.sizeFrom} → ${b.size} — 확정하면 박스 크기도 바뀝니다.`);
       if (b.usedKg >= cfg.maxKg * 0.9) b.warnings.push(`무게 ${b.usedKg.toFixed(1)} kg — 상한 ${cfg.maxKg} kg 에 근접`);
       if (b.items.some((i) => i.flag)) b.warnings.push(`사이즈 가정 상품 ${b.items.filter((i) => i.flag).length}종 포함`);
     }
     totals.newBoxes = result.filter((b) => b.isNew).length;
     totals.topUpBoxes = result.filter((b) => !b.isNew && b.items.length > 0).length;
+    totals.upgradedBoxes = result.filter((b) => b.sizeFrom).length;
     const untouchedExisting = result.filter((b) => !b.isNew && !b.items.length);
     if (untouchedExisting.length) warnings.push(`남은 용량이 없어 그대로 둔 기존 박스: ${untouchedExisting.map((b) => `📦${b.boxNo}`).join(', ')}`);
     if (items.some((i) => i.capped)) warnings.push(`배정량이 확정수량보다 큰 상품 ${items.filter((i) => i.capped).length}종은 확정수량까지만 담았습니다.`);
