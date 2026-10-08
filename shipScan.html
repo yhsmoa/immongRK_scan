@@ -103,54 +103,86 @@
         .box-cell:hover{border-color:#93c5fd;}
         .box-cell.sel{outline:3px solid #4f46e5;outline-offset:-1px;}
 
-        /* 가상스캔 예상 모달 (boxm 골격 재사용) */
-        .vsm{width:800px;max-height:90vh;padding:0;display:flex;flex-direction:column;}
-        .vs-head{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid #eef2f7;}
-        .vs-head h3{margin:0;font-size:16px;color:var(--ink);}
-        .vs-head h3 .sub{font-size:12.5px;font-weight:500;color:#94a3b8;margin-left:8px;}
-        .vs-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
-        .vs-body{overflow:auto;padding:14px 20px;flex:1;min-height:0;}
-        .vs-opt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
-        .vs-opt .lbl{font-size:12.5px;font-weight:700;color:#475569;}
-        .vs-seg{display:inline-flex;border:1px solid #c7d2fe;border-radius:9px;overflow:hidden;}
-        .vs-seg button{height:36px;padding:0 16px;border:none;background:#fff;font-size:13.5px;font-weight:700;color:#4f46e5;cursor:pointer;}
-        .vs-seg button+button{border-left:1px solid #c7d2fe;}
-        .vs-seg button:hover{background:#eef2ff;}
-        .vs-seg button.on{background:var(--primary);color:#fff;}
-        .vs-opt .hint{font-size:12px;color:#94a3b8;}
-        .vs-assume{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 13px;font-size:12.5px;color:#92400e;line-height:1.6;}
-        .vs-assume b{color:#78350f;}
-        .vs-sum{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px;}
-        .vs-chip{border:1px solid #e2e8f0;border-radius:9px;padding:7px 11px;font-size:12.5px;color:#475569;background:#fff;}
-        .vs-chip b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums;}
-        .vs-chip.hi{background:#eef2ff;border-color:#c7d2fe;}
-        .vs-chip.hi b{color:var(--primary);}
-        .vs-box{border:1px solid #e2e8f0;border-radius:12px;margin-bottom:10px;overflow:hidden;}
-        .vs-box-h{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f8fafc;border-bottom:1px solid #eef2f7;flex-wrap:wrap;}
-        .vs-box-h .no{font-size:15px;font-weight:800;color:#1e293b;white-space:nowrap;}
-        .vs-box-h .sz{font-size:12.5px;font-weight:700;color:#4f46e5;background:#eef2ff;border:1px solid #e0e7ff;border-radius:6px;padding:1px 7px;}
-        .vs-box-h .tag{font-size:11.5px;font-weight:700;border-radius:6px;padding:1px 7px;}
-        .vs-box-h .tag.new{color:#047857;background:#ecfdf5;border:1px solid #a7f3d0;}
-        .vs-box-h .tag.old{color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;}
-        .vs-bar{flex:1 1 140px;height:9px;background:#e2e8f0;border-radius:5px;position:relative;overflow:hidden;min-width:100px;}
-        .vs-bar i{position:absolute;left:0;top:0;bottom:0;background:var(--primary);}
-        .vs-bar i.b0{background:#a5b4fc;}
-        .vs-box-h .pct{font-size:12.5px;font-weight:700;color:#334155;font-variant-numeric:tabular-nums;white-space:nowrap;}
-        .vs-box-h .pct span{color:#94a3b8;font-weight:500;}
-        .vs-box table{min-width:0;}
-        .vs-box thead th{position:static;background:#fff;font-size:11.5px;padding:7px 12px;}
-        .vs-box tbody td{padding:8px 12px;font-size:13px;}
-        .vs-box td.q{text-align:center;font-weight:800;font-size:15px;color:#1e293b;font-variant-numeric:tabular-nums;}
-        .vs-box td.l{white-space:nowrap;color:#64748b;font-size:12px;}
-        .vs-box .vs-bw{padding:7px 12px;font-size:12px;color:#b45309;background:#fffbeb;border-top:1px solid #fde68a;}
-        .vs-warn{border:1px solid #fecaca;background:#fef2f2;border-radius:10px;padding:9px 12px;font-size:12.5px;color:#b91c1c;line-height:1.6;margin-top:6px;}
-        .vs-warn.soft{border-color:#fde68a;background:#fffbeb;color:#92400e;}
-        .vs-ex{margin-top:10px;font-size:12px;color:#94a3b8;line-height:1.6;}
-        .vs-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 20px;border-top:1px solid #eef2f7;}
-        .vs-note{font-size:12.5px;color:#64748b;}
-        .vs-note.err{color:#dc2626;font-weight:600;}
+        /* 가상스캔 예상 모달 — 디자인 시안: Claude Design "ShipScan Modal" (2026-10-08)
+           팔레트: 글자 #1a1b20 · 보조 #70727c · 테두리 #e6e7eb · 기본색 #3f49c4(hover #333cab) · 연한 기본색 #eef0fb */
+        .vsm{width:800px;max-width:94vw;max-height:90vh;padding:0;display:flex;flex-direction:column;border-radius:14px;box-shadow:0 20px 60px rgba(20,22,40,.18);color:#1a1b20;}
+        .vs-head{display:flex;align-items:baseline;gap:12px;padding:22px 28px 0;flex:none;}
+        .vs-head h3{margin:0;font-size:20px;font-weight:700;letter-spacing:-.01em;color:#1a1b20;}
+        .vs-head h3 .sub{font-size:13px;font-weight:400;color:#70727c;margin-left:12px;font-variant-numeric:tabular-nums;}
+        .vs-head button{margin-left:auto;align-self:center;width:32px;height:32px;border:0;background:transparent;border-radius:8px;color:#70727c;font-size:22px;line-height:1;cursor:pointer;}
+        .vs-head button:hover{background:#f1f2f5;color:#1a1b20;}
+        .vs-top{flex:none;padding:0 28px;}
+        /* 옵션: 기존 박스 채우기 / 새 박스만 */
+        .vs-opt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;}
+        .vs-opt .lbl{font-size:12px;color:#70727c;}
+        .vs-seg{display:inline-flex;border:1px solid #d9dbe1;border-radius:8px;overflow:hidden;background:#fff;}
+        .vs-seg button{height:34px;padding:0 14px;border:0;background:#fff;font-size:13px;font-weight:600;color:#3b3d47;cursor:pointer;font-family:inherit;}
+        .vs-seg button+button{border-left:1px solid #d9dbe1;}
+        .vs-seg button:hover{background:#f6f7fb;}
+        .vs-seg button.on{background:#3f49c4;color:#fff;}
+        .vs-opt .hint{font-size:12.5px;color:#70727c;}
+        /* 3칸 요약 */
+        .vs-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:14px;border:1px solid #e6e7eb;border-radius:12px;overflow:hidden;}
+        .vs-stat{padding:14px 20px;border-right:1px solid #e6e7eb;min-width:0;}
+        .vs-stat:last-child{border-right:0;background:#f6f7fb;}
+        .vs-stat .k{font-size:12px;color:#70727c;margin-bottom:6px;}
+        .vs-stat .v{font-size:22px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:#1a1b20;white-space:nowrap;}
+        .vs-stat .v.hi{color:#3f49c4;}
+        .vs-stat .v small{font-size:14px;font-weight:500;color:#70727c;margin-left:2px;}
+        .vs-stat .v small.gap{margin-left:10px;}
+        /* 가정 문구 */
+        .vs-assume{display:flex;gap:10px;align-items:flex-start;margin:14px 0 0;padding:0 4px;font-size:13px;line-height:1.55;color:#5d5f69;}
+        .vs-assume .i{flex:none;width:18px;height:18px;border-radius:50%;background:#f3edd9;color:#8a6a00;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-top:1px;}
+        .vs-assume strong{color:#1a1b20;font-weight:600;}
+        .vs-assume .flag{color:#b42318;font-weight:600;}
+        /* 박스 카드 목록 (스크롤) */
+        .vs-body{overflow-y:auto;flex:1 1 auto;min-height:0;padding:18px 28px 24px;display:flex;flex-direction:column;gap:14px;}
+        .vs-box{border:1px solid #e6e7eb;border-radius:12px;overflow:hidden;flex:none;background:#fff;box-shadow:0 1px 2px rgba(20,22,40,.05),0 6px 18px rgba(20,22,40,.09);} /* 테두리 그림자로 카드 구분 */
+        .vs-box-h{display:grid;grid-template-columns:auto auto minmax(120px,1fr) auto;align-items:center;gap:14px;padding:14px 20px;}
+        .vs-box-no{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px 0 10px;border-radius:9px;background:#3f49c4;color:#fff;font-size:17px;font-weight:800;letter-spacing:-.01em;white-space:nowrap;box-shadow:0 2px 6px rgba(63,73,196,.3);} /* 박스 번호 배지 */
+        .vs-box-no small{font-size:12px;font-weight:600;opacity:.85;}
+        .vs-tags{display:flex;gap:6px;}
+        .vs-tag{font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;background:#f1f2f5;color:#3b3d47;white-space:nowrap;}
+        .vs-tag.new{background:#e6f4ea;color:#1f7a3a;}
+        .vs-prog{display:flex;flex-direction:column;gap:6px;min-width:0;}
+        .vs-prog .lab{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:#70727c;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;}
+        .vs-bar{position:relative;height:6px;border-radius:3px;background:#eceef3;overflow:hidden;}
+        .vs-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:#3f49c4;}
+        .vs-bar i.after{background:#c7cbf0;}
+        .vs-add{text-align:right;font-variant-numeric:tabular-nums;}
+        .vs-add .n{font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1;color:#3f49c4;white-space:nowrap;}
+        .vs-add .n.zero{color:#9a9ca6;}
+        .vs-add .b{font-size:12px;color:#70727c;margin-top:5px;white-space:nowrap;}
+        .vs-empty{padding:0 20px 14px;font-size:13px;color:#9a9ca6;}
+        .vs-items{border-top:1px solid #e6e7eb;}
+        .vs-row{display:grid;grid-template-columns:140px 1fr 90px 72px;gap:12px;align-items:center;padding:12px 20px;border-top:1px solid #f0f1f4;font-size:14px;}
+        .vs-row.hd{padding:8px 20px;border-top:0;font-size:11px;font-weight:600;color:#9a9ca6;letter-spacing:.02em;background:#fafafc;}
+        .vs-row .bc{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:12.5px;color:#5d5f69;}
+        .vs-row .nm{line-height:1.45;color:#1a1b20;word-break:break-word;}
+        .vs-row .nm .name-badge{font-size:12px;font-weight:600;color:#3f49c4;background:#eef0fb;border:0;padding:1px 6px;border-radius:4px;margin:0 3px;}
+        .vs-row .lc{font-size:13px;color:#70727c;}
+        .vs-row .q{text-align:right;font-weight:700;font-size:16px;font-variant-numeric:tabular-nums;color:#1a1b20;}
+        .vs-bw{padding:8px 20px 10px;font-size:12.5px;color:#8a6a00;background:#fdf8e7;border-top:1px solid #f3edd9;}
+        .vs-warn{border:1px solid #f3d6d3;background:#fdf3f2;border-radius:10px;padding:10px 14px;font-size:12.5px;color:#b42318;line-height:1.6;}
+        .vs-warn.soft{border-color:#ece6cf;background:#fbf8ee;color:#7a5e00;}
+        .vs-ex{font-size:12px;color:#9a9ca6;line-height:1.6;}
+        /* 하단 */
+        .vs-foot{display:flex;align-items:center;gap:10px;padding:16px 28px;border-top:1px solid #e6e7eb;background:#fff;flex:none;}
+        .vs-note{font-size:13px;color:#70727c;margin-right:auto;}
+        .vs-note.err{color:#b42318;font-weight:600;}
+        .vs-foot .btn{height:40px;border-radius:8px;font-size:14px;font-weight:600;}
+        .vs-foot .btn:not(.primary){border-color:#d9dbe1;color:#3b3d47;}
+        .vs-foot .btn:not(.primary):hover{background:#f6f7fb;}
+        .vs-foot .btn.primary{background:#3f49c4;border-color:#3f49c4;box-shadow:none;}
+        .vs-foot .btn.primary:hover{background:#333cab;border-color:#333cab;}
         .vtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;padding:0 6px;vertical-align:middle;}
-        .vs-assume-flag{color:#dc2626;}
+        .vs-assume-flag{color:#b42318;}
+        @media (max-width:720px){
+            .vs-head,.vs-top,.vs-body,.vs-foot{padding-left:18px;padding-right:18px;}
+            .vs-stat{padding:10px 12px;} .vs-stat .v{font-size:18px;white-space:normal;} .vs-stat .v small{font-size:12px;} .vs-stat .v small.gap{display:block;margin-left:0;margin-top:2px;}
+            .vs-box-h{grid-template-columns:auto 1fr auto;} .vs-prog{grid-column:1/-1;}
+            .vs-row{grid-template-columns:110px 1fr 60px;} .vs-row .lc{display:none;}
+        }
 
         /* 기록 슬라이드 패널 */
         .rec-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10001;}
@@ -345,14 +377,15 @@
         <div class="boxm vsm">
             <div class="vs-head">
                 <h3>가상스캔 예상<span class="sub" id="vsSub"></span></h3>
-                <button onclick="closeVirtual()" title="닫기">✕</button>
+                <button onclick="closeVirtual()" title="닫기" aria-label="닫기">×</button>
             </div>
+            <div class="vs-top" id="vsTop"></div>
             <div class="vs-body" id="vsBody"></div>
             <div class="vs-foot">
                 <span class="vs-note" id="vsNote"></span>
                 <div style="display:flex;gap:8px;">
                     <button class="btn" id="vsCancelBtn" onclick="closeVirtual()">취소</button>
-                    <button class="btn primary" id="vsConfirmBtn" onclick="confirmVirtualScan()">확정 — 스캔 반영 + 저장</button>
+                    <button class="btn primary" id="vsConfirmBtn" onclick="confirmVirtualScan()">확정 · 스캔 반영 + 저장</button>
                 </div>
             </div>
         </div>
@@ -842,7 +875,9 @@
             document.getElementById('vsSub').textContent=`${currentOrder} · ${document.getElementById('odCenter').textContent||''}`;
             const capTxt=Object.entries(a.cap).map(([s,c])=>`${s} ${fmtL(c)} L`).join(' · ');
             const existCnt=boxNosAll().length;
-            let html=`<div class="vs-opt">
+            const boxCnt=plan.boxes.filter(b=>b.items.length).length;
+            // ── 상단(고정): 옵션 · 3칸 요약 · 가정 문구 ──
+            let top=`<div class="vs-opt">
                 <span class="lbl">기존 박스</span>
                 <div class="vs-seg">
                     <button type="button" class="${vsTopUp?'on':''}" onclick="setVsTopUp(true)">기존 박스 채우기</button>
@@ -850,34 +885,42 @@
                 </div>
                 <span class="hint">${existCnt?`이 발주서에 박스 ${existCnt}개가 있습니다. ${vsTopUp?'남은 용량부터 채웁니다.':'그대로 두고 새 박스에만 담습니다.'}`:'아직 박스가 없어 어느 쪽이든 새 박스에 담습니다.'}</span>
             </div>`;
-            html+=`<div class="vs-assume">
-                ⚠ <b>옷 포장이라 용량의 ${Math.round(a.overfill*100)}% 를 더 담는 것으로 계산했습니다.</b><br>
-                용량(명목 부피 기준, 과거 출고 박스로 보정): ${capTxt} · 박스당 무게 <b>${a.maxKg} kg 미만</b><br>
-                ${a.assumedCount?`<span class="vs-assume-flag">사이즈 미측정(임시값) 상품 ${a.assumedCount}종은 1개 ${a.defaultUnitL} L 로 가정했습니다.</span>`:'모든 상품에 측정 사이즈가 있습니다.'}
+            top+=`<div class="vs-stats">
+                <div class="vs-stat"><div class="k">대상 상품</div><div class="v">${t.qty.toLocaleString()}<small>개</small><small class="gap">${t.skus}종</small></div></div>
+                <div class="vs-stat"><div class="k">총 부피 · 무게</div><div class="v">${fmtL(t.L)}<small>L</small><small class="gap">${fmtKg(t.kg)} kg</small></div></div>
+                <div class="vs-stat"><div class="k">필요 박스</div><div class="v hi">${boxCnt}<small>개</small><small class="gap">기존 ${t.topUpBoxes} · 신규 ${t.newBoxes}</small></div></div>
             </div>`;
-            html+=`<div class="vs-sum">
-                <span class="vs-chip">대상 <b>${t.skus}</b>종 <b>${t.qty.toLocaleString()}</b>개</span>
-                <span class="vs-chip">총 <b>${fmtL(t.L)}</b> L · <b>${fmtKg(t.kg)}</b> kg</span>
-                <span class="vs-chip hi">박스 <b>${plan.boxes.filter(b=>b.items.length).length}</b>개 (기존 채움 <b>${t.topUpBoxes}</b> · 신규 <b>${t.newBoxes}</b>)</span>
-            </div>`;
+            top+=`<div class="vs-assume"><span class="i">!</span><div>
+                옷 포장 보정으로 용량의 <strong>${Math.round(a.overfill*100)}%를 더 담는 것</strong>으로 계산했습니다.
+                용량 기준 ${capTxt}, 박스당 <strong>${a.maxKg} kg 미만</strong>.
+                ${a.assumedCount?`<span class="flag">사이즈 미측정 상품 ${a.assumedCount}종은 1개 ${a.defaultUnitL} L로 가정했습니다.</span>`:'모든 상품에 측정 사이즈가 있습니다.'}
+            </div></div>`;
+            document.getElementById('vsTop').innerHTML=top;
+
+            // ── 본문(스크롤): 박스 카드 · 경고 · 제외 ──
+            let html='';
             if(!plan.ok) html+=`<div class="vs-warn">계산을 끝내지 못했습니다: ${esc(plan.reason)}</div>`;
             for(const b of plan.boxes){
                 if(!b.items.length && b.isNew) continue;
                 const p0=Math.min(100,b.fillPct0), p1=Math.min(100,b.fillPct);
+                const pctLabel=b.isNew||!b.items.length ? `${Math.round(b.fillPct)}% 채움` : `${Math.round(b.fillPct0)}% → ${Math.round(b.fillPct)}%`;
                 html+=`<div class="vs-box">
                     <div class="vs-box-h">
-                        <span class="no">📦 ${b.boxNo}</span><span class="sz">${esc(b.size)}</span>
-                        <span class="tag ${b.isNew?'new':'old'}">${b.isNew?'신규':'기존'}</span>
-                        <div class="vs-bar"><i class="b0" style="width:${p1}%"></i><i style="width:${p0}%"></i></div>
-                        <span class="pct">${b.isNew?'':`<span>${Math.round(b.fillPct0)}% → </span>`}${Math.round(b.fillPct)}% <span>· ${fmtL(b.usedL)}/${fmtL(b.cap)} L · ${fmtKg(b.usedKg)} kg</span></span>
-                        <span class="pct">${b.isNew?'':`<span>기존 ${b.usedQty0}개 + </span>`}<b style="color:var(--primary)">+${b.addQty}개</b></span>
+                        <span class="vs-box-no"><small>박스</small>${b.boxNo}</span>
+                        <div class="vs-tags"><span class="vs-tag">${esc(b.size)}</span><span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span></div>
+                        <div class="vs-prog">
+                            <div class="lab"><span>${pctLabel}</span><span>${fmtL(b.usedL)}/${fmtL(b.cap)} L · ${fmtKg(b.usedKg)} kg</span></div>
+                            <div class="vs-bar"><i class="after" style="width:${p1}%"></i><i style="width:${p0}%"></i></div>
+                        </div>
+                        <div class="vs-add"><div class="n ${b.addQty?'':'zero'}">+${b.addQty}개</div><div class="b">${b.isNew?'새 박스':`기존 ${b.usedQty0}개`}</div></div>
                     </div>`;
                 if(b.items.length){
-                    html+=`<table><thead><tr><th class="ctr" style="width:135px">바코드</th><th>상품명</th><th style="width:90px">위치</th><th class="ctr" style="width:70px">담을 개수</th></tr></thead><tbody>`
-                        +b.items.map(it=>`<tr><td class="bc">${esc(it.barcode)}</td><td class="pname">${pnameHtml(it.productName)}${it.flag?' <span class="vs-assume-flag" title="사이즈 가정">⚠</span>':''}</td><td class="l">${esc(it.location||'-')}</td><td class="q">${it.qty}</td></tr>`).join('')
-                        +`</tbody></table>`;
+                    html+=`<div class="vs-items">
+                        <div class="vs-row hd"><span>바코드</span><span>상품명</span><span>위치</span><span style="text-align:right">담을 개수</span></div>`
+                        +b.items.map(it=>`<div class="vs-row"><span class="bc">${esc(it.barcode)}</span><span class="nm">${pnameHtml(it.productName)}${it.flag?' <span class="vs-assume-flag" title="사이즈 가정">⚠</span>':''}</span><span class="lc">${esc(it.location||'-')}</span><span class="q">${it.qty}</span></div>`).join('')
+                        +`</div>`;
                 }else{
-                    html+=`<div class="vs-ex" style="padding:8px 12px;margin:0;">남은 용량이 없어 추가로 담지 않습니다.</div>`;
+                    html+=`<div class="vs-empty">남은 용량이 없어 추가로 담지 않습니다.</div>`;
                 }
                 if(b.warnings.length) html+=`<div class="vs-bw">⚠ ${b.warnings.map(esc).join(' · ')}</div>`;
                 html+=`</div>`;
@@ -893,7 +936,7 @@
             note.textContent=dirty?`미저장 변경 ${records.length}건이 있습니다 — 확정 시 함께 저장됩니다.`:'확정하면 위 내용대로 박스/스캔을 반영하고 바로 저장합니다.';
             const btn=document.getElementById('vsConfirmBtn');
             btn.disabled=!plan.ok || !plan.boxes.some(b=>b.items.length);
-            btn.textContent='확정 — 스캔 반영 + 저장';
+            btn.textContent='확정 · 스캔 반영 + 저장';
             delete btn.dataset.busy;
         }
         async function confirmVirtualScan(){
