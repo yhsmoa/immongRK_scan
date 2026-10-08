@@ -76,6 +76,43 @@ async function locationsByBarcode(orderNumber, barcodes) {
   return out;
 }
 
+// 바코드별 출고예정 배정량(재고+입고 합) — 가상스캔의 목표 수량 기준 (docs/plan-virtual-scan.md §1-1)
+// 준비수량(prepared_qty)과는 별개 값이다. 실패해도 조용히 빈 맵 (가상스캔만 영향).
+async function allocByBarcode(orderNumber) {
+  const out = new Map();
+  try {
+    const { data, error } = await sb.from('rk_shipping_list')
+      .select('barcode, qty').eq('order_number', orderNumber).eq('status', '출고예정');
+    if (error) throw error;
+    for (const r of (data || [])) {
+      if (!r.barcode) continue;
+      out.set(r.barcode, (out.get(r.barcode) || 0) + (parseInt(r.qty, 10) || 0));
+    }
+  } catch (e) {
+    console.error('[rk] ship-scan 배정량 조회 실패(가상스캔만 영향):', e.message);
+  }
+  return out;
+}
+
+// 바코드별 상품 사이즈 (coupang_items: mm·g) — 가상스캔 부피/무게 계산용. 없으면 null.
+async function sizesByBarcode(barcodes) {
+  const out = new Map();
+  try {
+    for (let i = 0; i < barcodes.length; i += 200) {
+      const { data, error } = await sb.from('coupang_items')
+        .select('barcode, size_width, size_length, size_height, weight').in('barcode', barcodes.slice(i, i + 200));
+      if (error) throw error;
+      for (const r of (data || [])) {
+        if (!r.barcode || out.has(r.barcode)) continue;
+        out.set(r.barcode, { w: r.size_width, l: r.size_length, h: r.size_height, g: r.weight });
+      }
+    }
+  } catch (e) {
+    console.error('[rk] ship-scan 사이즈 조회 실패(가상스캔만 영향):', e.message);
+  }
+  return out;
+}
+
 // 발주서 조회 (유효성 + 상품/박스/출고리스트)
 router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
   try {
@@ -89,11 +126,17 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
     // 처리완료(DONE) 발주서는 스캔 대상에서 제외
     if (S.isDoneOrder(order)) return res.status(404).json({ valid: false, error: '처리완료된 발주서입니다.' });
     const barcodes = [...limit.keys()];
-    const locMap = await locationsByBarcode(orderNumber, barcodes);
+    const [locMap, allocMap, sizeMap] = await Promise.all([
+      locationsByBarcode(orderNumber, barcodes),
+      allocByBarcode(orderNumber),
+      sizesByBarcode(barcodes),
+    ]);
     const products = barcodes.map(bc => ({
       barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0,
       preparedQty: prep.has(bc) ? prep.get(bc) : null,      // 미입력은 null (0 과 구분)
       location: locMap.get(bc) || loc.get(bc) || '',        // 정렬용
+      allocQty: allocMap.get(bc) || 0,                      // 출고예정 배정량 (가상스캔 목표)
+      size: sizeMap.get(bc) || null,                        // {w,l,h,g} mm·g (가상스캔 부피/무게)
     }));
 
     // 기존 박스 + 출고리스트
