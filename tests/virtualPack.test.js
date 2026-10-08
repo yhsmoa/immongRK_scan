@@ -94,6 +94,20 @@ test('세션 박스(미저장, boxSizeMap) 도 기존 박스로 채운다 · 꽉
   assert.ok(p.warnings.some((w) => w.includes('그대로 둔 기존 박스')));
 });
 
+test('옵션 topUpExisting=false — 기존 박스는 그대로 두고 새 박스만 (번호는 비켜 감)', () => {
+  const input = { products: [prod('A', 20), prod('Z', 5, { scanned: 5 })], boxItems: [{ boxNo: 1, barcode: 'Z', qty: 5 }],
+    savedBoxes: [{ boxNo: 1, boxSize: '중' }], boxSizeMap: new Map() };
+  const on = planVirtualScan(input);
+  const off = planVirtualScan(input, { topUpExisting: false });
+  assert.strictEqual(shape(on), '1:중:8 2:중:12');
+  assert.strictEqual(shape(off), '2:대2:20');                 // 200 L > 중 132 → 대2, 박스1은 건드리지 않음
+  assert.ok(off.boxes.every((b) => b.isNew));
+  assert.strictEqual(off.totals.topUpBoxes, 0);
+  assert.strictEqual(off.assumptions.topUpExisting, false);
+  assert.ok(off.warnings.some((w) => w.includes('그대로 두고 새 박스만')));
+  assert.ok(!off.warnings.some((w) => w.includes('남은 용량이 없어')));
+});
+
 test('용량 기준 없는 기존 박스(소/대)는 채우지 않고 경고', () => {
   const p = planVirtualScan({ products: [prod('A', 2)], boxItems: [{ boxNo: 1, barcode: 'A', qty: 0 }],
     savedBoxes: [{ boxNo: 1, boxSize: '대' }], boxSizeMap: new Map() });

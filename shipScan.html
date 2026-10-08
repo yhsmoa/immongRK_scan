@@ -110,6 +110,14 @@
         .vs-head h3 .sub{font-size:12.5px;font-weight:500;color:#94a3b8;margin-left:8px;}
         .vs-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
         .vs-body{overflow:auto;padding:14px 20px;flex:1;min-height:0;}
+        .vs-opt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+        .vs-opt .lbl{font-size:12.5px;font-weight:700;color:#475569;}
+        .vs-seg{display:inline-flex;border:1px solid #c7d2fe;border-radius:9px;overflow:hidden;}
+        .vs-seg button{height:36px;padding:0 16px;border:none;background:#fff;font-size:13.5px;font-weight:700;color:#4f46e5;cursor:pointer;}
+        .vs-seg button+button{border-left:1px solid #c7d2fe;}
+        .vs-seg button:hover{background:#eef2ff;}
+        .vs-seg button.on{background:var(--primary);color:#fff;}
+        .vs-opt .hint{font-size:12px;color:#94a3b8;}
         .vs-assume{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 13px;font-size:12.5px;color:#92400e;line-height:1.6;}
         .vs-assume b{color:#78350f;}
         .vs-sum{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 10px;}
@@ -806,12 +814,25 @@
         let vsPlan=null;
         const fmtL=v=>(Math.round(v*10)/10).toLocaleString();
         const fmtKg=v=>(Math.round(v*10)/10).toLocaleString();
+        // 옵션: 기존 박스 채우기(true) / 새 박스만(false) — 브라우저에 기억 (기본 = 채우기)
+        const VS_OPT_KEY='shipScan.vsTopUp';
+        let vsTopUp=true;
+        try{ const v=localStorage.getItem(VS_OPT_KEY); if(v==='0') vsTopUp=false; }catch(e){}
+        function setVsTopUp(on){
+            vsTopUp=!!on;
+            try{ localStorage.setItem(VS_OPT_KEY, vsTopUp?'1':'0'); }catch(e){}
+            if(document.getElementById('vsBack').classList.contains('show')) buildVirtualPlan(); // 열려 있으면 다시 계산
+        }
+        function buildVirtualPlan(){
+            vsPlan=VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap }, { topUpExisting: vsTopUp });
+            renderVirtualModal(vsPlan);
+            return vsPlan;
+        }
         function openVirtualScan(){
             if(!currentOrder){ toast('먼저 발주서를 조회하세요.'); return; }
             if(typeof VirtualPack==='undefined'){ toast('가상스캔 모듈을 불러오지 못했습니다. 새로고침 후 다시 시도하세요.'); return; }
-            vsPlan=VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap });
-            if(!vsPlan.ok && !vsPlan.boxes.length){ toast(vsPlan.reason||'가상스캔 대상이 없습니다.'); vsPlan=null; return; }
-            renderVirtualModal(vsPlan);
+            const plan=buildVirtualPlan();
+            if(!plan.ok && !plan.boxes.length){ toast(plan.reason||'가상스캔 대상이 없습니다.'); vsPlan=null; return; }
             document.getElementById('vsBack').classList.add('show');
         }
         function closeVirtual(){ document.getElementById('vsBack').classList.remove('show'); vsPlan=null; }
@@ -820,7 +841,16 @@
             const a=plan.assumptions, t=plan.totals;
             document.getElementById('vsSub').textContent=`${currentOrder} · ${document.getElementById('odCenter').textContent||''}`;
             const capTxt=Object.entries(a.cap).map(([s,c])=>`${s} ${fmtL(c)} L`).join(' · ');
-            let html=`<div class="vs-assume">
+            const existCnt=boxNosAll().length;
+            let html=`<div class="vs-opt">
+                <span class="lbl">기존 박스</span>
+                <div class="vs-seg">
+                    <button type="button" class="${vsTopUp?'on':''}" onclick="setVsTopUp(true)">기존 박스 채우기</button>
+                    <button type="button" class="${vsTopUp?'':'on'}" onclick="setVsTopUp(false)">새 박스만</button>
+                </div>
+                <span class="hint">${existCnt?`이 발주서에 박스 ${existCnt}개가 있습니다. ${vsTopUp?'남은 용량부터 채웁니다.':'그대로 두고 새 박스에만 담습니다.'}`:'아직 박스가 없어 어느 쪽이든 새 박스에 담습니다.'}</span>
+            </div>`;
+            html+=`<div class="vs-assume">
                 ⚠ <b>옷 포장이라 용량의 ${Math.round(a.overfill*100)}% 를 더 담는 것으로 계산했습니다.</b><br>
                 용량(명목 부피 기준, 과거 출고 박스로 보정): ${capTxt} · 박스당 무게 <b>${a.maxKg} kg 미만</b><br>
                 ${a.assumedCount?`<span class="vs-assume-flag">사이즈 미측정(임시값) 상품 ${a.assumedCount}종은 1개 ${a.defaultUnitL} L 로 가정했습니다.</span>`:'모든 상품에 측정 사이즈가 있습니다.'}

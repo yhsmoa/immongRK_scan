@@ -29,6 +29,7 @@
     defaultUnitKg: 0.2,                               // 무게 누락 상품의 1개 무게 (중앙값 200 g)
     placeholder: { w: 300, l: 300, h: 20 },           // 쿠팡 등록 시 넣어 둔 임시 사이즈
     maxBoxNo: 20,                                     // 박스 번호 1~20 (화면 그리드와 동일)
+    topUpExisting: true,                              // true = 기존 박스 남은 용량부터 채움 · false = 기존 박스는 그대로 두고 새 박스만
   };
 
   const EPS = 1e-9;
@@ -107,7 +108,7 @@
     items.sort((a, b) => (b.qty - a.qty) || String(a.barcode).localeCompare(String(b.barcode), 'ko', { numeric: true }));
 
     const assumptions = {
-      overfill: cfg.overfill, maxKg: cfg.maxKg, defaultUnitL: cfg.defaultUnitL, assumedCount,
+      overfill: cfg.overfill, maxKg: cfg.maxKg, defaultUnitL: cfg.defaultUnitL, assumedCount, topUpExisting: !!cfg.topUpExisting,
       cap: Object.fromEntries(cfg.newSizes.map((s) => [s, capL(s, cfg)])),
     };
     const totals = { skus: items.length, qty: items.reduce((s, i) => s + i.qty, 0),
@@ -126,6 +127,7 @@
     const boxes = [];
     const skippedExisting = [];
     for (const no of existingNos) {
+      if (!cfg.topUpExisting) continue;              // 새 박스만: 기존 박스는 번호만 비켜 가고 채우지 않는다
       const size = sizeOfExisting(no, savedBoxes, input.boxSizeMap);
       const cap = capL(size, cfg);
       let usedL = 0, usedKg = 0, usedQty = 0;
@@ -140,6 +142,7 @@
         usedL, usedKg, items: [], warnings: [] });
     }
     if (skippedExisting.length) warnings.push(`용량 기준이 없는 기존 박스는 채우지 않았습니다: ${skippedExisting.map((b) => `📦${b.boxNo}(${b.size})`).join(', ')}`);
+    if (!cfg.topUpExisting && existingNos.length) warnings.push(`기존 박스 ${existingNos.length}개(${existingNos.map((n) => `📦${n}`).join(', ')})는 그대로 두고 새 박스만 썼습니다.`);
 
     // ── 3. 채우기 ──
     const restL = () => items.reduce((s, i) => s + i.qty * i.unitL, 0);
