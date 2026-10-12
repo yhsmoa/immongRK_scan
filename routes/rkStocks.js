@@ -454,6 +454,19 @@ router.post('/api/stocks/batch-update-location', async (req, res) => {
   }
 });
 
+// 서식 편집용 통합문서 로드. xlsx-populate 가 못 읽는 파일(예: Excel 이 아닌 도구가 쓴 빈 inline 문자열 셀)은
+// SheetJS 로 값만 옮긴 새 통합문서로 다시 만들어 진행한다 — 이때 원본 서식(열 너비·색)은 잃고, rebuilt=true 로 알린다.
+async function loadWorkbookForStyling(buffer) {
+  try {
+    return { wb: await XlsxPopulate.fromDataAsync(buffer), rebuilt: false };
+  } catch (e) {
+    console.warn('[rk] xlsx-populate 로드 실패 → SheetJS 로 재작성:', e.message);
+    const book = xlsx.read(buffer, { type: 'buffer' });
+    const clean = xlsx.write(book, { type: 'buffer', bookType: 'xlsx' });
+    return { wb: await XlsxPopulate.fromDataAsync(clean), rebuilt: true };
+  }
+}
+
 // 프로모션 대상조회 — 쿠팡 프로모션 엑셀(SKUID 열)을 받아 재고(rk_stocks.sku_id, qty>0)가 있는 행을
 // 노란 배경 + 상단 정렬한 엑셀을 돌려준다. 원본 양식(머리글·안내 행)은 그대로 둔다.
 router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) => {
@@ -462,7 +475,7 @@ router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) =
 
     // 쓰기·스타일은 xlsx-populate, 값 읽기는 SheetJS.
     // (xlsx-populate 는 '76358544' 같은 숫자 모양 텍스트를 숫자로 읽어, 그대로 다시 쓰면 텍스트 → 숫자로 바뀐다)
-    const wb = await XlsxPopulate.fromDataAsync(req.file.buffer);
+    const { wb, rebuilt } = await loadWorkbookForStyling(req.file.buffer);
     const sheet = wb.sheet(0);
     const used = sheet.usedRange();
     if (!used) return res.status(400).json({ error: '시트가 비어 있습니다.' });
@@ -557,11 +570,145 @@ router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) =
       totalQty: hits.reduce((s, x) => s + x.qty, 0),
       items: hits.map((x) => ({ sku: x.sku, name: nameCol ? String(x.values[nameCol - 1] ?? '') : '', qty: x.qty })),
       filename: `${base}_재고대상.xlsx`,
+      rebuilt,
       file: Buffer.from(buffer).toString('base64'),
     });
   } catch (e) {
     console.error('[rk] stocks/promo-check:', e);
     res.status(500).json({ error: '프로모션 대상조회 실패: ' + e.message });
+  }
+});
+
+// 발주가능상태 조회 — 쿠팡 '발주가능상태 확인' 엑셀(SKU ID 열)을 받아 재고(rk_stocks.sku_id, qty>0)가 있는 행에
+// 마지막 열 뒤로 [위치] [재고수량] 두 열을 채워 돌려준다. 새 머리글은 파란 배경, 값이 들어간 행은 노란 배경.
+// 양식이 조금씩 달라서 머리글은 위치가 아니라 이름으로 찾는다 (SKU ID / SKUID / 상품번호 …, 상단 15행 안).
+// 원본 셀 값은 건드리지 않는다 (숫자/문자 변환 문제 없음) — 매칭 행은 스타일 id 만 바꾸고 새 열에만 값을 쓴다.
+router.post('/api/stocks/order-status-check', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
+
+    const { wb, rebuilt } = await loadWorkbookForStyling(req.file.buffer);
+    const sheet = wb.sheet(0);
+    const used = sheet.usedRange();
+    if (!used) return res.status(400).json({ error: '시트가 비어 있습니다.' });
+    const lastRow = used.endCell().rowNumber();
+    const lastCol = used.endCell().columnNumber();
+    const sjBook = xlsx.read(req.file.buffer, { type: 'buffer' });
+    const sjSheet = sjBook.Sheets[sjBook.SheetNames[0]];
+    const valueAt = (r, c) => {
+      const cell = sjSheet[xlsx.utils.encode_cell({ r: r - 1, c: c - 1 })];
+      if (!cell || cell.t === 'z') return undefined;
+      if (cell.t === 's') return String(cell.v);
+      if (cell.t === 'e') return sheet.cell(r, c).value();
+      return cell.v;
+    };
+    const textAt = (r, c) => String(valueAt(r, c) ?? '').trim();
+    const norm = (s) => String(s || '').replace(/[\s_\-#]/g, '').toLowerCase();
+    const SKU_HEADERS = new Set(['skuid', '상품번호', 'sku번호', 'skuno', 'sku']);
+    const NAME_HEADERS = new Set(['skuname', 'sku이름', 'sku명', '상품명', '상품이름', 'productname']);
+
+    // 머리글 행·SKU 열 찾기 (상단 15행)
+    let headRow = 0, skuCol = 0;
+    for (let r = 1; r <= Math.min(15, lastRow) && !skuCol; r++) {
+      for (let c = 1; c <= lastCol; c++) {
+        if (SKU_HEADERS.has(norm(textAt(r, c)))) { headRow = r; skuCol = c; break; }
+      }
+    }
+    if (!skuCol) return res.status(400).json({ error: "'SKU ID' 머리글을 찾을 수 없습니다. (상단 15행 안에 SKU ID / 상품번호 열이 있어야 합니다)" });
+    let nameCol = 0;
+    for (let c = 1; c <= lastCol; c++) if (NAME_HEADERS.has(norm(textAt(headRow, c)))) { nameCol = c; break; }
+
+    // 데이터 시작 = 머리글 아래에서 SKU 가 숫자인 첫 행 (안내/예시 행 건너뜀)
+    const skuOf = (r) => textAt(r, skuCol).replace(/\.0$/, '');
+    let dataStart = headRow + 1;
+    while (dataStart <= lastRow && !/^\d+$/.test(skuOf(dataStart))) dataStart++;
+    if (dataStart > lastRow) return res.status(400).json({ error: '데이터 행(SKU ID)이 없습니다.' });
+
+    // 재고: 상품번호별 위치·수량 (qty>0 인 위치만)
+    const stock = new Map(); // sku -> { qty, locs: [{location, qty}] }
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from('rk_stocks').select('id,sku_id,location,qty')
+        .gt('qty', 0).order('id', { ascending: true }).range(from, from + 999);
+      if (error) throw error;
+      for (const s of data) {
+        const k = String(s.sku_id ?? '').trim();
+        if (!k) continue;
+        if (!stock.has(k)) stock.set(k, { qty: 0, locs: [] });
+        const e = stock.get(k);
+        const q = Number(s.qty) || 0;
+        e.qty += q;
+        const loc = String(s.location ?? '').trim();
+        const ex = e.locs.find((l) => l.location === loc);
+        if (ex) ex.qty += q; else e.locs.push({ location: loc, qty: q });
+      }
+      if (data.length < 1000) break;
+    }
+    const sortLoc = (a, b) => String(a.location).localeCompare(String(b.location), 'ko', { numeric: true });
+    const locText = (e) => {
+      const locs = e.locs.slice().sort(sortLoc);
+      if (locs.length === 1) return locs[0].location || '-';
+      return locs.map((l) => `${l.location || '-'}(${l.qty})`).join(', ');
+    };
+
+    // 새 열: 마지막 열 뒤 [위치] [재고수량]
+    const locCol = lastCol + 1, qtyCol = lastCol + 2;
+    const ss = wb.styleSheet();
+    const styleCache = new Map(); // `${baseId}|${fill}` -> styleId
+    const styled = (baseId, fill, bold) => {
+      const key = `${baseId == null ? -1 : baseId}|${fill}|${bold ? 1 : 0}`;
+      if (!styleCache.has(key)) {
+        const st = ss.createStyle(baseId);
+        st.style('fill', fill);
+        if (bold) st.style('bold', true);
+        styleCache.set(key, st.id());
+      }
+      return styleCache.get(key);
+    };
+    const setStyle = (cell, id) => { cell._style = undefined; cell._styleId = id; };
+    const BLUE = 'FFBDD7EE', YELLOW = 'FFFFFF00';
+
+    const headBase = sheet.cell(headRow, lastCol)._styleId;
+    for (const [c, label] of [[locCol, '위치'], [qtyCol, '재고수량']]) {
+      const cell = sheet.cell(headRow, c);
+      cell.value(label);
+      setStyle(cell, styled(headBase, BLUE, true));
+    }
+    sheet.column(locCol).width(22);
+    sheet.column(qtyCol).width(10);
+
+    let total = 0;
+    const hits = [];
+    for (let r = dataStart; r <= lastRow; r++) {
+      const sku = skuOf(r);
+      if (!sku) continue;
+      total++;
+      const e = stock.get(sku);
+      if (!e || !(e.qty > 0)) continue;
+      const loc = locText(e);
+      sheet.cell(r, locCol).value(loc);
+      sheet.cell(r, qtyCol).value(e.qty);
+      for (let c = 1; c <= qtyCol; c++) {
+        const cell = sheet.cell(r, c);
+        setStyle(cell, styled(cell._styleId, YELLOW, false));
+      }
+      hits.push({ sku, name: nameCol ? textAt(r, nameCol) : '', location: loc, qty: e.qty });
+    }
+
+    const buffer = await wb.outputAsync();
+    const base = String(req.file.originalname || '발주가능상태').replace(/\.xlsx$/i, '');
+    res.json({
+      total,
+      matched: hits.length,
+      totalQty: hits.reduce((s, x) => s + x.qty, 0),
+      items: hits,
+      headerRow: headRow,
+      filename: `${base}_재고확인.xlsx`,
+      rebuilt,
+      file: Buffer.from(buffer).toString('base64'),
+    });
+  } catch (e) {
+    console.error('[rk] stocks/order-status-check:', e);
+    res.status(500).json({ error: '발주가능상태 조회 실패: ' + e.message });
   }
 });
 

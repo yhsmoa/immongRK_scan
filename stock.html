@@ -139,6 +139,7 @@
                     <button class="btn" id="refreshBtn" onclick="refreshData()">새로고침</button>
                     <button class="btn" onclick="location.href='/stockScan'">재고스캔</button>
                     <button class="btn" id="promoBtn" onclick="document.getElementById('promoFile').click()">프로모션 대상조회 xlsx</button>
+                    <button class="btn" id="ordStBtn" onclick="document.getElementById('ordStFile').click()">발주가능상태 조회 xlsx</button>
                     <div class="xlsx-drop">
                         <button class="btn primary">
                             xlsx
@@ -157,11 +158,12 @@
             </div>
             <input type="file" id="stockFile" accept=".xlsx" style="display:none">
             <input type="file" id="promoFile" accept=".xlsx" style="display:none">
+            <input type="file" id="ordStFile" accept=".xlsx" style="display:none">
             <div id="toast"></div>
 
             <div class="search">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                <input id="searchInput" type="text" placeholder="위치 · 상품번호 · 바코드 · 상품명 검색 후 Enter (콤마로 여러 개)" onkeydown="if(event.key==='Enter')applySearch()">
+                <input id="searchInput" type="text" placeholder="위치 · SKU ID · 바코드 · 상품명 검색 후 Enter (콤마로 여러 개)" onkeydown="if(event.key==='Enter')applySearch()">
             </div>
 
             <div class="tabletop">
@@ -188,7 +190,7 @@
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
-                            <th>위치</th><th>상품번호</th><th>바코드</th><th class="col-img">img</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">시즌</th><th>비고</th>
+                            <th>위치</th><th>SKU ID</th><th>바코드</th><th class="col-img">img</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">시즌</th><th>비고</th>
                         </tr>
                     </thead>
                     <tbody id="tbody"><tr class="state-row"><td colspan="9">데이터를 불러오는 중…</td></tr></tbody>
@@ -584,36 +586,50 @@
             uploadMode=null;
         });
 
-        // ── 프로모션 대상조회 (쿠팡 프로모션 엑셀 SKUID ↔ 재고 상품번호) ──
+        // ── 엑셀 대조 조회 (SKU ID ↔ 재고 상품번호) — 프로모션 대상조회 / 발주가능상태 조회가 같은 모달을 쓴다 ──
+        //   프로모션: 재고 있는 행을 노란색 + 상단 정렬
+        //   발주가능상태: 재고 있는 행에 [위치][재고수량] 열을 채우고 노란색 (머리글 파란색), 행 순서 그대로
+        const XLSX_CHECKS={
+            promo:{ url:'/api/stocks/promo-check', btn:'promoBtn', label:'프로모션 대상조회 xlsx', title:'프로모션 대상조회 결과',
+                    cols:['SKUID','SKU 이름','재고'], row:x=>`<td>${esc(x.sku)}</td><td class="l">${esc(x.name)}</td><td>${esc(x.qty)}</td>` },
+            ordSt:{ url:'/api/stocks/order-status-check', btn:'ordStBtn', label:'발주가능상태 조회 xlsx', title:'발주가능상태 조회 결과',
+                    cols:['SKU ID','SKU NAME','위치','재고수량'], row:x=>`<td>${esc(x.sku)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.location)}</td><td>${esc(x.qty)}</td>` },
+        };
         let promoResult=null;
-        document.getElementById('promoFile').addEventListener('change', async function(){
-            const file=this.files[0];
-            this.value='';
+        async function runXlsxCheck(kind, input){
+            const cfg=XLSX_CHECKS[kind];
+            const file=input.files[0];
+            input.value='';
             if(!file)return;
             if(!/\.xlsx$/i.test(file.name)){toast('Excel(.xlsx) 파일만 업로드 가능합니다.');return;}
-            const btn=document.getElementById('promoBtn');
+            const btn=document.getElementById(cfg.btn);
             btn.disabled=true; btn.textContent='조회 중…';
             const fd=new FormData();fd.append('file',file);
             try{
-                const res=await fetch('/api/stocks/promo-check',{method:'POST',body:fd});
+                const res=await fetch(cfg.url,{method:'POST',body:fd});
                 const data=await res.json();
                 if(!res.ok)throw new Error(data.error||'조회 실패');
                 promoResult=data;
-                openPromo(data);
-            }catch(e){toast('프로모션 대상조회 실패: '+e.message);}
-            finally{ btn.disabled=false; btn.textContent='프로모션 대상조회 xlsx'; }
-        });
-        function openPromo(d){
+                openPromo(data, cfg);
+            }catch(e){toast(cfg.title.replace(' 결과','')+' 실패: '+e.message);}
+            finally{ btn.disabled=false; btn.textContent=cfg.label; }
+        }
+        document.getElementById('promoFile').addEventListener('change', function(){ runXlsxCheck('promo', this); });
+        document.getElementById('ordStFile').addEventListener('change', function(){ runXlsxCheck('ordSt', this); });
+        function openPromo(d, cfg){
+            cfg=cfg||XLSX_CHECKS.promo;
+            document.getElementById('promoTitle').textContent=cfg.title;
             document.getElementById('promoTotal').textContent=d.total.toLocaleString();
             document.getElementById('promoHit').textContent=d.matched.toLocaleString();
             document.getElementById('promoMiss').textContent=(d.total-d.matched).toLocaleString();
             document.getElementById('promoQty').textContent=d.totalQty.toLocaleString();
             document.getElementById('promoBody').innerHTML=d.items.length
-                ? `<table><thead><tr><th>SKUID</th><th>SKU 이름</th><th>재고</th></tr></thead><tbody>${
-                    d.items.map(x=>`<tr><td>${esc(x.sku)}</td><td class="l">${esc(x.name)}</td><td>${esc(x.qty)}</td></tr>`).join('')
+                ? `<table><thead><tr>${cfg.cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${
+                    d.items.map(x=>`<tr>${cfg.row(x)}</tr>`).join('')
                   }</tbody></table>`
                 : '<div class="hist-empty">재고가 있는 대상 상품이 없습니다.</div>';
             document.getElementById('promoBack').classList.add('show');
+            if(d.rebuilt) toast('원본 서식을 읽을 수 없어 값만 옮긴 파일로 처리했습니다. (열 너비·색 등 원본 서식은 유지되지 않음)');
         }
         function closePromo(){ document.getElementById('promoBack').classList.remove('show'); }
         function downloadPromo(){
@@ -688,7 +704,7 @@
     <div class="promo-back" id="promoBack" onclick="if(event.target.id==='promoBack')closePromo()">
         <div class="promo-modal">
             <div class="hist-head">
-                <h3>프로모션 대상조회 결과</h3>
+                <h3 id="promoTitle">프로모션 대상조회 결과</h3>
                 <button onclick="closePromo()">✕</button>
             </div>
             <div class="promo-stats">
