@@ -434,10 +434,14 @@ async function locationCandidatesByBarcode(barcodes) {
 // 재고정리 조회 — 완료 원장(done) + 남은상품(pending, 계산: 원본 − 출고 − 재고원장)
 router.get('/api/inbound/stock-arranges', async (req, res) => {
   try {
-    const items = await fetchAllItems();
-    const shipping = await pageAll('rk_cn_shipping', 'shipment_item_id, ship_qty');
-    const arr = await pageAll('rk_cn_stock_arranges',
-      '*, rk_cn_shipments(shipment_code), rk_cn_shipment_items(box_name, order_number, product_name)');
+    // 남은 수량 계산에는 id·quantity 만 있으면 된다 → 전 코드를 가볍게 읽고(2열),
+    // 남은 수량이 있는 아이템만 본문(상품명·바코드·출고코드)을 다시 읽는다. 결과는 전체를 읽던 때와 같다.
+    const [light, shipping, arr] = await Promise.all([
+      pageAll('rk_cn_shipment_items', 'id, quantity'),
+      pageAll('rk_cn_shipping', 'shipment_item_id, ship_qty'),
+      pageAll('rk_cn_stock_arranges',
+        '*, rk_cn_shipments(shipment_code), rk_cn_shipment_items(box_name, order_number, product_name)'),
+    ]);
 
     const shipByItem = new Map();
     for (const a of (shipping || [])) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
@@ -445,10 +449,19 @@ router.get('/api/inbound/stock-arranges', async (req, res) => {
     for (const a of (arr || [])) arrByItem.set(a.shipment_item_id, (arrByItem.get(a.shipment_item_id) || 0) + (a.qty || 0));
 
     // 남은상품(대기) = 원본 − 출고 − 재고원장
+    const remainingById = new Map();
+    for (const it of light) {
+      const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(it.id) || 0) - (arrByItem.get(it.id) || 0);
+      if (remaining > 0) remainingById.set(it.id, remaining);
+    }
+    const items = (await S.chunked([...remainingById.keys()], 200, (part) =>
+      pageAll('rk_cn_shipment_items', '*, rk_cn_shipments(shipment_code, status)', q => q.in('id', part))))
+      .sort((a, b) => a.id - b.id);   // 이전과 같은 id 순
+
     const pending = [];
     const barcodes = new Set();
     for (const it of items) {
-      const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(it.id) || 0) - (arrByItem.get(it.id) || 0);
+      const remaining = remainingById.get(it.id);
       if (remaining > 0) {
         pending.push({
           itemId: it.id,
