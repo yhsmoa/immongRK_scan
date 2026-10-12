@@ -7,10 +7,12 @@
  *
  *   GET  /labelSettings          → 라벨 서비스의 양식 편집기로 이동 (헤더 메뉴 · 홈 카드)
  *   GET  /api/label/config       → { url, source, userId }  라벨 서비스 주소 + 이 앱의 사업자 계정
- *   POST /api/label/items        → { barcodes } → { items:[{ data, qty }], missing:[barcode] }
+ *   POST /api/label/items        → { barcodes } → { items:[{ data, qty }], missing:[barcode] }      상품 라벨 (상품관리 · 발주서 관리)
+ *   POST /api/label/order-boxes  → { orderNumbers } → { items:[{ data, qty }], noBox, notFound }   박스 라벨 (쉽먼트)
  *
  * env: LABEL_SERVICE_URL (필수), LABEL_ACCOUNT_USERNAME (si_users.username, 기본 immong)
- * 필드 이름은 label-service 의 lib/labelTypes.ts SOURCE_PRODUCT_FIELDS.rocket 과 맞춰야 한다.
+ * 필드 이름은 label-service 의 lib/labelTypes.ts 와 맞춰야 한다 — 상품은 SOURCE_PRODUCT_FIELDS.rocket,
+ * 박스 라벨은 ORDER_FIELDS(po_*) · BOX_FIELDS(bx_*).
  */
 const express = require('express');
 const S = require('./rkShared');
@@ -113,6 +115,86 @@ router.post('/api/label/items', async (req, res) => {
   } catch (e) {
     console.error('[rk] label/items:', e);
     res.status(500).json({ error: '라벨 데이터 조회 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// ── 발주서 박스 라벨 데이터 (쉽먼트 /shipment 의 [라벨출력]) ──
+//   출고스캔이 저장한 박스(rk_ship_boxes)마다 라벨 1장. 상품이 담기지 않은 빈 박스는 쉽먼트·CJ 운송장과 같은 기준으로 뺀다.
+//   bx_order_box 는 CJ 운송장 접수 엑셀의 발주번호 열("144287071 - 1")과 같은 형식 — 운송장과 박스 라벨을 맞춰 볼 수 있게.
+//   라벨 서비스로는 labelType:'box' 로 보낸다 (성인/키즈 구분 없음).
+router.post('/api/label/order-boxes', async (req, res) => {
+  try {
+    const orderNumbers = [...new Set((Array.isArray(req.body.orderNumbers) ? req.body.orderNumbers : [])
+      .map((v) => String(v == null ? '' : v).trim()).filter(Boolean))];
+    if (!orderNumbers.length) return res.status(400).json({ error: '발주번호가 없습니다.' });
+
+    // 1000행씩 나눠 읽으므로 id 순 정렬 (정렬 없는 range 는 행이 빠지거나 겹칠 수 있다)
+    const [headers, boxes, boxItems] = await Promise.all([
+      S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_orders')
+        .select('order_number, logistics_center, arrival_date, order_qty').in('order_number', nos).order('id', { ascending: true }))),
+      S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
+        .select('id, order_number, box_no, box_size').in('order_number', nos).order('id', { ascending: true }))),
+      S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
+        .select('box_id, order_number, barcode, qty').in('order_number', nos).order('id', { ascending: true }))),
+    ]);
+
+    const headerByNo = new Map();
+    for (const h of headers) { const k = String(h.order_number); if (!headerByNo.has(k)) headerByNo.set(k, h); }
+    // 박스별 상품 합계 — box_id → { qty, barcodes }
+    const sumByBox = new Map();
+    for (const it of boxItems) {
+      const q = parseInt(it.qty, 10) || 0;
+      if (q <= 0) continue;
+      const s = sumByBox.get(it.box_id) || { qty: 0, barcodes: new Set() };
+      s.qty += q;
+      if (it.barcode) s.barcodes.add(it.barcode);
+      sumByBox.set(it.box_id, s);
+    }
+    const boxesByOrder = new Map();
+    for (const b of boxes) {
+      const k = String(b.order_number);
+      if (!boxesByOrder.has(k)) boxesByOrder.set(k, []);
+      boxesByOrder.get(k).push(b);
+    }
+
+    const items = [];
+    const noBox = [];      // 발주서는 있는데 상품이 담긴 박스가 없음 (출고스캔 전)
+    const notFound = [];   // rk_orders 에 없는 발주번호
+    let orderCount = 0;
+    for (const no of orderNumbers) {
+      const h = headerByNo.get(no);
+      if (!h) { notFound.push(no); continue; }
+      const list = (boxesByOrder.get(no) || [])
+        .filter((b) => sumByBox.has(b.id))
+        .sort((a, b) => ((parseInt(a.box_no, 10) || 0) - (parseInt(b.box_no, 10) || 0)) || (a.id - b.id));
+      if (!list.length) { noBox.push(no); continue; }
+      orderCount++;
+      const scanQty = list.reduce((s, b) => s + sumByBox.get(b.id).qty, 0);
+      list.forEach((b, i) => {
+        const sum = sumByBox.get(b.id);
+        items.push({
+          qty: 1,
+          data: {
+            po_order_number: no,
+            po_center: S.str(h.logistics_center),
+            po_arrival_date: S.dateToYmd(h.arrival_date),
+            po_order_qty: h.order_qty == null ? '' : h.order_qty,
+            po_scan_qty: scanQty,
+            po_box_count: list.length,
+            bx_order_box: `${no} - ${b.box_no}`,
+            bx_no: String(b.box_no),
+            bx_size: S.str(b.box_size),
+            bx_seq: `${i + 1}/${list.length}`,
+            bx_qty: sum.qty,
+            bx_item_count: sum.barcodes.size,
+          },
+        });
+      });
+    }
+    res.json({ items, orderCount, noBox, notFound });
+  } catch (e) {
+    console.error('[rk] label/order-boxes:', e);
+    res.status(500).json({ error: '박스 라벨 데이터 조회 중 오류가 발생했습니다: ' + e.message });
   }
 });
 

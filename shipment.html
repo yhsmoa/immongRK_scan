@@ -6,1658 +6,586 @@
     <title>쿠팡 로켓 쉽먼트</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f5f5f5;
-            font-size: 10pt;
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --primary:#4f46e5; --primary-dark:#4338ca; --blue:#2563eb; --hover:#f8fafc;
         }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .content {
-            background-color: #fff;
-            padding: 15px 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .checked-row {
-            background-color: #e3f2fd !important;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 0;
-        }
-        th, td {
-            padding: 6px 8px;
-            text-align: center;
-            font-size: 10pt;
-            white-space: nowrap;
-        }
-        th {
-            color: #555;
-            font-weight: 600;
-            font-size: 9pt;
-            letter-spacing: 0.3px;
-            position: sticky;
-            top: 0;
-            z-index: 1;
-            border-bottom: 2px solid #333;
-            background-color: #f0f1f3;
-        }
-        td {
-            border-bottom: 1px solid #eee;
-            color: #333;
-        }
-        tbody tr:hover {
-            background-color: #f5f7fa;
-        }
-        .order-row {
-            background-color: #f8f9fa;
-        }
-        .order-row:hover {
-            background-color: #e9ecef !important;
-        }
-        .order-number-cell {
-            cursor: pointer;
-            user-select: none;
-        }
-        .order-details {
-            display: none;
-            background-color: #fff;
-        }
-        .order-details.show {
-            display: table-row;
-        }
-        .order-details table {
-            width: 100%;
-            margin: 0;
-            border-collapse: collapse;
-            background-color: #f1f3f5;
-        }
-        .order-details th {
-            background-color: #e9ecef;
-            padding: 6px 8px;
-            white-space: nowrap;
-            position: static;
-        }
-        .order-details td {
-            padding: 6px 8px;
-            border-bottom: 1px solid #dee2e6;
-            white-space: nowrap;
-        }
-        .export-btn {
-            padding: 10px 20px;
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .export-btn:hover {
-            background-color: #0b7dda;
-        }
-        .table-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
-        }
-        .button-group {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        .search-container {
-            display: flex;
-            gap: 5px;
-            align-items: center;
-        }
-        .search-input {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            width: 375px;
-        }
-        .search-btn {
-            padding: 8px 16px;
-            background-color: #FF9800;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        .search-btn:hover {
-            background-color: #F57C00;
-        }
-        .page-title {
-            font-size: 24px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            color: #333;
-        }
-        .scan-count-edit {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .scan-count-input {
-            width: 60px;
-            padding: 4px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            text-align: center;
-        }
-        
-        .save-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 24px;
-            height: 24px;
-            padding: 0;
-            border: none;
-            border-radius: 4px;
-            background-color: #4CAF50;
-            color: white;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        .save-btn:hover {
-            background-color: #45a049;
-        }
-        
-        .save-btn svg {
-            width: 16px;
-            height: 16px;
-        }
-        .button-container {
-            margin-top: 20px;
-            text-align: right;
-        }
-        
-        .export-btn {
-            padding: 8px 16px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color 0.2s;
-        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 18px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
+        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
+        .subtitle b{color:var(--primary);font-weight:600;}
+        .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .btn{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;font-family:inherit;}
+        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
+        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
+        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+        .btn:disabled{opacity:.5;cursor:default;}
+        .sep{width:1px;height:22px;background:#e2e8f0;margin:0 2px;}
 
-        .export-btn:hover {
-            background-color: #45a049;
-        }
-        
-        /* 체크박스 스타일 */
-        .order-checkbox {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            vertical-align: middle;
-        }
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;transition:border-color .12s,box-shadow .12s;}
+        .search input::placeholder{color:var(--muted);}
+        .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
 
-        /* 체크박스 컨테이너 정렬 */
-        th:first-child, td:first-child {
-            text-align: center;
-            vertical-align: middle;
-        }
+        .table-scroll{overflow:auto;max-height:calc(100vh - 250px);}
+        table.main{width:100%;border-collapse:collapse;min-width:860px;table-layout:fixed;}
+        table.main thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:10px 10px;border:1px solid #dfe3ea;white-space:nowrap;}
+        table.main thead th.ctr{text-align:center;}
+        table.main tbody td{padding:9px 10px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12.5px;white-space:nowrap;vertical-align:middle;}
+        td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        tr.order-row{cursor:pointer;}
+        tr.order-row:hover td{background:var(--hover);}
+        tr.order-row.checked td{background:#eef2ff;}
+        td.order-no{font-weight:600;color:#1e293b;}
+        .order-toggle{display:inline-flex;align-items:center;gap:6px;cursor:pointer;user-select:none;}
+        .order-toggle:hover{color:var(--primary);}
+        .caret{display:inline-block;color:#94a3b8;transition:transform .15s;font-size:10px;}
+        tr.order-row.open .caret{transform:rotate(90deg);color:var(--primary);}
+        .size-chips{display:flex;flex-wrap:wrap;gap:4px;}
+        .chip{display:inline-flex;align-items:center;gap:3px;background:#eef1f6;color:#475569;border-radius:6px;padding:2px 7px;font-size:11.5px;font-weight:600;}
+        .chip b{color:#1e293b;}
+        th.chk,td.chk{width:44px;text-align:center;padding-left:0 !important;padding-right:0 !important;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
 
-        /* 모달 스타일 */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-        }
+        /* 상세 (박스별 상품) */
+        tr.detail-row{display:none;}
+        tr.detail-row.show{display:table-row;}
+        tr.detail-row > td{background:#f8fafc;padding:10px 14px 14px 56px !important;}
+        .dtable{width:100%;border-collapse:collapse;table-layout:auto;background:#fff;border:1px solid #e8ebf1;border-radius:10px;overflow:hidden;}
+        .dtable th{background:#f8fafc;color:#94a3b8;font-size:11.5px;font-weight:600;padding:8px 10px;border-bottom:1px solid #e8ebf1;text-align:left;white-space:nowrap;}
+        .dtable th.ctr,.dtable td.ctr{text-align:center;}
+        .dtable td{padding:8px 10px;border-bottom:1px solid #f1f5f9;font-size:12.5px;color:#374151;font-variant-numeric:tabular-nums;}
+        .dtable td.pname{white-space:normal;min-width:260px;}
+        .dtable tr.box-end td{border-bottom:1px solid #cbd5e1;}
+        .dtable tr:last-child td{border-bottom:none;}
+        .box-emoji{font-weight:600;color:#1e293b;white-space:nowrap;}
+        .box-emoji .sz{color:#64748b;font-weight:500;margin-left:3px;}
+        .scan-badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:19px;padding:0 6px;border-radius:999px;font-size:12px;font-weight:600;background:#eef2ff;color:var(--primary);}
+        .state-row td{text-align:center;padding:48px 12px !important;color:var(--muted);}
+        .dash{color:#cbd5e1;}
+        .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
+        .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
 
-        .modal-content {
-            background-color: #fefefe;
-            margin: 5% auto;
-            padding: 20px;
-            border: 1px solid #888;
-            width: 80%;
-            max-width: 800px;
-            max-height: 80vh;
-            overflow-y: auto;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
+        /* 요약 — 오른쪽 슬라이드 패널 */
+        .side-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10001;}
+        .side-back.show{opacity:1;pointer-events:auto;}
+        .side-panel{position:fixed;top:0;right:0;height:100vh;width:760px;max-width:94vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10002;display:flex;flex-direction:column;}
+        .side-panel.show{transform:translateX(0);}
+        .side-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;font-size:15px;font-weight:600;color:var(--ink);}
+        .side-head .sub{font-size:12px;font-weight:500;color:#94a3b8;margin-left:8px;}
+        .side-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .side-body{overflow-y:auto;padding:12px 18px 18px;flex:1;min-height:0;}
+        .stable{width:100%;border-collapse:collapse;font-size:12.5px;}
+        .stable th{position:sticky;top:-12px;background:#f1f3f6;color:#8b94a3;font-size:12px;font-weight:600;padding:8px 10px;border:1px solid #dfe3ea;text-align:center;white-space:nowrap;}
+        .stable td{padding:8px 10px;border:1px solid #e8ebf1;text-align:center;font-variant-numeric:tabular-nums;vertical-align:middle;}
+        .stable td.l{text-align:left;}
+        .stable td.date{font-weight:700;color:#1e293b;white-space:nowrap;}
+        .stable td.total{font-weight:700;color:var(--primary);background:#f5f7ff;}
+        .stable tr.warn td{background:#fef2f2;}
+        .stable tr.warn td.total{background:#fee2e2;color:#dc2626;}
+        .legend{font-size:12px;color:#94a3b8;margin:0 0 10px;}
+        .legend .w{display:inline-block;width:10px;height:10px;border-radius:3px;background:#fee2e2;border:1px solid #fecaca;vertical-align:-1px;margin-right:4px;}
 
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-        }
+        /* 송장번호 입력 모달 */
+        .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10000;}
+        .modal-back.show{display:flex;}
+        .modal{background:#fff;border-radius:14px;width:680px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #eef2f7;}
+        .modal-head h3{margin:0;font-size:16px;color:var(--ink);}
+        .modal-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .modal-body{overflow-y:auto;padding:16px 20px;flex:1;min-height:0;}
+        .modal-foot{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid #eef2f7;}
+        .drop{border:2px dashed #dbe1ea;border-radius:12px;padding:20px;text-align:center;background:#f8fafc;cursor:pointer;transition:border-color .12s,background .12s;margin-bottom:16px;}
+        .drop:hover,.drop.over{border-color:#a5b4fc;background:#f5f7ff;}
+        .drop .t{font-weight:600;color:#1e293b;font-size:14px;}
+        .drop .s{font-size:12px;color:#94a3b8;margin-top:4px;}
+        .inv-order{border:1px solid #eceef3;border-radius:12px;padding:12px 14px 6px;margin-bottom:12px;}
+        .inv-order h4{margin:0 0 10px;font-size:13.5px;color:#1f2937;padding-left:9px;border-left:3px solid #6366f1;}
+        .inv-order h4 span{color:#94a3b8;font-weight:500;margin-left:6px;}
+        .inv-box{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+        .inv-box label{flex:none;width:110px;font-weight:600;color:#1e293b;font-size:13px;}
+        .inv-box label .sz{color:#64748b;font-weight:500;}
+        .inv-box input{flex:1;height:38px;padding:0 12px;border:1px solid #e2e8f0;border-radius:9px;font-size:13.5px;outline:none;font-family:inherit;}
+        .inv-box input:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
+        .inv-box input.error{border-color:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.15);}
 
-        .close:hover {
-            color: black;
-        }
+        /* 라벨출력 — label-service 임베드 (박스 라벨: 발주번호-박스번호 · 박스 크기) */
+        .label-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10000;}
+        .label-back.show{display:flex;}
+        .label-modal{background:#fff;border-radius:14px;width:560px;max-width:94vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .label-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #eef2f7;}
+        .label-head h3{margin:0;font-size:16px;color:var(--ink);}
+        .label-head .sub{font-size:12.5px;color:#94a3b8;font-weight:500;margin-left:8px;}
+        .label-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .label-modal iframe{display:block;width:100%;height:480px;min-height:300px;flex:1 1 auto;border:0;background:#fff;}
+        .label-status{padding:8px 18px;font-size:13px;color:#15803d;border-top:1px solid #eef2f7;}
+        .label-status:empty{display:none;}
 
-        .order-section {
-            margin-bottom: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10010;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 
-        .order-section h3 {
-            margin: 0 0 15px 0;
-            color: #333;
-            font-size: 18px;
-        }
-
-        .boxes-container {
-            margin-top: 15px;
-            margin-bottom: 20px;
-        }
-
-        /* 박스 정보 스타일 추가 */
-        .box-info {
-            margin-bottom: 10px;
-            padding: 10px;
-            border: 1px solid #e0e0e0;
-            border-radius: 5px;
-            display: flex;
-            align-items: center;
-            background-color: #f9f9f9;
-        }
-        
-        .box-info label {
-            min-width: 120px;
-            font-weight: bold;
-            margin-right: 10px;
-        }
-        
-        .invoice-input {
-            flex: 1;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-
-        .invoice-input:focus {
-            outline: none;
-            border-color: #4CAF50;
-            box-shadow: 0 0 5px rgba(76, 175, 80, 0.2);
-        }
-
-        .invoice-input.error {
-            border-color: #dc3545;
-            border-width: 2px;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .modal-header h2 {
-            margin: 0;
-            font-size: 20px;
-        }
-
-        .modal-footer {
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 1px solid #ddd;
-            text-align: right;
-        }
-
-        .save-invoice-btn {
-            padding: 8px 20px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .save-invoice-btn:hover {
-            background-color: #45a049;
-        }
-
-        /* 엑셀 업로드 영역 스타일 */
-        .excel-upload-area {
-            margin: 15px 0 20px 0;
-            padding: 30px;
-            border: 2px dashed #ddd;
-            border-radius: 8px;
-            text-align: center;
-            background-color: #f9f9f9;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .excel-upload-area:hover {
-            border-color: #4CAF50;
-            background-color: #f0f8f0;
-        }
-
-        .excel-upload-area.dragover {
-            border-color: #4CAF50;
-            background-color: #e8f5e9;
-        }
-
-        .excel-upload-area p {
-            margin: 5px 0;
-            color: #666;
-        }
-
-        .excel-upload-area p:first-child {
-            font-weight: bold;
-            color: #333;
-            font-size: 16px;
-        }
-
-        #excelFileInput {
-            display: none;
-        }
-
-        .summary-board {
-            background-color: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 15px 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .summary-board h2 {
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 18px;
-            color: #333;
-        }
-
-        .summary-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-
-        .summary-table th, .summary-table td {
-            padding: 8px 12px;
-            border: 1px solid #dee2e6;
-            text-align: left;
-            vertical-align: middle;
-        }
-
-        .summary-table th {
-            background-color: #f2f2f2;
-            font-weight: bold;
-        }
-
-        .summary-table tr:hover {
-            background-color: #f5f5f5;
-        }
-
-        .summary-date-column {
-            font-weight: bold;
-            min-width: 100px;
-        }
-
-        .summary-center-column {
-            min-width: 80px;
-        }
-
-        .summary-box-count {
-            text-align: center;
-            font-weight: bold;
-        }
-
-        .box-size-column {
-            min-width: 200px;
-        }
-
-        /* 9박스 이상일 때 붉은색 행 */
-        .warning-row {
-            background-color: #ffebee !important; /* 연한 빨간색 */
-        }
-
-        .warning-row:hover {
-            background-color: #ffcdd2 !important; /* 호버 시 약간 더 진한 빨간색 */
-        }
-
-        .warning-row .summary-box-count {
-            color: #d32f2f;
-        }
-
-        .box-detail-row {
-            background-color: #f9f9f9;
-        }
-
-        .box-detail-cell {
-            padding-left: 20px !important;
-        }
-
-        .box-details-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .box-details-list li {
-            margin-bottom: 5px;
-            padding: 4px 0;
-        }
-
-        .box-details-list li:last-child {
-            margin-bottom: 0;
-        }
-
-        .summary-total-box-count {
-            text-align: center;
-            font-weight: bold;
-            background-color: #f0f8ff; /* 연한 하늘색 배경 */
-        }
-        
-        .warning-row .summary-total-box-count {
-            background-color: #ffcdd2; /* 경고 시 더 뚜렷한 배경색 */
-            color: #d32f2f;
-        }
-
-        /* 페이지 헤더 스타일 */
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .page-header h1 {
-            margin: 0;
-        }
-
-        .summary-btn {
-            padding: 10px 20px;
-            background-color: #2196F3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s;
-        }
-
-        .summary-btn:hover {
-            background-color: #0b7dda;
-        }
-
-        /* 슬라이드 모달 오버레이 */
-        .slide-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: transparent;
-            z-index: 999;
-            display: none;
-            cursor: pointer;
-        }
-
-        .slide-overlay.active {
-            display: block;
-        }
-
-        /* 슬라이드 패널 */
-        .slide-panel {
-            position: fixed;
-            top: 0;
-            right: -50%;
-            width: 50%;
-            height: 100%;
-            background: white;
-            box-shadow: -2px 0 10px rgba(0,0,0,0.3);
-            z-index: 1000;
-            overflow-y: auto;
-            transition: right 0.3s ease;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-
-        .slide-panel.active {
-            right: 0;
-        }
-
-        @media (max-width: 768px) {
-            .slide-panel {
-                right: -100%;
-                width: 100%;
-            }
-        }
-
-        .slide-panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #ddd;
-        }
-
-        .slide-panel-header h2 {
-            margin: 0;
-            font-size: 22px;
-            color: #333;
-        }
-
-        .close-slide-btn {
-            background: none;
-            border: none;
-            font-size: 30px;
-            color: #999;
-            cursor: pointer;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-            line-height: 30px;
-            text-align: center;
-        }
-
-        .close-slide-btn:hover {
-            color: #333;
-        }
-
-        /* summary-board 숨김 */
-        .summary-board {
-            display: none;
+        @media (max-width:760px){
+            .search{width:100%;}
+            tr.detail-row > td{padding-left:14px !important;}
         }
     </style>
 </head>
 <body>
     <div id="header-container"></div>
-    <div class="container">
-        <div class="page-header">
-            <h1>쉽먼트 관리</h1>
-            <button class="summary-btn" onclick="openSummaryPanel()">요약</button>
-        </div>
 
-        <!-- 요약 보드 (숨김 처리 - 슬라이드 패널로 이동) -->
-        <div id="summary-board" class="summary-board">
-            <table class="summary-table" id="summary-table">
-                <thead>
-                    <tr>
-                        <th>날짜</th>
-                        <th>물류센터</th>
-                        <th>총 박스수량</th>
-                        <th>발주번호</th>
-                        <th>박스수량</th>
-                        <th>박스 사이즈</th>
-                    </tr>
-                </thead>
-                <tbody id="summary-table-body">
-                    <!-- 여기에 동적으로 데이터가 추가됩니다 -->
-                </tbody>
-            </table>
-        </div>
-
-        <div class="content">
-            <div class="table-header">
-                <div class="button-group">
-                    <div class="search-container">
-                        <input type="text" class="search-input" id="searchInput" placeholder="날짜 또는 물류센터 검색">
-                        <button class="search-btn" onclick="searchOrders()">조회</button>
-                    </div>
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">쉽먼트 관리</h1>
+                    <span class="subtitle">발주서 <b id="cntOrders">0</b>건 · 박스 <b id="cntBoxes">0</b>개 · 스캔 <b id="cntQty">0</b>개</span>
                 </div>
-                <div class="button-group">
-                    <button class="export-btn" onclick="expandAllOrders()">발주서 펼쳐보기</button>
-                    <button class="export-btn" onclick="exportCJExcel()">CJ 엑셀</button>
-                    <button class="export-btn" onclick="exportSelectedOrders()">쉽먼트 저장</button>
+                <div class="actions">
+                    <button class="btn" onclick="openSummary()">요약</button>
+                    <button class="btn" id="expandBtn" onclick="toggleExpandAll()">발주서 펼쳐보기</button>
+                    <span class="sep"></span>
+                    <button class="btn" id="labelPrintBtn" onclick="openLabelPrint()">라벨출력</button>
+                    <button class="btn" onclick="exportCJExcel()">CJ 엑셀</button>
+                    <button class="btn primary" onclick="exportSelectedOrders()">쉽먼트 저장</button>
                 </div>
             </div>
-            <table id="orderTable">
-                <thead>
-                    <tr>
-                        <th style="width: 40px;">
-                            <input type="checkbox" class="order-checkbox" id="selectAll" onclick="toggleSelectAll(this)">
-                        </th>
-                        <th>발주번호</th>
-                        <th>물류센터</th>
-                        <th>품목개수</th>
-                        <th>스캔수량</th>
-                        <th>박스수</th>
-                        <th>입고예정일</th>
-                    </tr>
-                </thead>
-                <tbody id="orderBody"></tbody>
-            </table>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="입고예정일 · 물류센터 · 발주번호 검색 후 Enter (콤마로 여러 개)" onkeydown="if(event.key==='Enter')applySearch()">
+            </div>
+
+            <div class="table-scroll">
+                <table class="main">
+                    <colgroup>
+                        <col style="width:44px"><col style="width:150px"><col style="width:120px"><col style="width:90px"><col style="width:90px"><col style="width:80px"><col><col style="width:120px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
+                            <th>발주번호</th><th>물류센터</th><th class="ctr">품목개수</th><th class="ctr">스캔수량</th><th class="ctr">박스수</th><th>박스 사이즈</th><th class="ctr">입고예정일</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="8">데이터를 불러오는 중…</td></tr></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
-    <!-- Modal -->
-    <div id="invoiceModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>송장번호 입력</h2>
-                <span class="close" onclick="closeInvoiceModal()">&times;</span>
-            </div>
+    <!-- 요약 패널 -->
+    <div class="side-back" id="sideBack" onclick="closeSummary()"></div>
+    <div class="side-panel" id="sidePanel">
+        <div class="side-head">
+            <span>스캔 결과 요약<span class="sub" id="sumSub"></span></span>
+            <button onclick="closeSummary()">✕</button>
+        </div>
+        <div class="side-body">
+            <p class="legend"><span class="w"></span>같은 날짜·물류센터 박스가 9개 이상</p>
+            <div id="sumBody"></div>
+        </div>
+    </div>
 
-            <!-- 엑셀 업로드 영역 -->
-            <div class="excel-upload-area" id="excelUploadArea">
-                <p>📁 엑셀 파일 업로드</p>
-                <p>클릭하여 파일 선택 또는 드래그 앤 드롭</p>
+    <!-- 송장번호 입력 모달 -->
+    <div class="modal-back" id="invBack" onclick="if(event.target.id==='invBack')closeInvoiceModal()">
+        <div class="modal">
+            <div class="modal-head">
+                <h3>송장번호 입력</h3>
+                <button onclick="closeInvoiceModal()">✕</button>
             </div>
-            <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleExcelFile(event)">
-
-            <div id="invoiceSection"></div>
-            <div class="modal-footer">
-                <button class="save-invoice-btn" onclick="saveInvoiceNumbers()">저장</button>
+            <div class="modal-body">
+                <div class="drop" id="invDrop">
+                    <div class="t">📁 CJ 운송장 엑셀 업로드</div>
+                    <div class="s">클릭해서 파일 선택 또는 끌어다 놓기 — H열 운송장번호 · U열 받는분(물류센터) · Z열 "발주번호 - 박스"로 자동 입력</div>
+                </div>
+                <input type="file" id="invFile" accept=".xlsx,.xls" style="display:none">
+                <div id="invSection"></div>
+            </div>
+            <div class="modal-foot">
+                <button class="btn" onclick="closeInvoiceModal()">취소</button>
+                <button class="btn primary" onclick="saveInvoiceNumbers()">저장 후 쉽먼트 저장</button>
             </div>
         </div>
     </div>
+
+    <!-- 라벨출력 — 선택한 발주서의 출고 박스마다 박스 라벨 1장 (label-service 임베드 → QZ Tray) -->
+    <div class="label-back" id="labelBack" onclick="if(event.target.id==='labelBack')closeLabelPrint()">
+        <div class="label-modal">
+            <div class="label-head">
+                <h3>박스 라벨출력<span class="sub" id="labelPrintSub"></span></h3>
+                <button onclick="closeLabelPrint()">✕</button>
+            </div>
+            <!-- allow: 임베드(다른 origin)가 이 PC 의 QZ Tray(wss://localhost)에 붙으려면 크롬 로컬 네트워크 접근(LNA) 권한을
+                 부모 페이지가 위임해야 한다. src 를 넣기 전부터 이 속성이 있어야 한다 (iframe 이동 시 적용). -->
+            <iframe id="labelPrintFrame" title="박스 라벨 출력"
+                    allow="loopback-network; local-network; local-network-access"></iframe>
+            <div class="label-status" id="labelPrintStatus"></div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
 
     <script>
-        // 헤더 로드
-        fetch('/header')
-            .then(response => response.text())
-            .then(html => {
-                document.getElementById('header-container').innerHTML = html;
-            });
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
 
-        // 페이지 로드 시 쉽먼트 목록 가져오기
-        document.addEventListener('DOMContentLoaded', loadOrders);
+        // 데이터: /api/shipment/orders — 출고스캔(rk_ship_boxes / rk_ship_box_items) 저장분이 있는 진행중 발주서
+        //   상품정보[] = 박스별 상품행 { 상품번호, 상품바코드, 상품이름, 발주수량, 확정수량, 스캔수량, 박스정보: `${박스번호}-${크기}` }
+        let allOrders=[], viewOrders=[];
+        const selected=new Set();   // 체크된 발주번호
+        const opened=new Set();     // 펼친 발주번호
+        let invoiceNumbers={};      // { 발주번호: { 박스번호: 송장번호 } } — 모달에서 저장, 쉽먼트 저장 후 초기화
 
-        async function loadOrders() {
-            try {
-                // 출고스캔(shipScan) 저장 데이터 기반 목록
-                const response = await fetch('/api/shipment/orders');
-                if (!response.ok) {
-                    throw new Error('발주서 목록을 불러오는데 실패했습니다.');
-                }
-                const orders = await response.json();
-                console.log('Loaded orders:', orders);  // 데이터 로깅 추가
-                
-                // 모든 발주서를 표시하고 상품 레벨에서만 필터링
-                displayOrders(orders);
-            } catch (error) {
-                console.error('Error:', error);
-                // 오류 발생 시 빈 테이블만 표시
-                document.getElementById('orderBody').innerHTML = '';
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const num=v=>Number(v)||0;
+        // 박스정보 "12-대2" → { no:'12', size:'대2' } (크기에 '-'가 있어도 첫 '-' 기준으로 나눈다)
+        function parseBox(info){
+            const s=String(info||''); const i=s.indexOf('-');
+            return i<0 ? {no:s, size:''} : {no:s.slice(0,i), size:s.slice(i+1)};
+        }
+        const boxNoCmp=(a,b)=>(parseInt(a,10)||0)-(parseInt(b,10)||0) || String(a).localeCompare(String(b));
+
+        // 발주서 하나를 화면용으로 정리: 스캔된 상품, 박스 목록(번호순)
+        function shapeOrder(o){
+            const items=(o.상품정보||[]).filter(p=>num(p.스캔수량)>0 && p.박스정보 && p.박스정보!=='-')
+                .map(p=>({...p, box:parseBox(p.박스정보)}))
+                .sort((a,b)=>boxNoCmp(a.box.no,b.box.no) || String(a.상품바코드).localeCompare(String(b.상품바코드)));
+            const boxMap=new Map();
+            for(const p of items) if(!boxMap.has(p.box.no)) boxMap.set(p.box.no,p.box.size);
+            const boxes=[...boxMap.entries()].map(([no,size])=>({no,size})).sort((a,b)=>boxNoCmp(a.no,b.no));
+            return {...o, items, boxes, skuCount:new Set(items.map(p=>p.상품바코드)).size, scanQty:items.reduce((s,p)=>s+num(p.스캔수량),0)};
+        }
+
+        async function fetchOrders(){
+            const res=await fetch('/api/shipment/orders');
+            const data=await res.json();
+            if(!res.ok) throw new Error(data.error||'목록 조회 실패');
+            return data.map(shapeOrder).filter(o=>o.items.length);
+        }
+        async function loadOrders(){
+            try{
+                allOrders=await fetchOrders();
+                const live=new Set(allOrders.map(o=>o.발주번호));
+                for(const k of [...selected]) if(!live.has(k)) selected.delete(k);
+                applySearch(true);
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
-        // 발주서 목록 표시
-        function displayOrders(orders) {
-            const tbody = document.getElementById('orderBody');
-            tbody.innerHTML = '';
+        // ── 검색: 입고예정일 · 물류센터 · 발주번호 (콤마 = OR). 검색하면 걸린 발주서를 펼친다 ──
+        function applySearch(keepOpen){
+            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+            viewOrders=terms.length
+                ? allOrders.filter(o=>{ const hay=[o.입고예정일,o.물류센터,o.발주번호].map(v=>String(v||'').toLowerCase()); return terms.some(t=>hay.some(h=>h.includes(t))); })
+                : allOrders.slice();
+            if(terms.length && keepOpen!==true){ opened.clear(); viewOrders.forEach(o=>opened.add(o.발주번호)); }
+            render();
+        }
 
-            orders.forEach(order => {
-                // 스캔된 상품만 필터링
-                const scannedProducts = order.상품정보.filter(product => 
-                    product.스캔수량 > 0
-                );
-                
-                // 스캔된 상품이 없으면 표시하지 않음
-                if (scannedProducts.length === 0) return;
-
-                // 박스별로 그룹화된 상품 수 계산
-                const boxNumbers = new Set();
-                
-                scannedProducts.forEach(product => {
-                    if (product.박스정보 && product.박스정보 !== '-') {
-                        // 박스 정보에서 BOX1-대1과 같은 형식에서 BOX1만 추출
-                        const boxNumber = product.박스정보.split('-')[0];
-                        boxNumbers.add(boxNumber);
-                    }
-                });
-
-                // 메인 행
-                const mainRow = document.createElement('tr');
-                mainRow.className = 'order-row';
-                mainRow.onclick = (e) => {
-                    // 체크박스와 발주번호 클릭은 이벤트 버블링 방지
-                    if (!e.target.closest('.order-checkbox') && !e.target.closest('.order-number-cell')) {
-                        toggleRowCheckbox(order.발주번호);
-                    }
-                };
-
-                // 박스정보가 있는 상품들의 스캔수량 합계 계산
-                const totalScanCount = scannedProducts.reduce((sum, product) => sum + (product.스캔수량 || 0), 0);
-
-                mainRow.innerHTML = `
-                    <td>
-                        <input type="checkbox" class="order-checkbox" value="${order.발주번호}"
-                               onclick="event.stopPropagation()">
-                    </td>
-                    <td><span class="order-number-cell" onclick="toggleOrderDetails('${order.발주번호}'); event.stopPropagation();">${order.발주번호}</span></td>
-                    <td>${order.물류센터}</td>
-                    <td>${scannedProducts.length}</td>
-                    <td>${totalScanCount}</td>
-                    <td>${boxNumbers.size}</td>
-                    <td>${order.입고예정일}</td>
-                `;
-
-                // 상세 정보 행
-                const detailsRow = document.createElement('tr');
-                detailsRow.className = 'order-details';
-                detailsRow.id = `details-${order.발주번호}`;
-
-                // 박스 정보로 정렬
-                const sortedProducts = [...scannedProducts].sort((a, b) => {
-                    return (a.박스정보 || '').localeCompare(b.박스정보 || '');
-                });
-                
-                detailsRow.innerHTML = `
-                    <td colspan="7">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>상품번호</th>
-                                    <th>상품바코드</th>
-                                    <th>상품명</th>
-                                    <th>발주수량</th>
-                                    <th>확정수량</th>
-                                    <th>스캔수량</th>
-                                    <th>박스</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${sortedProducts.map(product => `
-                                    <tr>
-                                        <td>${product.상품번호 || '-'}</td>
-                                        <td>${product.상품바코드 || '-'}</td>
-                                        <td>${product.상품이름 || '-'}</td>
-                                        <td>${product.발주수량 || 0}</td>
-                                        <td>${product.확정수량 || 0}</td>
-                                        <td>${product.스캔수량 || 0}</td>
-                                        <td>${product.박스정보}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </td>
-                `;
-
-                tbody.appendChild(mainRow);
-                tbody.appendChild(detailsRow);
-            });
-
-            // 데이터가 없는 경우 메시지 표시
-            if (tbody.children.length === 0) {
-                const emptyRow = document.createElement('tr');
-                emptyRow.innerHTML = `<td colspan="6" style="text-align: center; padding: 30px;">스캔된 발주서가 없습니다.</td>`;
-                tbody.appendChild(emptyRow);
+        function render(){
+            const tb=document.getElementById('tbody');
+            document.getElementById('cntOrders').textContent=viewOrders.length.toLocaleString();
+            document.getElementById('cntBoxes').textContent=viewOrders.reduce((s,o)=>s+o.boxes.length,0).toLocaleString();
+            document.getElementById('cntQty').textContent=viewOrders.reduce((s,o)=>s+o.scanQty,0).toLocaleString();
+            if(!viewOrders.length){
+                tb.innerHTML=`<tr class="state-row"><td colspan="8">${allOrders.length?'검색 결과가 없습니다.':'스캔된 발주서가 없습니다.'}</td></tr>`;
+                syncCheckAll(); updateExpandBtn(); return;
             }
+            tb.innerHTML=viewOrders.map(o=>{
+                const on=esc(o.발주번호), isOpen=opened.has(o.발주번호), isSel=selected.has(o.발주번호);
+                const chips=o.boxes.map(b=>`<span class="chip"><b>${esc(b.no)}</b>${esc(b.size)}</span>`).join('');
+                const rows=o.items.map((p,i)=>{
+                    const boxEnd=i<o.items.length-1 && o.items[i+1].box.no!==p.box.no;
+                    return `<tr class="${boxEnd?'box-end':''}">
+                        <td class="box-emoji">📦 ${esc(p.box.no)}<span class="sz">${esc(p.box.size)}</span></td>
+                        <td>${esc(p.상품번호)||'<span class="dash">-</span>'}</td><td>${esc(p.상품바코드)}</td>
+                        <td class="pname">${esc(p.상품이름)||'<span class="dash">-</span>'}</td>
+                        <td class="ctr">${esc(num(p.발주수량))}</td><td class="ctr">${esc(num(p.확정수량))}</td>
+                        <td class="ctr"><span class="scan-badge">${esc(num(p.스캔수량))}</span></td>
+                    </tr>`;
+                }).join('');
+                return `<tr class="order-row ${isOpen?'open':''} ${isSel?'checked':''}" data-on="${on}" onclick="onRowClick(event,this)">
+                        <td class="chk"><input type="checkbox" class="rowchk" ${isSel?'checked':''} onclick="event.stopPropagation();toggleOne(this)"></td>
+                        <td class="order-no"><span class="order-toggle" onclick="event.stopPropagation();toggleDetail(this.closest('tr'))"><span class="caret">▶</span>${on}</span></td>
+                        <td>${esc(o.물류센터)}</td>
+                        <td class="ctr">${o.skuCount}</td><td class="ctr">${o.scanQty.toLocaleString()}</td><td class="ctr">${o.boxes.length}</td>
+                        <td><div class="size-chips">${chips}</div></td>
+                        <td class="ctr">${esc(o.입고예정일)}</td>
+                    </tr>
+                    <tr class="detail-row ${isOpen?'show':''}"><td colspan="8">
+                        <table class="dtable"><thead><tr><th>박스</th><th>상품번호</th><th>상품바코드</th><th>상품명</th><th class="ctr">발주수량</th><th class="ctr">확정수량</th><th class="ctr">스캔수량</th></tr></thead>
+                        <tbody>${rows}</tbody></table>
+                    </td></tr>`;
+            }).join('');
+            syncCheckAll(); updateExpandBtn();
         }
 
-        function toggleOrderDetails(orderNumber) {
-            const detailsRow = document.getElementById(`details-${orderNumber}`);
-            detailsRow.classList.toggle('show');
+        // ── 선택 / 펼치기 ──
+        function onRowClick(e,tr){ const cb=tr.querySelector('.rowchk'); cb.checked=!cb.checked; toggleOne(cb); }
+        function toggleOne(cb){
+            const tr=cb.closest('tr'), on=tr.dataset.on;
+            if(cb.checked) selected.add(on); else selected.delete(on);
+            tr.classList.toggle('checked',cb.checked);
+            syncCheckAll();
         }
+        function toggleAll(box){
+            // 화면에 보이는(검색된) 발주서만 선택/해제
+            viewOrders.forEach(o=>{ if(box.checked) selected.add(o.발주번호); else selected.delete(o.발주번호); });
+            render();
+        }
+        function syncCheckAll(){
+            const all=document.getElementById('checkAll');
+            all.checked=viewOrders.length>0 && viewOrders.every(o=>selected.has(o.발주번호));
+        }
+        function toggleDetail(tr){
+            const on=tr.dataset.on, d=tr.nextElementSibling;
+            const open=!opened.has(on);
+            if(open) opened.add(on); else opened.delete(on);
+            tr.classList.toggle('open',open); d.classList.toggle('show',open);
+            updateExpandBtn();
+        }
+        function toggleExpandAll(){
+            const allOpen=viewOrders.length && viewOrders.every(o=>opened.has(o.발주번호));
+            viewOrders.forEach(o=>{ if(allOpen) opened.delete(o.발주번호); else opened.add(o.발주번호); });
+            render();
+        }
+        function updateExpandBtn(){
+            const allOpen=viewOrders.length && viewOrders.every(o=>opened.has(o.발주번호));
+            document.getElementById('expandBtn').textContent=allOpen?'발주서 접기':'발주서 펼쳐보기';
+        }
+        const selectedOrders=()=>allOrders.filter(o=>selected.has(o.발주번호)).map(o=>o.발주번호);
 
-        // 행 클릭 시 체크박스 토글
-        function toggleRowCheckbox(orderNumber) {
-            const checkbox = document.querySelector(`.order-checkbox[value="${orderNumber}"]`);
-            if (checkbox) {
-                checkbox.checked = !checkbox.checked;
+        // ── 요약: 입고예정일 → 물류센터 → 발주서별 박스 (같은 날짜·센터 9박스 이상 경고) ──
+        const fmtSize=s=>({'대1':'대','중1':'중','소1':'소','극소1':'극소'}[s]||s);
+        function openSummary(){
+            const byDate=new Map();
+            for(const o of allOrders){
+                if(!o.boxes.length) continue;
+                const d=o.입고예정일||'-', c=o.물류센터||'-';
+                if(!byDate.has(d)) byDate.set(d,new Map());
+                const byCenter=byDate.get(d);
+                if(!byCenter.has(c)) byCenter.set(c,[]);
+                byCenter.get(c).push(o);
             }
-        }
-
-        // 스캔수량 수정 이벤트 처리
-        document.addEventListener('DOMContentLoaded', () => {
-            // 스캔수량 셀 클릭 이벤트 처리
-            document.addEventListener('click', (e) => {
-                const cell = e.target.closest('.scan-count-cell');
-                if (cell && !e.target.closest('.scan-count-edit')) {
-                    const display = cell.querySelector('.scan-count-display');
-                    const edit = cell.querySelector('.scan-count-edit');
-                    display.style.display = 'none';
-                    edit.style.display = 'flex';
-                    edit.querySelector('input').focus();
-                }
-            });
-
-            // 저장 버튼 클릭 이벤트 처리
-            document.addEventListener('click', async (e) => {
-                if (e.target.closest('.save-btn')) {
-                    const saveBtn = e.target.closest('.save-btn');
-                    const editDiv = saveBtn.closest('.scan-count-edit');
-                    const cell = editDiv.closest('.scan-count-cell');
-                    const orderNumber = cell.getAttribute('data-order-number');
-                    const barcode = cell.getAttribute('data-barcode');
-                    const boxInfo = cell.getAttribute('data-box-info');
-                    const inputElement = editDiv.querySelector('input');
-                    const newScanCount = parseInt(inputElement.value) || 0;
-
-                    try {
-                        const response = await fetch('/api/scan/update', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                orderNumber,
-                                barcode,
-                                boxInfo,
-                                scanCount: newScanCount
-                            })
-                        });
-
-                        if (!response.ok) {
-                            throw new Error('스캔수량 업데이트에 실패했습니다.');
-                        }
-
-                        const result = await response.json();
-                        
-                        // 삭제된 경우 테이블에서 행 제거
-                        if (result.deleted) {
-                            const row = cell.closest('tr');
-                            row.remove();
-                            
-                            // 상위 행의 총 스캔수량 및 상품 개수 업데이트
-                            const mainRow = cell.closest('.order-details').previousElementSibling;
-                            if (mainRow) {
-                                const orderDetails = document.getElementById(`details-${orderNumber}`);
-                                const remainingProducts = orderDetails.querySelectorAll('tbody tr').length;
-                                
-                                if (remainingProducts === 0) {
-                                    // 상품이 모두 삭제된 경우 발주서 목록에서도 제거
-                                    mainRow.remove();
-                                    orderDetails.remove();
-                                } else {
-                                    // 남은 상품이 있는 경우 합계 업데이트
-                                    const totalScanCount = Array.from(orderDetails.querySelectorAll('.scan-count-cell'))
-                                        .reduce((sum, cell) => sum + parseInt(cell.getAttribute('data-scan-count') || 0), 0);
-                                    
-                                    mainRow.cells[3].textContent = remainingProducts;
-                                    mainRow.cells[4].textContent = totalScanCount;
-                                }
-                            }
-                        } else {
-                            // 성공적으로 업데이트된 경우 해당 셀만 업데이트
-                            const display = cell.querySelector('.scan-count-display');
-                            display.textContent = newScanCount;
-                            cell.setAttribute('data-scan-count', newScanCount);
-                            
-                            // 수정 모드 종료
-                            editDiv.style.display = 'none';
-                            display.style.display = 'inline';
-                            
-                            // 상위 행의 총 스캔수량 업데이트
-                            const mainRow = cell.closest('tr').parentElement.parentElement.parentElement.previousElementSibling;
-                            if (mainRow) {
-                                const totalScanCount = Array.from(mainRow.parentElement.querySelectorAll('.scan-count-cell'))
-                                    .reduce((sum, cell) => sum + parseInt(cell.getAttribute('data-scan-count') || 0), 0);
-                                mainRow.cells[4].textContent = totalScanCount;
-                            }
-                        }
-                    } catch (error) {
-                        alert(error.message);
-                    }
-                }
-            });
-        });
-
-        // 전체 선택/해제 토글
-        function toggleSelectAll(checkbox) {
-            const checkboxes = document.querySelectorAll('.order-checkbox');
-            checkboxes.forEach(item => {
-                item.checked = checkbox.checked;
-            });
-        }
-
-        // 송장번호 데이터를 저장할 객체
-        let invoiceNumbers = {};
-
-        // 모달 열기
-        async function openInvoiceModal() {
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
-                .map(checkbox => checkbox.value);
-
-            if (selectedOrders.length === 0) {
-                alert('송장번호를 입력할 주문을 선택해주세요.');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/shipment/orders');
-                if (!response.ok) {
-                    throw new Error('주문 정보를 가져오는데 실패했습니다.');
-                }
-
-                const orders = await response.json();
-                const selectedOrdersData = orders.filter(order => selectedOrders.includes(order.발주번호));
-
-                const modal = document.getElementById('invoiceModal');
-                const invoiceSection = document.getElementById('invoiceSection');
-                invoiceSection.innerHTML = '';
-
-                selectedOrdersData.forEach(order => {
-                    const orderSection = document.createElement('div');
-                    orderSection.className = 'order-section';
-                    
-                    const orderTitle = document.createElement('h3');
-                    orderTitle.textContent = `주문번호: ${order.발주번호} (${order.물류센터})`;
-                    orderSection.appendChild(orderTitle);
-
-                    const boxesContainer = document.createElement('div');
-                    boxesContainer.className = 'boxes-container';
-
-                    // 박스 정보가 있는 상품들만 필터링
-                    const boxedProducts = order.상품정보.filter(product => 
-                        product.박스정보 && product.박스정보 !== '-' && product.스캔수량 > 0
-                    );
-
-                    // 고유한 박스 번호 추출
-                    const uniqueBoxes = [...new Set(boxedProducts.map(product => {
-                        const boxInfo = product.박스정보.split('-')[0];  // BOX1-대1 에서 BOX1만 추출
-                        return boxInfo;
-                    }))];
-
-                    uniqueBoxes.forEach(boxNumber => {
-                        const boxInfo = document.createElement('div');
-                        boxInfo.className = 'box-info';
-
-                        // 해당 박스번호를 가진 상품 중 첫 번째 상품에서 박스 사이즈 추출
-                        const productWithBox = boxedProducts.find(product => 
-                            product.박스정보.startsWith(boxNumber + '-')
-                        );
-                        
-                        // 박스 사이즈 추출 (BOX1-대1 형식에서 대1 부분)
-                        const boxSize = productWithBox ? productWithBox.박스정보.split('-')[1] : '';
-                        
-                        const label = document.createElement('label');
-                        label.textContent = `${boxNumber} (${boxSize})`;
-
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.className = 'invoice-input';
-                        input.placeholder = '송장번호 입력';
-                        input.dataset.orderNumber = order.발주번호;
-                        input.dataset.boxNumber = boxNumber;
-
-                        // 이전에 입력된 송장번호가 있다면 표시
-                        if (invoiceNumbers[order.발주번호] && invoiceNumbers[order.발주번호][boxNumber]) {
-                            input.value = invoiceNumbers[order.발주번호][boxNumber];
-                        }
-
-                        boxInfo.appendChild(label);
-                        boxInfo.appendChild(input);
-                        boxesContainer.appendChild(boxInfo);
+            let html='', totalBoxes=0;
+            for(const d of [...byDate.keys()].sort()){
+                const byCenter=byDate.get(d);
+                const centers=[...byCenter.keys()].sort((a,b)=>a.localeCompare(b,'ko'));
+                const dateSpan=centers.reduce((s,c)=>s+byCenter.get(c).length,0);
+                centers.forEach((c,ci)=>{
+                    const orders=byCenter.get(c).slice().sort((a,b)=>String(a.발주번호).localeCompare(String(b.발주번호)));
+                    const groupBoxes=orders.reduce((s,o)=>s+o.boxes.length,0);
+                    totalBoxes+=groupBoxes;
+                    const warn=groupBoxes>=9;
+                    orders.forEach((o,oi)=>{
+                        html+=`<tr class="${warn?'warn':''}">`
+                            +(ci===0&&oi===0?`<td class="date" rowspan="${dateSpan}">${esc(d)}</td>`:'')
+                            +(oi===0?`<td rowspan="${orders.length}">${esc(c)}</td><td class="total" rowspan="${orders.length}">${groupBoxes}</td>`:'')
+                            +`<td>${esc(o.발주번호)}</td><td>${o.boxes.length}</td>`
+                            +`<td class="l">${o.boxes.map(b=>`${esc(b.no)}: ${esc(fmtSize(b.size))}`).join(', ')}</td></tr>`;
                     });
-
-                    orderSection.appendChild(boxesContainer);
-                    invoiceSection.appendChild(orderSection);
                 });
-
-                modal.style.display = 'block';
-
-                // 엑셀 업로드 영역 이벤트 설정
-                initializeExcelUploadEvents();
-            } catch (error) {
-                console.error('Error:', error);
-                alert('주문 정보를 가져오는데 실패했습니다.');
             }
+            document.getElementById('sumSub').textContent=allOrders.length?`발주서 ${allOrders.length}건 · 박스 ${totalBoxes}개`:'';
+            document.getElementById('sumBody').innerHTML=html
+                ? `<table class="stable"><thead><tr><th>입고예정일</th><th>물류센터</th><th>총 박스</th><th>발주번호</th><th>박스</th><th>박스 사이즈</th></tr></thead><tbody>${html}</tbody></table>`
+                : '<p class="legend" style="text-align:center;padding:30px 0;">스캔된 데이터가 없습니다.</p>';
+            document.getElementById('sideBack').classList.add('show');
+            document.getElementById('sidePanel').classList.add('show');
+        }
+        function closeSummary(){
+            document.getElementById('sideBack').classList.remove('show');
+            document.getElementById('sidePanel').classList.remove('show');
         }
 
-        // 송장번호 저장 함수
-        function saveInvoiceNumbers() {
-            const inputs = document.querySelectorAll('.invoice-input');
-            const emptyInputs = [];
-
-            // 먼저 모든 에러 스타일 제거
-            inputs.forEach(input => {
-                input.classList.remove('error');
-            });
-
-            // 빈 입력 체크
-            inputs.forEach(input => {
-                const value = input.value.trim();
-                if (!value) {
-                    input.classList.add('error');
-                    emptyInputs.push(input);
-                }
-            });
-
-            // 빈 입력이 있으면 경고 및 중단
-            if (emptyInputs.length > 0) {
-                alert('송장번호를 모두 입력해주세요.');
-                return;
-            }
-
-            // 모든 입력이 완료되면 저장
-            invoiceNumbers = {};
-            inputs.forEach(input => {
-                const orderNumber = input.dataset.orderNumber;
-                const boxNumber = input.dataset.boxNumber;
-                const value = input.value.trim();
-
-                if (!invoiceNumbers[orderNumber]) {
-                    invoiceNumbers[orderNumber] = {};
-                }
-                invoiceNumbers[orderNumber][boxNumber] = value;
-            });
-
+        // ── 송장번호 모달 ──
+        let invOrders=[];   // 모달에 띄운 발주서 (최신 데이터)
+        async function openInvoiceModal(){
+            const sel=selectedOrders();
+            if(!sel.length){ toast('송장번호를 입력할 발주서를 선택해주세요.'); return; }
+            try{
+                // 스캔이 그사이 바뀌었을 수 있어 최신 목록으로 다시 그린다
+                allOrders=await fetchOrders();
+                applySearch(true);
+                invOrders=allOrders.filter(o=>sel.includes(o.발주번호));
+            }catch(e){ toast('발주서 정보를 가져오지 못했습니다: '+e.message); return; }
+            if(!invOrders.length){ toast('선택한 발주서에 스캔된 박스가 없습니다.'); return; }
+            document.getElementById('invSection').innerHTML=invOrders.map(o=>`
+                <div class="inv-order">
+                    <h4>${esc(o.발주번호)}<span>${esc(o.물류센터)} · ${esc(o.입고예정일)}</span></h4>
+                    ${o.boxes.map(b=>`<div class="inv-box">
+                        <label>📦 ${esc(b.no)} <span class="sz">${esc(b.size)}</span></label>
+                        <input type="text" placeholder="송장번호 입력" data-order="${esc(o.발주번호)}" data-box="${esc(b.no)}" data-center="${esc(o.물류센터)}"
+                            value="${esc((invoiceNumbers[o.발주번호]||{})[b.no]||'')}" oninput="if(this.value.trim())this.classList.remove('error')">
+                    </div>`).join('')}
+                </div>`).join('');
+            document.getElementById('invBack').classList.add('show');
+        }
+        function closeInvoiceModal(){ document.getElementById('invBack').classList.remove('show'); }
+        function saveInvoiceNumbers(){
+            const inputs=[...document.querySelectorAll('#invSection input')];
+            let empty=0;
+            inputs.forEach(i=>{ const bad=!i.value.trim(); i.classList.toggle('error',bad); if(bad) empty++; });
+            if(empty){ toast(`송장번호를 모두 입력해주세요. (빈 칸 ${empty}개)`); return; }
+            invoiceNumbers={};
+            inputs.forEach(i=>{ (invoiceNumbers[i.dataset.order] ||= {})[i.dataset.box]=i.value.trim(); });
             closeInvoiceModal();
             exportSelectedOrders();
         }
 
-        // 송장번호 입력 시 에러 스타일 제거
-        document.addEventListener('input', (e) => {
-            if (e.target.classList.contains('invoice-input')) {
-                if (e.target.value.trim()) {
-                    e.target.classList.remove('error');
-                }
-            }
-        });
-
-        // 모달 닫기 함수 수정
-        function closeInvoiceModal() {
-            const modal = document.getElementById('invoiceModal');
-            modal.style.display = 'none';
-        }
-
-        // 모달 외부 클릭 시 닫기
-        window.onclick = function(event) {
-            const modal = document.getElementById('invoiceModal');
-            if (event.target === modal) {
-                closeInvoiceModal();
-            }
-        }
-
-        // 선택된 발주서 내보내기 함수 수정
-        async function exportSelectedOrders() {
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
-                .map(checkbox => checkbox.value);
-
-            if (selectedOrders.length === 0) {
-                alert('내보낼 발주서를 선택해주세요.');
-                return;
-            }
-
-            // 송장번호가 입력되지 않은 경우 모달 표시
-            if (!Object.keys(invoiceNumbers).length) {
-                openInvoiceModal();
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/shipment/export', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ 
-                        orderNumbers: selectedOrders,
-                        invoiceNumbers: invoiceNumbers
-                    })
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    const contentDisposition = response.headers.get('Content-Disposition');
-                    const filenameMatch = contentDisposition && contentDisposition.match(/filename=(.+)$/);
-                    a.download = filenameMatch ? decodeURIComponent(filenameMatch[1]) : 'shipment.xlsx';
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    
-                    // 송장번호 데이터 초기화
-                    invoiceNumbers = {};
-                } else {
-                    throw new Error('데이터 내보내기에 실패했습니다.');
-                }
-            } catch (error) {
-                alert(error.message);
-            }
-        }
-
-        // 요약 보드 업데이트 함수
-        function updateSummaryBoard() {
-            // 현재 테이블에 표시된 발주 데이터 수집
-            const orderRows = document.querySelectorAll('.order-row');
-            const summary = {};
-            const groupedBoxesByDate = {};
-            
-            // 발주번호별로 박스 정보 수집
-            orderRows.forEach(row => {
-                const orderNumber = row.cells[1].textContent; // 발주번호
-                const date = row.cells[6].textContent; // 입고예정일
-                const center = row.cells[2].textContent; // 물류센터
-                const boxCount = parseInt(row.cells[5].textContent) || 0; // 박스수
-                
-                if (!date || !center) return;
-                
-                // 날짜/센터별 총합 계산을 위한 데이터 구조
-                if (!groupedBoxesByDate[date]) {
-                    groupedBoxesByDate[date] = {};
-                }
-                
-                if (!groupedBoxesByDate[date][center]) {
-                    groupedBoxesByDate[date][center] = 0;
-                }
-                
-                groupedBoxesByDate[date][center] += boxCount;
-                
-                // 발주번호별 상세 정보를 위한 데이터 구조
-                if (!summary[date]) {
-                    summary[date] = {};
-                }
-                
-                if (!summary[date][center]) {
-                    summary[date][center] = [];
-                }
-                
-                const orderInfo = {
-                    orderNumber: orderNumber,
-                    boxCount: boxCount,
-                    boxDetails: []
-                };
-                
-                // 발주서 상세정보에서 박스 정보 수집
-                const detailsRow = document.getElementById(`details-${orderNumber}`);
-                if (detailsRow) {
-                    const productRows = detailsRow.querySelectorAll('table tbody tr');
-                    
-                    const boxInfoMap = new Map(); // 중복 박스 정보 방지를 위한 맵
-                    
-                    productRows.forEach(productRow => {
-                        const boxInfo = productRow.querySelector('td:nth-child(7)') ? 
-                                        productRow.querySelector('td:nth-child(7)').textContent : '-';
-                        
-                        if (boxInfo && boxInfo !== '-') {
-                            const parts = boxInfo.split('-');
-                            const boxNumber = parts[0]; // BOX1, BOX2 등
-                            const boxSize = parts.length > 1 ? parts[1] : '미지정'; // 대, 중, 소, 극소 등
-                            
-                            // 이미 추가된 박스번호가 아니면 추가
-                            if (!boxInfoMap.has(boxNumber)) {
-                                boxInfoMap.set(boxNumber, true);
-                                orderInfo.boxDetails.push({
-                                    boxNumber: boxNumber,
-                                    boxSize: boxSize
-                                });
-                            }
-                        }
-                    });
-                }
-                
-                // 박스 상세정보가 있는 경우만 추가
-                if (orderInfo.boxCount > 0) {
-                    summary[date][center].push(orderInfo);
-                }
-            });
-            
-            // HTML 생성
-            const summaryTableBody = document.getElementById('summary-table-body');
-            summaryTableBody.innerHTML = '';
-            
-            // 날짜 기준으로 정렬
-            Object.keys(summary).sort().forEach(date => {
-                const centers = Object.keys(summary[date]).sort();
-                
-                centers.forEach((center, centerIndex) => {
-                    const orders = summary[date][center];
-                    if (orders.length === 0) return;
-                    
-                    // 날짜/센터 동일 그룹의 총 박스 수량
-                    const totalBoxesInGroup = groupedBoxesByDate[date][center];
-                    const isWarning = totalBoxesInGroup >= 9; // 9박스 이상이면 경고표시
-                    
-                    // 발주서별로 행 생성
-                    orders.forEach((order, orderIndex) => {
-                        const row = document.createElement('tr');
-                        
-                        // 경고 표시가 필요한 경우 클래스 추가
-                        if (isWarning) {
-                            row.className = 'warning-row';
-                        }
-                        
-                        // 날짜는 첫 번째 행에만 표시 (센터/총수량별 병합)
-                        if (centerIndex === 0 && orderIndex === 0) {
-                            const dateCell = document.createElement('td');
-                            dateCell.className = 'summary-date-column';
-                            dateCell.rowSpan = centers.reduce((total, c) => total + summary[date][c].length, 0);
-                            dateCell.textContent = date;
-                            row.appendChild(dateCell);
-                        }
-                        
-                        // 센터이름은 센터의 첫 번째 발주서 행에만 표시
-                        if (orderIndex === 0) {
-                            const centerCell = document.createElement('td');
-                            centerCell.className = 'summary-center-column';
-                            centerCell.rowSpan = orders.length;
-                            centerCell.textContent = center;
-                            row.appendChild(centerCell);
-                            
-                            // 센터별 총 박스수량도 첫 번째 행에만 표시
-                            const totalBoxesCell = document.createElement('td');
-                            totalBoxesCell.className = 'summary-total-box-count';
-                            totalBoxesCell.rowSpan = orders.length;
-                            totalBoxesCell.textContent = totalBoxesInGroup;
-                            row.appendChild(totalBoxesCell);
-                        }
-                        
-                        // 발주번호 셀
-                        const orderNumberCell = document.createElement('td');
-                        orderNumberCell.textContent = order.orderNumber;
-                        row.appendChild(orderNumberCell);
-                        
-                        // 개별 발주서의 박스 수량 셀
-                        const boxCountCell = document.createElement('td');
-                        boxCountCell.className = 'summary-box-count';
-                        boxCountCell.textContent = order.boxCount;
-                        row.appendChild(boxCountCell);
-                        
-                        // 박스 사이즈 정보 셀
-                        const boxSizesCell = document.createElement('td');
-                        boxSizesCell.className = 'box-size-column';
-                        
-                        if (order.boxDetails.length > 0) {
-                            // 박스 번호 순으로 정렬
-                            order.boxDetails.sort((a, b) => {
-                                const aNum = parseInt(a.boxNumber.replace(/[^0-9]/g, '')) || 0;
-                                const bNum = parseInt(b.boxNumber.replace(/[^0-9]/g, '')) || 0;
-                                return aNum - bNum;
-                            });
-                            
-                            const boxSizeTexts = order.boxDetails.map(box => {
-                                const formattedSize = box.boxSize === '대1' ? '대' : 
-                                                     box.boxSize === '중1' ? '중' : 
-                                                     box.boxSize === '소1' ? '소' : 
-                                                     box.boxSize === '극소1' ? '극소' : box.boxSize;
-                                return `${box.boxNumber}: ${formattedSize}`;
-                            });
-                            
-                            boxSizesCell.textContent = boxSizeTexts.join(', ');
-                        } else {
-                            boxSizesCell.textContent = '정보 없음';
-                        }
-                        
-                        row.appendChild(boxSizesCell);
-                        summaryTableBody.appendChild(row);
-                    });
-                });
-            });
-            
-            // 요약 테이블이 비어 있으면 메시지 표시
-            if (summaryTableBody.children.length === 0) {
-                const emptyRow = document.createElement('tr');
-                const emptyCell = document.createElement('td');
-                emptyCell.colSpan = 6;  // 열 수에 맞게 조정
-                emptyCell.style.textAlign = 'center';
-                emptyCell.textContent = '스캔된 데이터가 없습니다.';
-                emptyRow.appendChild(emptyCell);
-                summaryTableBody.appendChild(emptyRow);
-            }
-        }
-
-        // 페이지 로드 시 발주 목록을 가져온 후 요약 보드 업데이트
-        document.addEventListener('DOMContentLoaded', async () => {
-            await loadOrders();
-            updateSummaryBoard();
-        });
-
-        // 스캔수량이 변경될 때마다 요약 보드 업데이트
-        const originalUpdateScannedQuantity = updateScannedQuantity;
-        updateScannedQuantity = async function(orderNumber, barcode, boxInfo, input) {
-            await originalUpdateScannedQuantity(orderNumber, barcode, boxInfo, input);
-            updateSummaryBoard();
-        };
-
-        // 발주서 펼쳐보기 함수 추가
-        function expandAllOrders() {
-            const detailsRows = document.querySelectorAll('.order-details');
-            detailsRows.forEach(row => {
-                row.classList.add('show');
-            });
-        }
-
-        // 검색 기능 구현
-        function searchOrders() {
-            const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
-            const rows = document.querySelectorAll('.order-row');
-            
-            rows.forEach(row => {
-                const date = row.cells[6].textContent; // 입고예정일
-                const center = row.cells[2].textContent.toLowerCase(); // 물류센터
-                
-                if (date.includes(searchTerm) || center.includes(searchTerm)) {
-                    row.style.display = '';
-                    // 검색된 발주서의 상세 정보도 표시
-                    const orderNumber = row.cells[1].textContent;
-                    const detailsRow = document.getElementById(`details-${orderNumber}`);
-                    if (detailsRow) {
-                        detailsRow.classList.add('show');
+        // CJ 운송장 결과 엑셀 → 송장번호 자동 입력
+        //   H열(7)=운송장번호, U열(20)=받는분(물류센터), Z열(25)="발주번호 - 박스번호" (CJ 엑셀의 발주번호 열과 같은 형식)
+        function readInvoiceFile(file){
+            if(!file) return;
+            if(!/\.xlsx?$/i.test(file.name)){ toast('엑셀 파일만 업로드 가능합니다.'); return; }
+            const reader=new FileReader();
+            reader.onload=e=>{
+                try{
+                    const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+                    const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1});
+                    const map=new Map();   // 발주번호|박스|물류센터 → [송장번호]
+                    for(let i=1;i<rows.length;i++){
+                        const r=rows[i]||[]; const inv=r[7], center=r[20], ob=r[25];
+                        if(!inv||!center||!ob) continue;
+                        const parts=String(ob).split(' - ');
+                        if(parts.length!==2) continue;
+                        const key=`${parts[0].trim()}|${parts[1].trim()}|${String(center).trim()}`;
+                        if(!map.has(key)) map.set(key,[]);
+                        map.get(key).push(String(inv).trim());
                     }
-                } else {
-                    row.style.display = 'none';
-                    // 검색되지 않은 발주서의 상세 정보는 숨김
-                    const orderNumber = row.cells[1].textContent;
-                    const detailsRow = document.getElementById(`details-${orderNumber}`);
-                    if (detailsRow) {
-                        detailsRow.classList.remove('show');
-                    }
-                }
-            });
-        }
-
-        // 엔터키로도 검색 가능하도록 구현
-        document.getElementById('searchInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                searchOrders();
-            }
-        });
-
-        // CJ 엑셀 다운로드 함수
-        async function exportCJExcel() {
-            const selectedOrders = Array.from(document.querySelectorAll('.order-checkbox:checked:not(#selectAll)'))
-                .map(checkbox => checkbox.value);
-
-            if (selectedOrders.length === 0) {
-                alert('다운로드할 발주서를 선택해주세요.');
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/shipment/export-cj', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        orderNumbers: selectedOrders
-                    })
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    const contentDisposition = response.headers.get('Content-Disposition');
-                    const filenameMatch = contentDisposition && contentDisposition.match(/filename=(.+)$/);
-                    a.download = filenameMatch ? decodeURIComponent(filenameMatch[1]) : 'CJ_shipment.xlsx';
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                } else {
-                    throw new Error('CJ 엑셀 다운로드에 실패했습니다.');
-                }
-            } catch (error) {
-                alert(error.message);
-            }
-        }
-
-        // 엑셀 파일 업로드 처리 함수
-        function handleExcelFile(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-
-                    // 첫 번째 시트 선택
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
-
-                    // 엑셀 데이터를 JSON으로 변환
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-                    // 엑셀 데이터 파싱 및 송장번호 자동 입력
-                    processExcelData(jsonData);
-
-                } catch (error) {
-                    console.error('엑셀 파일 처리 오류:', error);
-                    alert('엑셀 파일 처리 중 오류가 발생했습니다.');
-                }
+                    let matched=0;
+                    document.querySelectorAll('#invSection input').forEach(i=>{
+                        const list=map.get(`${i.dataset.order}|${i.dataset.box}|${i.dataset.center}`);
+                        if(list){ i.value=list.join(', '); i.classList.remove('error'); matched++; }
+                    });
+                    const total=document.querySelectorAll('#invSection input').length;
+                    toast(`송장번호 자동 입력: ${matched} / ${total}박스`);
+                }catch(err){ console.error(err); toast('엑셀 파일 처리 중 오류가 발생했습니다.'); }
             };
-
             reader.readAsArrayBuffer(file);
-
-            // 파일 처리 후 input 초기화
-            event.target.value = '';
         }
-
-        // 엑셀 데이터 처리 및 송장번호 자동 입력
-        function processExcelData(jsonData) {
-            let matchedCount = 0;
-            let totalRows = jsonData.length;
-            const invoiceMap = new Map(); // 발주번호-박스번호를 키로, 송장번호 리스트를 값으로 저장
-
-            console.log('엑셀 데이터 행 수:', totalRows);
-
-            // 1단계: 엑셀 데이터에서 송장번호 수집
-            for (let i = 1; i < jsonData.length; i++) {
-                const row = jsonData[i];
-
-                // H열: 운송장번호 (인덱스 7)
-                // U열: 받는분 (물류센터) (인덱스 20)
-                // Z열: 발주번호 - 박스번호 (인덱스 25)
-                const invoiceNumber = row[7]; // H열
-                const center = row[20]; // U열
-                const orderBoxInfo = row[25]; // Z열
-
-                if (!invoiceNumber || !center || !orderBoxInfo) {
-                    continue;
-                }
-
-                // Z열 데이터 파싱: "120800199 - BOX1" -> ["120800199", "BOX1"]
-                const parts = orderBoxInfo.split(' - ');
-                if (parts.length !== 2) {
-                    continue;
-                }
-
-                const orderNumber = parts[0].trim();
-                const boxNumber = parts[1].trim();
-                const key = `${orderNumber}|${boxNumber}|${center}`;
-
-                console.log(`엑셀 행 ${i + 1}: 발주번호=${orderNumber}, 박스=${boxNumber}, 물류센터=${center}, 송장=${invoiceNumber}`);
-
-                // 동일한 발주번호-박스번호-물류센터 조합의 송장번호 수집
-                if (!invoiceMap.has(key)) {
-                    invoiceMap.set(key, []);
-                }
-                invoiceMap.get(key).push(invoiceNumber);
-            }
-
-            // 2단계: 수집된 송장번호를 입력 폼에 매칭
-            const inputs = document.querySelectorAll('.invoice-input');
-            inputs.forEach(input => {
-                const inputOrderNumber = input.dataset.orderNumber;
-                const inputBoxNumber = input.dataset.boxNumber;
-
-                // 해당 발주서의 물류센터 정보 확인
-                const orderSection = input.closest('.order-section');
-                const orderTitle = orderSection.querySelector('h3').textContent;
-
-                // "주문번호: 120800199 (물류센터명)" 형식에서 물류센터명 추출
-                const centerMatch = orderTitle.match(/\(([^)]+)\)/);
-                const orderCenter = centerMatch ? centerMatch[1] : '';
-
-                const key = `${inputOrderNumber}|${inputBoxNumber}|${orderCenter}`;
-
-                if (invoiceMap.has(key)) {
-                    const invoiceNumbers = invoiceMap.get(key);
-                    // 여러 송장번호가 있으면 쉼표로 구분하여 입력
-                    input.value = invoiceNumbers.join(', ');
-                    matchedCount += invoiceNumbers.length;
-                    console.log(`✓ 매칭 성공: ${inputOrderNumber} - ${inputBoxNumber} (${orderCenter}) -> ${invoiceNumbers.join(', ')}`);
-                }
-            });
-
-            console.log(`엑셀 데이터 처리 완료: 총 ${matchedCount}개 송장번호가 자동 입력되었습니다.`);
-        }
-
-        // 엑셀 업로드 영역 이벤트 초기화 함수
-        function initializeExcelUploadEvents() {
-            const uploadArea = document.getElementById('excelUploadArea');
-            const fileInput = document.getElementById('excelFileInput');
-
-            if (!uploadArea || !fileInput) {
-                console.error('엑셀 업로드 요소를 찾을 수 없습니다.');
-                return;
-            }
-
-            // 기존 이벤트 리스너 제거 (중복 방지)
-            const newUploadArea = uploadArea.cloneNode(true);
-            uploadArea.parentNode.replaceChild(newUploadArea, uploadArea);
-
-            const newFileInput = fileInput.cloneNode(true);
-            fileInput.parentNode.replaceChild(newFileInput, fileInput);
-
-            // 클릭 이벤트
-            newUploadArea.addEventListener('click', () => {
-                newFileInput.click();
-            });
-
-            // 파일 선택 이벤트
-            newFileInput.addEventListener('change', handleExcelFile);
-
-            // 드래그 오버 이벤트
-            newUploadArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                newUploadArea.classList.add('dragover');
-            });
-
-            // 드래그 떠남 이벤트
-            newUploadArea.addEventListener('dragleave', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                newUploadArea.classList.remove('dragover');
-            });
-
-            // 드롭 이벤트
-            newUploadArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                newUploadArea.classList.remove('dragover');
-
-                const files = e.dataTransfer.files;
-                if (files.length > 0) {
-                    const file = files[0];
-
-                    // 엑셀 파일만 허용
-                    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                        // 파일 읽기 및 처리
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            try {
-                                const data = new Uint8Array(e.target.result);
-                                const workbook = XLSX.read(data, { type: 'array' });
-
-                                // 첫 번째 시트 선택
-                                const firstSheetName = workbook.SheetNames[0];
-                                const worksheet = workbook.Sheets[firstSheetName];
-
-                                // 엑셀 데이터를 JSON으로 변환
-                                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-                                // 엑셀 데이터 파싱 및 송장번호 자동 입력
-                                processExcelData(jsonData);
-
-                            } catch (error) {
-                                console.error('엑셀 파일 처리 오류:', error);
-                                alert('엑셀 파일 처리 중 오류가 발생했습니다.');
-                            }
-                        };
-
-                        reader.readAsArrayBuffer(file);
-                    } else {
-                        alert('엑셀 파일만 업로드 가능합니다.');
-                    }
-                }
-            });
-        }
-
-        // ==================== 슬라이드 패널 관련 함수 ====================
-
-        // 슬라이드 패널 열기
-        function openSummaryPanel() {
-            // 요약 테이블 복제하여 슬라이드 패널에 삽입
-            const summaryTableClone = document.getElementById('summary-table').cloneNode(true);
-            summaryTableClone.id = 'slide-summary-table';
-
-            const panelContent = document.getElementById('slide-panel-content');
-            panelContent.innerHTML = '';
-            panelContent.appendChild(summaryTableClone);
-
-            // 오버레이와 패널 활성화
-            document.getElementById('slide-overlay').classList.add('active');
-            document.getElementById('slide-panel').classList.add('active');
-        }
-
-        // 슬라이드 패널 닫기
-        function closeSummaryPanel() {
-            document.getElementById('slide-overlay').classList.remove('active');
-            document.getElementById('slide-panel').classList.remove('active');
-        }
-
-        // 슬라이드 패널 이벤트 리스너 초기화 (페이지 로드 후 실행)
-        (function initSlidePanelEvents() {
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() {
-                    setupSlidePanelEvents();
-                });
-            } else {
-                // DOM이 이미 로드된 경우
-                setupSlidePanelEvents();
-            }
+        (function initDrop(){
+            const drop=document.getElementById('invDrop'), input=document.getElementById('invFile');
+            drop.addEventListener('click',()=>input.click());
+            input.addEventListener('change',()=>{ readInvoiceFile(input.files[0]); input.value=''; });
+            drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('over'); });
+            drop.addEventListener('dragleave',e=>{ e.preventDefault(); drop.classList.remove('over'); });
+            drop.addEventListener('drop',e=>{ e.preventDefault(); drop.classList.remove('over'); readInvoiceFile(e.dataTransfer.files[0]); });
         })();
 
-        function setupSlidePanelEvents() {
-            // 오버레이 클릭 시 패널 닫기
-            const overlay = document.getElementById('slide-overlay');
-            if (overlay) {
-                overlay.addEventListener('click', closeSummaryPanel);
-            }
-
-            // 슬라이드 패널 클릭 시 이벤트 전파 중지 (패널 내부 클릭해도 닫히지 않게)
-            const panel = document.getElementById('slide-panel');
-            if (panel) {
-                panel.addEventListener('click', function(e) {
-                    e.stopPropagation();
-                });
-            }
+        // ── 내보내기 ──
+        async function downloadPost(url,body,fallbackName){
+            const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            if(!res.ok){ let m=''; try{ m=(await res.json()).error; }catch(_){} throw new Error(m||'다운로드 실패'); }
+            const blob=await res.blob();
+            const cd=res.headers.get('Content-Disposition')||'';
+            const m=cd.match(/filename=(.+)$/);
+            const a=document.createElement('a');
+            a.href=URL.createObjectURL(blob);
+            a.download=m?decodeURIComponent(m[1]):fallbackName;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+        }
+        // 쉽먼트 저장: 송장번호가 아직 없으면 모달부터
+        async function exportSelectedOrders(){
+            const sel=selectedOrders();
+            if(!sel.length){ toast('내보낼 발주서를 선택해주세요.'); return; }
+            if(!Object.keys(invoiceNumbers).length) return openInvoiceModal();
+            try{
+                await downloadPost('/api/shipment/export',{orderNumbers:sel, invoiceNumbers},'shipment.xlsx');
+                invoiceNumbers={};
+            }catch(e){ toast('쉽먼트 저장 실패: '+e.message); }
+        }
+        async function exportCJExcel(){
+            const sel=selectedOrders();
+            if(!sel.length){ toast('다운로드할 발주서를 선택해주세요.'); return; }
+            try{ await downloadPost('/api/shipment/export-cj',{orderNumbers:sel},'CJ_shipment.xlsx'); }
+            catch(e){ toast('CJ 엑셀 다운로드 실패: '+e.message); }
         }
 
-        // ==================== 슬라이드 패널 함수 끝 ====================
+        // ============================================================
+        // 라벨출력 — 박스 라벨 (label-service 임베드)
+        //   선택한 발주서의 출고스캔 박스(rk_ship_boxes)마다 1장: 발주번호-박스번호 · 물류센터 · 박스 크기 · 발주번호 바코드
+        //   1) 선택 발주번호 → POST /api/label/order-boxes → items[{ data:{po_*, bx_*}, qty:1 }]
+        //   2) iframe(label-service /print-embed) 이 준비되면 postMessage(labelType:'box')
+        //   3) 임베드에서 템플릿·프린터 확인 후 QZ Tray 로 인쇄. 결과는 message 로 돌아온다
+        //   양식은 라벨 설정(/labelSettings)의 "박스 라벨" 종류 템플릿. 상품 라벨은 발주서 관리·상품관리의 [라벨출력].
+        //   템플릿별 프린터 지정값은 이 사이트가 기억한다 (localStorage — 다른 페이지 라벨출력과 같은 키라 PC 마다 한 번만 지정).
+        //   ?labeldebug=1 로 이 페이지를 열면 임베드에 [인쇄 명령 저장] 버튼이 생긴다 (프린터로 갈 바이트를 파일로).
+        // ============================================================
+        let labelCfg=null, labelOrigin=null, labelPending=null;
+        const LABEL_PRINTER_KEY='label_printer_map_v1';
+        const labelDebug=new URLSearchParams(location.search).get('labeldebug')==='1';
+        function loadLabelPrinterMap(){ try{ const j=JSON.parse(localStorage.getItem(LABEL_PRINTER_KEY)||'{}'); return j&&typeof j==='object'&&!Array.isArray(j)?j:{}; }catch(_){ return {}; } }
+        function saveLabelPrinterMap(map){ try{ localStorage.setItem(LABEL_PRINTER_KEY, JSON.stringify(map||{})); }catch(_){ /* 저장 불가 시 무시 */ } }
+        async function getLabelCfg(){
+            if(labelCfg) return labelCfg;
+            const res=await fetch('/api/label/config');
+            const j=await res.json();
+            if(!res.ok) throw new Error(j.error||'라벨 서비스 설정을 불러오지 못했습니다.');
+            labelCfg=j; labelOrigin=new URL(j.url).origin;
+            return j;
+        }
+        function sendLabelPending(){
+            const frame=document.getElementById('labelPrintFrame');
+            if(!labelPending||!frame.contentWindow||frame.dataset.ready!=='1') return;
+            frame.contentWindow.postMessage(labelPending, labelOrigin);
+            labelPending=null;
+        }
+        async function openLabelPrint(){
+            const orderNumbers=selectedOrders();
+            if(!orderNumbers.length){ toast('라벨을 출력할 발주서를 선택해주세요.'); return; }
+            const btn=document.getElementById('labelPrintBtn'); btn.disabled=true;
+            try{
+                const cfg=await getLabelCfg();
+                const res=await fetch('/api/label/order-boxes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                const j=await res.json();
+                if(!res.ok) throw new Error(j.error||'박스 데이터 조회 실패');
+                if(!j.items.length){ toast('선택한 발주서에 출고스캔된 박스가 없습니다.'); return; }
+                if(j.noBox.length) toast(`출고스캔된 박스가 없는 발주서 ${j.noBox.length}건은 제외됩니다.\n${j.noBox.join(', ')}`);
+
+                labelPending={
+                    type:'label-print:print',
+                    requestId:String(Date.now()),
+                    source:cfg.source,
+                    userId:cfg.userId,
+                    labelType:'box',
+                    autoPrint:false,
+                    printerMap:loadLabelPrinterMap(),   // 이 PC 에서 기억해 둔 템플릿별 프린터
+                    items:j.items
+                };
+                document.getElementById('labelPrintSub').textContent=`박스 ${j.items.length}개 · 발주서 ${j.orderCount}건`;
+                document.getElementById('labelPrintStatus').textContent='';
+                document.getElementById('labelBack').classList.add('show');
+
+                const frame=document.getElementById('labelPrintFrame');
+                if(frame.dataset.ready==='1') sendLabelPending();                                   // 이미 로드된 iframe 재사용
+                else frame.src=cfg.url+'/print-embed'+(labelDebug?'?debug=1':'');                  // 로드되면 'label-print:ready' 가 온다
+            }catch(e){ toast('라벨 출력 준비 실패: '+e.message); }
+            finally{ btn.disabled=false; }
+        }
+        function closeLabelPrint(){ document.getElementById('labelBack').classList.remove('show'); labelPending=null; }
+        // 임베드 → 이 창: 준비 완료 / 프린터 지정 변경 / 인쇄 결과
+        window.addEventListener('message',function(e){
+            if(!labelOrigin||e.origin!==labelOrigin) return;
+            const d=e.data||{};
+            if(d.type==='label-print:ready'){ document.getElementById('labelPrintFrame').dataset.ready='1'; sendLabelPending(); }
+            else if(d.type==='label-print:printer-map'){ if(d.map&&typeof d.map==='object'&&!Array.isArray(d.map)) saveLabelPrinterMap(d.map); }
+            else if(d.type==='label-print:result'){
+                document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨`:'✕ 박스 라벨 실패';   // 상세 사유는 임베드가 alert 로 띄운다
+            }
+        });
+
+        let toastTimer;
+        function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
+        document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSummary(); closeInvoiceModal(); closeLabelPrint(); } });
+
+        loadOrders();
     </script>
-
-    <!-- 슬라이드 오버레이 -->
-    <div class="slide-overlay" id="slide-overlay"></div>
-
-    <!-- 슬라이드 패널 -->
-    <div class="slide-panel" id="slide-panel">
-        <div class="slide-panel-header">
-            <h2>스캔 결과 요약</h2>
-            <button class="close-slide-btn" onclick="closeSummaryPanel()">&times;</button>
-        </div>
-        <div id="slide-panel-content">
-            <!-- 요약 테이블이 동적으로 삽입됩니다 -->
-        </div>
-    </div>
 </body>
-</html> 
+</html>

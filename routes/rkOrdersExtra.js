@@ -21,33 +21,22 @@ async function shipScanOrders(orderNumbers) {
   const orderNos = [...new Set(orders.map((o) => o.발주번호).filter(Boolean))];
   if (!orderNos.length) return [];
 
+  // 1000행씩 나눠 읽으므로 반드시 id 순 정렬 — 정렬 없이 range 를 넘기면 행이 빠지거나 중복될 수 있다
+  const [boxes, boxItems] = await Promise.all([
+    S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
+      .select('id, order_number, box_no, box_size').in('order_number', nos).order('id', { ascending: true }))),
+    S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
+      .select('order_number, box_id, barcode, qty, product_name').in('order_number', nos).order('id', { ascending: true }))),
+  ]);
+
   // 박스 헤더: box_id → { order_number, box_no, box_size }
-  const boxById = new Map();
-  for (let i = 0; i < orderNos.length; i += 200) {
-    const batch = orderNos.slice(i, i + 200);
-    const { data, error } = await S.supabase.from('rk_ship_boxes')
-      .select('id, order_number, box_no, box_size').in('order_number', batch);
-    if (error) throw error;
-    for (const b of (data || [])) boxById.set(b.id, b);
-  }
+  const boxById = new Map(boxes.map((b) => [b.id, b]));
 
   // 박스 아이템: order_number → [{ box_id, barcode, qty, product_name }]
   const itemsByOrder = new Map();
-  for (let i = 0; i < orderNos.length; i += 200) {
-    const batch = orderNos.slice(i, i + 200);
-    let from = 0; const PAGE = 1000;
-    while (true) {
-      const { data, error } = await S.supabase.from('rk_ship_box_items')
-        .select('order_number, box_id, barcode, qty, product_name').in('order_number', batch).range(from, from + PAGE - 1);
-      if (error) throw error;
-      if (!data || !data.length) break;
-      for (const r of data) {
-        if (!itemsByOrder.has(r.order_number)) itemsByOrder.set(r.order_number, []);
-        itemsByOrder.get(r.order_number).push(r);
-      }
-      if (data.length < PAGE) break;
-      from += PAGE;
-    }
+  for (const r of boxItems) {
+    if (!itemsByOrder.has(r.order_number)) itemsByOrder.set(r.order_number, []);
+    itemsByOrder.get(r.order_number).push(r);
   }
 
   const result = [];
@@ -241,21 +230,12 @@ router.post('/api/orders/export', async (req, res) => {
     // 확정수량 = 출고스캔(rk_ship_box_items)의 발주번호+바코드별 합 (scanned_qty 미사용, rocket 화면 스캔열과 동일)
     const shipScanMap = new Map();
     const orderNos = [...new Set(orders.map((o) => o.발주번호).filter(Boolean))];
-    for (let i = 0; i < orderNos.length; i += 200) {
-      const batch = orderNos.slice(i, i + 200);
-      let from = 0; const PAGE = 1000;
-      while (true) {
-        const { data, error } = await S.supabase.from('rk_ship_box_items').select('order_number, barcode, qty').in('order_number', batch).range(from, from + PAGE - 1);
-        if (error) throw error;
-        if (!data || !data.length) break;
-        for (const r of data) {
-          if (!r.order_number || !r.barcode) continue;
-          const k = `${r.order_number}|${r.barcode}`;
-          shipScanMap.set(k, (shipScanMap.get(k) || 0) + (parseInt(r.qty) || 0));
-        }
-        if (data.length < PAGE) break;
-        from += PAGE;
-      }
+    const scanRows = await S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
+      .select('order_number, barcode, qty').in('order_number', nos).order('id', { ascending: true })));
+    for (const r of scanRows) {
+      if (!r.order_number || !r.barcode) continue;
+      const k = `${r.order_number}|${r.barcode}`;
+      shipScanMap.set(k, (shipScanMap.get(k) || 0) + (parseInt(r.qty) || 0));
     }
 
     const dropdownOptions = [
