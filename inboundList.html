@@ -80,7 +80,7 @@
             <div class="head">
                 <div class="title-wrap">
                     <h1 class="title">입고리스트</h1>
-                    <span class="subtitle">전체 <b id="rowCount">0</b>건</span>
+                    <span class="subtitle">표시 <b id="rowCount">0</b>건</span>
                 </div>
                 <div class="actions">
                     <button class="btn" id="matchBtn" onclick="updateBarcodes()">바코드 업데이트</button>
@@ -166,45 +166,88 @@
         }
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
 
-        async function loadData(){
+        // 처음에는 가장 최근에 등록된 출고코드만 불러온다 — 전체(수천 행)를 매번 받지 않도록.
+        // 다른 코드는 연/월/출고코드 드롭박스로 고르면 그때 서버에서 받아온다.
+        async function loadData(selectCode){
             try{
-                const [shipRes, listRes]=await Promise.all([fetch('/api/inbound/shipments'), fetch('/api/inbound/list')]);
-                if(!shipRes.ok||!listRes.ok) throw new Error('HTTP');
-                shipments=await shipRes.json();
-                const items=await listRes.json();
+                const shipRes=await fetch('/api/inbound/shipments');
+                if(!shipRes.ok) throw new Error('HTTP');
+                shipments=await shipRes.json();            // created_at 내림차순 → [0] 이 최신
+                populateYear();
+                const target=(selectCode&&shipments.find(s=>s.shipmentCode===selectCode))||shipments[0];
+                if(target) selectShipment(target);
+                await loadItems();
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+            }
+        }
+        // 선택에 해당하는 출고코드들: 코드 선택 → 그 코드 · 월만 선택('전체 출고코드') → 그 달의 코드 전부 · 연도까지만 → 없음
+        function codesForSelection(){
+            const code=selectedCode(); if(code) return [code];
+            const y=document.getElementById('yearSel').value, m=document.getElementById('monthSel').value;
+            if(!(y&&m)) return [];
+            return shipmentsIn(y,m).map(s=>s.shipmentCode);
+        }
+        let itemsReq=0, lastSel=null;
+        async function loadItems(){
+            // 미저장 변경이 있으면 다른 코드로 넘어가기 전에 확인 (취소하면 선택을 되돌린다)
+            if(dirty.size && !confirm(`미저장 변경 ${dirty.size}건이 있습니다. 저장하지 않고 다른 출고코드를 불러올까요?`)){
+                if(lastSel) restoreSelection(lastSel);
+                return;
+            }
+            dirty.clear(); sel.clear(); updateSaveBtn();
+            lastSel=currentSelection();
+            const codes=codesForSelection();
+            const my=++itemsReq;
+            if(!codes.length){ allRows=[]; applySearch(); return; }
+            document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">불러오는 중…</td></tr>`;
+            try{
+                const res=await fetch('/api/inbound/list?shipmentCodes='+encodeURIComponent(codes.join(',')));
+                const items=await res.json();
+                if(my!==itemsReq) return;               // 더 최신 요청이 있으면 무시 (레이스 방지)
+                if(!res.ok) throw new Error(items.error||'조회 실패');
                 allRows=items.map(it=>({
                     id:it.id, 출고코드:it.shipmentCode, 박스명:it.boxName, 중국번호:it.orderNumber,
                     상품명:it.productName, 수량:it.quantity, 바코드:it.barcode, 비고:it.note
                 }));
-                populateYear();
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+                if(my===itemsReq) document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="8">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
             }
         }
 
         // ── 연/월/출고코드 드롭박스 (created_at 기준) ──
         function shipDate(s){ return new Date(s.createdAt); }
+        function shipmentsIn(y,m){ return shipments.filter(s=>{const d=shipDate(s);return String(d.getFullYear())===String(y)&&String(d.getMonth()+1)===String(m);}); }
         function populateYear(){
             const years=[...new Set(shipments.map(s=>shipDate(s).getFullYear()))].sort((a,b)=>b-a);
             document.getElementById('yearSel').innerHTML='<option value="">연도</option>'+years.map(y=>`<option value="${y}">${y}년</option>`).join('');
-            document.getElementById('monthSel').innerHTML='<option value="">월</option>';
-            document.getElementById('codeSel').innerHTML='<option value="">전체 출고코드</option>';
+            fillMonths(''); fillCodes('','');
         }
-        function onYearChange(){
-            const y=document.getElementById('yearSel').value;
-            const months=y ? [...new Set(shipments.filter(s=>String(shipDate(s).getFullYear())===y).map(s=>shipDate(s).getMonth()+1))].sort((a,b)=>a-b) : [];
+        function fillMonths(y){
+            const months=y ? [...new Set(shipments.filter(s=>String(shipDate(s).getFullYear())===String(y)).map(s=>shipDate(s).getMonth()+1))].sort((a,b)=>a-b) : [];
             document.getElementById('monthSel').innerHTML='<option value="">월</option>'+months.map(m=>`<option value="${m}">${m}월</option>`).join('');
-            document.getElementById('codeSel').innerHTML='<option value="">전체 출고코드</option>';
-            applySearch();
         }
-        function onMonthChange(){
-            const y=document.getElementById('yearSel').value, m=document.getElementById('monthSel').value;
-            const list=(y&&m) ? shipments.filter(s=>{const d=shipDate(s);return String(d.getFullYear())===y&&String(d.getMonth()+1)===m;}) : [];
+        function fillCodes(y,m){
+            const list=(y&&m) ? shipmentsIn(y,m) : [];
             document.getElementById('codeSel').innerHTML='<option value="">전체 출고코드</option>'+list.map(s=>`<option value="${esc(s.shipmentCode)}">${esc(s.shipmentCode)} (${s.itemCount})</option>`).join('');
-            applySearch();
         }
-        function onCodeChange(){ applySearch(); }
+        // 드롭박스를 특정 출고코드(연/월/코드)로 맞춘다 — 불러오지는 않음
+        function selectShipment(s){
+            const d=shipDate(s), y=String(d.getFullYear()), m=String(d.getMonth()+1);
+            document.getElementById('yearSel').value=y; fillMonths(y);
+            document.getElementById('monthSel').value=m; fillCodes(y,m);
+            document.getElementById('codeSel').value=s.shipmentCode;
+        }
+        function currentSelection(){ return { y:document.getElementById('yearSel').value, m:document.getElementById('monthSel').value, code:selectedCode() }; }
+        function restoreSelection(v){
+            document.getElementById('yearSel').value=v.y; fillMonths(v.y);
+            document.getElementById('monthSel').value=v.m; fillCodes(v.y,v.m);
+            document.getElementById('codeSel').value=v.code;
+        }
+        function onYearChange(){ fillMonths(document.getElementById('yearSel').value); fillCodes('',''); loadItems(); }
+        function onMonthChange(){ fillCodes(document.getElementById('yearSel').value, document.getElementById('monthSel').value); loadItems(); }
+        function onCodeChange(){ loadItems(); }
         function selectedCode(){ return document.getElementById('codeSel').value; }
 
         // 선택한 출고코드 전체 삭제 — 패스워드 확인 모달
@@ -236,7 +279,7 @@
         function render(){
             const tb=document.getElementById('tbody');
             if(viewRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="8">표시할 입고리스트가 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="8">${codesForSelection().length?'표시할 입고리스트가 없습니다. Excel 파일을 업로드하세요.':'연도와 월을 고르면 그 달의 출고코드를 불러옵니다.'}</td></tr>`;
             }else{
                 tb.innerHTML=viewRows.map(r=>{
                     const d=dirty.has(r.id)?' cell-dirty':'';
@@ -293,7 +336,7 @@
                 const data=await res.json();
                 if(!res.ok)throw new Error(data.error||'업로드 실패');
                 toast(data.message||'업로드 완료');
-                await loadData();
+                await loadData(code);   // 방금 올린 출고코드를 바로 보여준다
             }catch(e){toast('업로드 실패: '+e.message);}
             pendingFile=null;
         }

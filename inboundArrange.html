@@ -254,6 +254,7 @@
                 orders=await ordRes.json();
                 selectedOrders=new Set(orders.map(o=>o.발주번호)); // 전체선택 기본
                 populateYear();
+                if(shipments[0]) selectShipment(shipments[0]);   // 처음에는 가장 최근 출고코드를 기본으로 (목록은 created_at 내림차순)
                 await loadArranged();
             }catch(e){
                 document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="12">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
@@ -265,22 +266,25 @@
         function populateYear(){
             const years=[...new Set(shipments.map(s=>shipDate(s).getFullYear()))].sort((a,b)=>b-a);
             document.getElementById('yearSel').innerHTML='<option value="">연도</option>'+years.map(y=>`<option value="${y}">${y}년</option>`).join('');
-            document.getElementById('monthSel').innerHTML='<option value="">월</option>';
-            document.getElementById('codeSel').innerHTML='<option value="">출고코드 선택</option>';
+            fillMonths(''); fillCodes('','');
         }
-        function onYearChange(){
-            const y=document.getElementById('yearSel').value;
-            const months=y?[...new Set(shipments.filter(s=>String(shipDate(s).getFullYear())===y).map(s=>shipDate(s).getMonth()+1))].sort((a,b)=>a-b):[];
+        function fillMonths(y){
+            const months=y?[...new Set(shipments.filter(s=>String(shipDate(s).getFullYear())===String(y)).map(s=>shipDate(s).getMonth()+1))].sort((a,b)=>a-b):[];
             document.getElementById('monthSel').innerHTML='<option value="">월</option>'+months.map(m=>`<option value="${m}">${m}월</option>`).join('');
-            document.getElementById('codeSel').innerHTML='<option value="">출고코드 선택</option>';
-            loadArranged();
         }
-        function onMonthChange(){
-            const y=document.getElementById('yearSel').value,m=document.getElementById('monthSel').value;
-            const list=(y&&m)?shipments.filter(s=>{const d=shipDate(s);return String(d.getFullYear())===y&&String(d.getMonth()+1)===m;}):[];
+        function fillCodes(y,m){
+            const list=(y&&m)?shipments.filter(s=>{const d=shipDate(s);return String(d.getFullYear())===String(y)&&String(d.getMonth()+1)===String(m);}):[];
             document.getElementById('codeSel').innerHTML='<option value="">출고코드 선택</option>'+list.map(s=>`<option value="${esc(s.shipmentCode)}">${esc(s.shipmentCode)} (${s.itemCount})</option>`).join('');
-            loadArranged();
         }
+        // 드롭박스를 특정 출고코드(연/월/코드)로 맞춘다 — 불러오지는 않음
+        function selectShipment(s){
+            const d=shipDate(s), y=String(d.getFullYear()), m=String(d.getMonth()+1);
+            document.getElementById('yearSel').value=y; fillMonths(y);
+            document.getElementById('monthSel').value=m; fillCodes(y,m);
+            document.getElementById('codeSel').value=s.shipmentCode;
+        }
+        function onYearChange(){ fillMonths(document.getElementById('yearSel').value); fillCodes('',''); loadArranged(); }
+        function onMonthChange(){ fillCodes(document.getElementById('yearSel').value, document.getElementById('monthSel').value); loadArranged(); }
         function onCodeChange(){ loadArranged(); }
         function selectedCode(){ return document.getElementById('codeSel').value; }
 

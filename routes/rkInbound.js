@@ -62,17 +62,19 @@ async function pageAll(table, select, tweak) {
   return all;
 }
 
-// 아이템 전체 조회 (헤더 join) — 1000행 우회
-async function fetchAllItems() {
+// 아이템 조회 (헤더 join) — 1000행 우회. shipmentIds 를 주면 그 출고코드의 아이템만 읽는다.
+// 입고리스트/입고정리 화면은 선택한 출고코드만 부른다 (전체 6천 행을 매번 읽지 않도록).
+async function fetchAllItems(shipmentIds) {
+  if (Array.isArray(shipmentIds) && !shipmentIds.length) return [];
   const all = [];
   let from = 0;
   const size = 1000;
   while (true) {
-    const { data, error } = await sb
+    let q = sb
       .from('rk_cn_shipment_items')
-      .select('*, rk_cn_shipments(shipment_code, status)')
-      .order('id', { ascending: true })
-      .range(from, from + size - 1);
+      .select('*, rk_cn_shipments(shipment_code, status)');
+    if (Array.isArray(shipmentIds)) q = q.in('shipment_id', shipmentIds);
+    const { data, error } = await q.order('id', { ascending: true }).range(from, from + size - 1);
     if (error) throw error;
     all.push(...data);
     if (data.length < size) break;
@@ -81,17 +83,29 @@ async function fetchAllItems() {
   return all;
 }
 
-// 출고코드 목록 (코드별 요약: 아이템 수)
+// 출고코드 → shipment id 목록 (?shipmentCode=A 또는 ?shipmentCodes=A,B,C)
+async function shipmentIdsFromQuery(query) {
+  const codes = [];
+  if (query.shipmentCode) codes.push(String(query.shipmentCode).trim());
+  if (query.shipmentCodes) codes.push(...String(query.shipmentCodes).split(',').map(s => s.trim()));
+  const uniq = [...new Set(codes.filter(Boolean))];
+  if (!uniq.length) return null; // 코드 지정 없음
+  const { data, error } = await sb.from('rk_cn_shipments').select('id').in('shipment_code', uniq);
+  if (error) throw error;
+  return (data || []).map(s => s.id);
+}
+
+// 출고코드 목록 (코드별 요약: 아이템 수) — 아이템 본문은 읽지 않고 코드별 count 만 센다
 router.get('/api/inbound/shipments', async (req, res) => {
   try {
     const shipments = await pageAll('rk_cn_shipments', '*',
       q => q.order('created_at', { ascending: false }));
-    const items = await fetchAllItems();
-    const countByShip = {};
-    for (const it of items) countByShip[it.shipment_id] = (countByShip[it.shipment_id] || 0) + 1;
-    res.json(shipments.map(s => ({
+    const counts = await Promise.all(shipments.map(s =>
+      sb.from('rk_cn_shipment_items').select('id', { count: 'exact', head: true }).eq('shipment_id', s.id)
+        .then(r => { if (r.error) throw r.error; return r.count || 0; })));
+    res.json(shipments.map((s, i) => ({
       id: s.id, shipmentCode: s.shipment_code, status: s.status, memo: s.memo,
-      itemCount: countByShip[s.id] || 0, createdAt: s.created_at, updatedAt: s.updated_at,
+      itemCount: counts[i], createdAt: s.created_at, updatedAt: s.updated_at,
     })));
   } catch (e) {
     console.error('[rk] inbound/shipments:', e);
@@ -99,12 +113,11 @@ router.get('/api/inbound/shipments', async (req, res) => {
   }
 });
 
-// 입고리스트 아이템 목록 (전체 또는 특정 출고코드)
+// 입고리스트 아이템 목록 — ?shipmentCode=A 또는 ?shipmentCodes=A,B (지정 없으면 전체: 화면은 쓰지 않음)
 router.get('/api/inbound/list', async (req, res) => {
   try {
-    let rows = await fetchAllItems();
-    const code = (req.query.shipmentCode || '').trim();
-    if (code) rows = rows.filter(r => r.rk_cn_shipments && r.rk_cn_shipments.shipment_code === code);
+    const ids = await shipmentIdsFromQuery(req.query);
+    const rows = await fetchAllItems(ids);
     rows.sort((a, b) =>
       String(a.box_name || '').localeCompare(String(b.box_name || '')) ||
       String(a.barcode || '').localeCompare(String(b.barcode || '')));
@@ -206,12 +219,14 @@ function buildArranged(items, allocs) {
 // 저장된 출고배정 조회 → { shipping, stock }
 router.get('/api/inbound/arranged', async (req, res) => {
   try {
-    const shipmentCode = (req.query.shipmentCode || '').trim();
-    let items = await fetchAllItems();
-    if (shipmentCode) items = items.filter(i => i.rk_cn_shipments && i.rk_cn_shipments.shipment_code === shipmentCode);
-    const itemIds = new Set(items.map(i => i.id));
-    const allocs = await pageAll('rk_cn_shipping', '*');
-    res.json(buildArranged(items, allocs.filter(a => itemIds.has(a.shipment_item_id))));
+    const ids = await shipmentIdsFromQuery(req.query);
+    const items = await fetchAllItems(ids);
+    const itemIds = items.map(i => i.id);
+    // 배정도 이 아이템들 것만 읽는다 (코드 지정 없으면 전체)
+    const allocs = ids
+      ? await S.chunked(itemIds, 200, (part) => pageAll('rk_cn_shipping', '*', q => q.in('shipment_item_id', part)))
+      : (await pageAll('rk_cn_shipping', '*')).filter(a => itemIds.includes(a.shipment_item_id));
+    res.json(buildArranged(items, allocs));
   } catch (e) {
     console.error('[rk] inbound/arranged:', e);
     res.status(500).json({ error: '출고배정 조회 중 오류가 발생했습니다: ' + e.message });
@@ -242,9 +257,8 @@ router.post('/api/inbound/prepare', async (req, res) => {
     const shipmentCode = (req.body.shipmentCode || '').trim();
     const orderNumbers = Array.isArray(req.body.orderNumbers) ? req.body.orderNumbers : null;
 
-    // 대상 아이템
-    let items = await fetchAllItems();
-    if (shipmentCode) items = items.filter(i => i.rk_cn_shipments && i.rk_cn_shipments.shipment_code === shipmentCode);
+    // 대상 아이템 (출고코드가 있으면 그 코드 것만 읽는다)
+    const items = await fetchAllItems(shipmentCode ? await shipmentIdsFromQuery({ shipmentCode }) : null);
     const targetItemIds = new Set(items.map(i => i.id));
 
     // 전체 배정 로드 — 1000행에서 잘리면 기존 배정을 못 보고 중복 배정된다
