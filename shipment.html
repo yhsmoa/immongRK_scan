@@ -50,7 +50,12 @@
         .size-chips{display:flex;flex-wrap:wrap;gap:4px;}
         .chip{display:inline-flex;align-items:center;gap:3px;background:#eef1f6;color:#475569;border-radius:6px;padding:2px 7px;font-size:11.5px;font-weight:600;}
         .chip b{color:#1e293b;}
-        th.chk,td.chk{width:44px;text-align:center;padding-left:0 !important;padding-right:0 !important;}
+        /* 가상스캔 분량이 있는 박스/행 — 출고스캔과 같은 연보라 */
+        .chip.virtual{background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;}
+        .chip.virtual i{font-style:normal;font-size:10px;font-weight:800;color:#7c3aed;margin-left:2px;}
+        .vtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;padding:0 6px;vertical-align:middle;}
+        /* 머리글은 `table.main thead th`(왼쪽 정렬)가 더 구체적이라 체크 칸만 다시 가운데로 */
+        th.chk,td.chk,table.main thead th.chk{width:44px;text-align:center;padding-left:0 !important;padding-right:0 !important;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
 
         /* 상세 (박스별 상품) */
@@ -252,11 +257,15 @@
         // 발주서 하나를 화면용으로 정리: 스캔된 상품, 박스 목록(번호순)
         function shapeOrder(o){
             const items=(o.상품정보||[]).filter(p=>num(p.스캔수량)>0 && p.박스정보 && p.박스정보!=='-')
-                .map(p=>({...p, box:parseBox(p.박스정보)}))
+                .map(p=>({...p, box:parseBox(p.박스정보), virtualQty:num(p.가상수량)}))
                 .sort((a,b)=>boxNoCmp(a.box.no,b.box.no) || String(a.상품바코드).localeCompare(String(b.상품바코드)));
+            // 박스별 크기 + 가상스캔 수량 합 (출고스캔 [가상스캔]으로 들어온 분량 → '가상' 표시)
             const boxMap=new Map();
-            for(const p of items) if(!boxMap.has(p.box.no)) boxMap.set(p.box.no,p.box.size);
-            const boxes=[...boxMap.entries()].map(([no,size])=>({no,size})).sort((a,b)=>boxNoCmp(a.no,b.no));
+            for(const p of items){
+                if(!boxMap.has(p.box.no)) boxMap.set(p.box.no,{size:p.box.size, virtualQty:0, qty:0});
+                const b=boxMap.get(p.box.no); b.virtualQty+=p.virtualQty; b.qty+=num(p.스캔수량);
+            }
+            const boxes=[...boxMap.entries()].map(([no,b])=>({no, size:b.size, virtualQty:b.virtualQty, qty:b.qty})).sort((a,b)=>boxNoCmp(a.no,b.no));
             return {...o, items, boxes, skuCount:new Set(items.map(p=>p.상품바코드)).size, scanQty:items.reduce((s,p)=>s+num(p.스캔수량),0)};
         }
 
@@ -298,13 +307,13 @@
             }
             tb.innerHTML=viewOrders.map(o=>{
                 const on=esc(o.발주번호), isOpen=opened.has(o.발주번호), isSel=selected.has(o.발주번호);
-                const chips=o.boxes.map(b=>`<span class="chip"><b>${esc(b.no)}</b>${esc(b.size)}</span>`).join('');
+                const chips=o.boxes.map(b=>`<span class="chip${b.virtualQty>0?' virtual':''}" title="${b.virtualQty>0?`가상스캔 ${b.virtualQty}개`:''}"><b>${esc(b.no)}</b>${esc(b.size)}${b.virtualQty>0?'<i>가상</i>':''}</span>`).join('');
                 const rows=o.items.map((p,i)=>{
                     const boxEnd=i<o.items.length-1 && o.items[i+1].box.no!==p.box.no;
                     return `<tr class="${boxEnd?'box-end':''}">
                         <td class="box-emoji">📦 ${esc(p.box.no)}<span class="sz">${esc(p.box.size)}</span></td>
                         <td>${esc(p.상품번호)||'<span class="dash">-</span>'}</td><td>${esc(p.상품바코드)}</td>
-                        <td class="pname">${esc(p.상품이름)||'<span class="dash">-</span>'}</td>
+                        <td class="pname">${esc(p.상품이름)||'<span class="dash">-</span>'}${p.virtualQty>0?`<span class="vtag" title="가상스캔 ${p.virtualQty}개">가상${p.virtualQty<num(p.스캔수량)?' '+p.virtualQty:''}</span>`:''}</td>
                         <td class="ctr">${esc(num(p.발주수량))}</td><td class="ctr">${esc(num(p.확정수량))}</td>
                         <td class="ctr"><span class="scan-badge">${esc(num(p.스캔수량))}</span></td>
                     </tr>`;

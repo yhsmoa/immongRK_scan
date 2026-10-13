@@ -186,6 +186,12 @@
         .vs-foot .btn.primary{background:#3f49c4;border-color:#3f49c4;box-shadow:none;}
         .vs-foot .btn.primary:hover{background:#333cab;border-color:#333cab;}
         .vtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;padding:0 6px;vertical-align:middle;}
+        /* 가상스캔 분량이 있는 박스 — 목록 버튼·박스 선택 모달 (연보라) */
+        .lbx.virtual{border-color:#c4b5fd;background:#f5f3ff;}
+        .lbx .v{font-size:10px;font-weight:800;color:#7c3aed;line-height:1;}
+        .box-cell{position:relative;}
+        .box-cell .vmark{position:absolute;top:6px;right:6px;font-size:10px;font-weight:800;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:4px;padding:1px 5px;}
+        .box-cell.virtual.exists{background:#f5f3ff;border-color:#c4b5fd;}
         .vs-assume-flag{color:#b42318;}
         @media (max-width:720px){
             .vs-head,.vs-top,.vs-body,.vs-foot{padding-left:18px;padding-right:18px;}
@@ -461,10 +467,11 @@
                     allocQty:Number(p.allocQty)||0, size:p.size||null}));   // allocQty/size = 가상스캔 계산용 (준비 열과 별개)
                 const nameByBc=new Map(products.map(p=>[p.barcode,p.productName]));
                 // 저장된 박스 아이템(박스별)
-                boxItems=(data.items||[]).map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName||nameByBc.get(i.barcode)||'', qty:i.qty}));
+                // virtualQty = qty 중 [가상스캔]으로 들어온 개수 (DB rk_ship_box_items.virtual_qty) → 화면 '가상' 태그
+                boxItems=(data.items||[]).map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName||nameByBc.get(i.barcode)||'', qty:i.qty, virtualQty:Number(i.virtualQty)||0}));
                 recomputeScanned();
                 // 박스 목록 (저장분)
-                savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt}));
+                savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt,isVirtual:!!b.isVirtual}));
                 boxSizeMap.clear(); savedBoxes.forEach(b=>boxSizeMap.set(b.boxNo,b.boxSize));
                 records=[]; currentBoxNo=null; lastScanBarcode=null; dirty=false; listSelBox=null;
                 setBoxBtn();
@@ -489,7 +496,7 @@
                 const cls=(boxExists(n)?'exists ':'')+(currentBoxNo===n?'sel':'');
                 // 미생성 박스는 크기 타입 표시 안 함 (사용자가 지정한 값이 아니므로)
                 const sz=boxExists(n)?(boxSizeOf(n)||''):'';
-                html+=`<div class="box-cell ${cls}" onclick="selectBox(${n})"><div class="emoji">📦</div><div class="type">${esc(sz)||'&nbsp;'}</div><div class="no">${n}</div></div>`;
+                html+=`<div class="box-cell ${cls}${boxIsVirtual(n)?' virtual':''}" onclick="selectBox(${n})"><div class="emoji">📦</div><div class="type">${esc(sz)||'&nbsp;'}</div><div class="no">${n}</div>${boxIsVirtual(n)?'<div class="vmark">가상</div>':''}</div>`;
             }
             document.getElementById('boxGrid').innerHTML=html;
         }
@@ -576,7 +583,7 @@
 
             // 박스 아이템 증가 (같은 박스+바코드 합산)
             let it=boxItemFor(boxNo,barcode);
-            if(it){ it.qty++; } else { it={boxNo, barcode, productName:prod.productName, qty:1}; boxItems.push(it); }
+            if(it){ it.qty++; } else { it={boxNo, barcode, productName:prod.productName, qty:1, virtualQty:0}; boxItems.push(it); }
             prod.scannedQty++;
             lastScanBarcode=barcode; dirty=true;
 
@@ -650,12 +657,17 @@
             }).join('');
         }
 
+        // 가상스캔 표시 — 박스에 가상 수량이 하나라도 있으면 '가상' (저장된 박스는 DB is_virtual, 미저장분은 아이템 virtualQty 로 판단)
+        function boxVirtualQty(no){ return boxItems.reduce((s,i)=>i.boxNo===no?s+(Number(i.virtualQty)||0):s,0); }
+        function boxIsVirtual(no){ return boxVirtualQty(no)>0; }
+        const vtagHtml=(vq,qty)=>vq>0?`<span class="vtag" title="가상스캔 ${vq}개">가상${vq<qty?' '+vq:''}</span>`:'';
+
         // 상세 테이블 공용 행 (박스 · 바코드 · 상품명 · 스캔개수[클릭편집])
         function rowDetailHtml(it){
             return `<tr>
                 <td class="ctr">📦 ${esc(it.boxNo)}</td>
                 <td class="bc">${esc(it.barcode)}</td>
-                <td class="pname">${pnameHtml(it.productName)}</td>
+                <td class="pname">${pnameHtml(it.productName)}${vtagHtml(Number(it.virtualQty)||0,it.qty)}</td>
                 <td class="ctr qedit" onclick="editItemQty(${it.boxNo},'${esc(it.barcode)}')">${it.qty}</td>
                 <td class="ctr"><button class="del-emoji" title="삭제" onclick="delItem(${it.boxNo},'${esc(it.barcode)}')">🗑️</button></td>
             </tr>`;
@@ -683,8 +695,9 @@
             setMerge(nos.length>1);              // 합칠 다른 박스가 있어야 활성화
             if(mergeOpen) renderMergePicker(nos); // 열려 있으면 대상 목록 갱신
             const qtyOf=no=>boxItems.reduce((s,i)=>i.boxNo===no?s+(Number(i.qty)||0):s,0);
-            btns.innerHTML=nos.map(no=>`<div class="lbx ${no===listSelBox?'sel':''}" onclick="selectListBox(${no})"><div class="e">📦<b>${no}</b></div><div class="t">${esc(boxSizeOf(no))}</div><div class="q">${qtyOf(no).toLocaleString()}개</div></div>`).join('');
-            title.textContent=`📦 박스 ${listSelBox} · ${boxSizeOf(listSelBox)}`;
+            btns.innerHTML=nos.map(no=>`<div class="lbx ${no===listSelBox?'sel':''}${boxIsVirtual(no)?' virtual':''}" onclick="selectListBox(${no})"><div class="e">📦<b>${no}</b></div><div class="t">${esc(boxSizeOf(no))}</div><div class="q">${qtyOf(no).toLocaleString()}개</div>${boxIsVirtual(no)?'<div class="v">가상</div>':''}</div>`).join('');
+            const vq=boxVirtualQty(listSelBox);
+            title.innerHTML=`📦 박스 ${listSelBox} · ${esc(boxSizeOf(listSelBox))}${vq>0?`<span class="vtag">가상 ${vq}개${vq===qtyOf(listSelBox)?' (전부)':''}</span>`:''}`;
             const items=boxItems.filter(i=>i.boxNo===listSelBox);
             tb.innerHTML=items.length?items.map(rowDetailHtml).join(''):`<tr class="state-row"><td colspan="5">이 박스에 담긴 상품이 없습니다.</td></tr>`;
         }
@@ -732,8 +745,8 @@
             let movedQty=0;
             for(const it of moving){
                 const exist=boxItemFor(targetNo,it.barcode);
-                if(exist) exist.qty+=it.qty;
-                else boxItems.push({boxNo:targetNo, barcode:it.barcode, productName:it.productName, qty:it.qty});
+                if(exist){ exist.qty+=it.qty; exist.virtualQty=(exist.virtualQty||0)+(it.virtualQty||0); }   // 가상 분량도 같이 옮긴다
+                else boxItems.push({boxNo:targetNo, barcode:it.barcode, productName:it.productName, qty:it.qty, virtualQty:it.virtualQty||0});
                 movedQty+=it.qty;
             }
             boxItems=boxItems.filter(i=>i.boxNo!==from);
@@ -797,8 +810,8 @@
         function setItemQty(boxNo,barcode,qty){
             let it=boxItemFor(boxNo,barcode);
             if(qty<=0){ if(it) boxItems=boxItems.filter(x=>x!==it); }
-            else if(it){ it.qty=qty; }
-            else{ const prod=prodByBarcode(barcode); boxItems.push({boxNo,barcode,productName:prod?prod.productName:'',qty}); }
+            else if(it){ it.qty=qty; it.virtualQty=Math.min(it.virtualQty||0, qty); }   // 줄이면 가상 분량부터 깎인 것으로 본다 (가상 ≤ 전체)
+            else{ const prod=prodByBarcode(barcode); boxItems.push({boxNo,barcode,productName:prod?prod.productName:'',qty,virtualQty:0}); }
             recomputeScanned(); dirty=true;
             renderAll();
         }
@@ -838,7 +851,7 @@
             if(!dirty){ toast('저장할 변경이 없습니다.'); return false; }
             const boxNos=[...new Set([...boxItems.map(i=>i.boxNo), ...savedBoxes.map(b=>b.boxNo)])];
             const boxes=boxNos.map(no=>({boxNo:no, boxSize:boxSizeOf(no)}));
-            const items=boxItems.map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName, qty:i.qty}));
+            const items=boxItems.map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName, qty:i.qty, virtualQty:i.virtualQty||0}));
             const btn=document.getElementById('saveBtn'); btn.disabled=true;
             toast('저장 중…');
             try{
@@ -971,8 +984,10 @@
                 }
                 for(const it of b.items){
                     const prod=prodByBarcode(it.barcode);
+                    // 가상 분량(virtualQty)을 같이 올린다 → 저장 시 DB virtual_qty / 박스 is_virtual 로 남는다 (기존 박스에 채워도 그 박스가 '가상' 표시됨)
                     let x=boxItemFor(b.boxNo,it.barcode);
-                    if(x) x.qty+=it.qty; else boxItems.push({boxNo:b.boxNo, barcode:it.barcode, productName:(prod&&prod.productName)||it.productName||'', qty:it.qty});
+                    if(x){ x.qty+=it.qty; x.virtualQty=(x.virtualQty||0)+it.qty; }
+                    else boxItems.push({boxNo:b.boxNo, barcode:it.barcode, productName:(prod&&prod.productName)||it.productName||'', qty:it.qty, virtualQty:it.qty});
                     records.push({boxNo:b.boxNo, boxSize:b.size, barcode:it.barcode, productName:(prod&&prod.productName)||it.productName||'', qty:it.qty, virtual:true});
                     addQty+=it.qty;
                 }

@@ -26,7 +26,7 @@ async function shipScanOrders(orderNumbers) {
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
       .select('id, order_number, box_no, box_size').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
-      .select('order_number, box_id, barcode, qty, product_name').in('order_number', nos).order('id', { ascending: true }))),
+      .select('order_number, box_id, barcode, qty, product_name, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
   ]);
 
   // 박스 헤더: box_id → { order_number, box_no, box_size }
@@ -63,6 +63,7 @@ async function shipScanOrders(orderNumbers) {
         발주수량: meta.발주수량 || 0,
         확정수량: meta.확정수량 || 0,
         스캔수량: qty,
+        가상수량: parseInt(it.virtual_qty, 10) || 0,   // 이 중 [가상스캔]으로 들어온 개수 (쉽먼트 화면 '가상' 태그)
         박스정보: `${box.box_no}-${box.box_size}`,
       });
     }

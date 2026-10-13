@@ -159,8 +159,9 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
       center: (order && order.물류센터) || '',
       arrivalDate: (order && order.입고예정일) || '',
       products,
-      boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at })),
-      items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty })),
+      // isVirtual / virtualQty: [가상스캔]으로 들어온 분량 표시 (화면 '가상' 태그)
+      boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at, isVirtual: !!b.is_virtual })),
+      items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty, virtualQty: i.virtual_qty || 0 })),
     });
   } catch (e) {
     console.error('[rk] ship-scan/order:', e);
@@ -169,7 +170,9 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
 });
 
 // 저장 — 현재 작업 상태(박스아이템 전체)를 그대로 반영(SET). 스캔·개수편집·삭제 모두 지원.
-// body: { orderNumber, boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty}] }
+// body: { orderNumber, boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty,virtualQty?}] }
+//   virtualQty = qty 중 [가상스캔]으로 들어온 개수 (0~qty). rk_ship_box_items.virtual_qty 로 저장하고,
+//   박스에 가상 수량이 하나라도 있으면 rk_ship_boxes.is_virtual=true (없으면 false 로 되돌린다 — SET 이므로 매번 다시 계산).
 router.post('/api/ship-scan/save', async (req, res) => {
   try {
     const orderNumber = String(req.body.orderNumber || '').trim();
@@ -187,9 +190,11 @@ router.post('/api/ship-scan/save', async (req, res) => {
       const barcode = String(it.barcode || '').trim();
       const qty = parseInt(it.qty, 10);
       if (!Number.isFinite(boxNo) || boxNo < 1 || !barcode || !Number.isFinite(qty) || qty <= 0) continue;
+      const vq = Math.min(qty, Math.max(0, parseInt(it.virtualQty, 10) || 0));
       const k = `${boxNo}|${barcode}`;
-      if (!merged.has(k)) merged.set(k, { boxNo, barcode, productName: String(it.productName || '').trim(), qty: 0 });
+      if (!merged.has(k)) merged.set(k, { boxNo, barcode, productName: String(it.productName || '').trim(), qty: 0, virtualQty: 0 });
       merged.get(k).qty += qty;
+      merged.get(k).virtualQty += vq;
     }
     const list = [...merged.values()];
 
@@ -234,7 +239,7 @@ router.post('/api/ship-scan/save', async (req, res) => {
     if (list.length) {
       const rows = list.map(it => ({
         box_id: boxIdByNo.get(it.boxNo), order_number: orderNumber, barcode: it.barcode,
-        product_name: it.productName || name.get(it.barcode) || null, qty: it.qty,
+        product_name: it.productName || name.get(it.barcode) || null, qty: it.qty, virtual_qty: it.virtualQty,
       }));
       const BATCH = 500;
       for (let i = 0; i < rows.length; i += BATCH) {
@@ -243,7 +248,14 @@ router.post('/api/ship-scan/save', async (req, res) => {
       }
     }
 
-    res.json({ ok: true, savedQty: list.reduce((s, i) => s + i.qty, 0), rows: list.length });
+    // 박스 가상 표시 — 가상 수량이 있는 박스 true, 나머지 false (가상 분량을 지우거나 줄이면 자동 해제)
+    const virtualBoxNos = new Set(list.filter(it => it.virtualQty > 0).map(it => it.boxNo));
+    const vTrue = [...allBoxNos].filter(no => virtualBoxNos.has(no)).map(no => boxIdByNo.get(no));
+    const vFalse = [...allBoxNos].filter(no => !virtualBoxNos.has(no)).map(no => boxIdByNo.get(no));
+    if (vTrue.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: true }).in('id', vTrue); if (error) throw error; }
+    if (vFalse.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: false }).in('id', vFalse); if (error) throw error; }
+
+    res.json({ ok: true, savedQty: list.reduce((s, i) => s + i.qty, 0), rows: list.length, virtualQty: list.reduce((s, i) => s + i.virtualQty, 0) });
   } catch (e) {
     console.error('[rk] ship-scan/save:', e);
     res.status(500).json({ error: '출고스캔 저장 실패: ' + e.message });
