@@ -282,17 +282,23 @@ router.post('/api/ship-scan/delete-box', async (req, res) => {
 // 기본은 진행중(DONE 아님) 발주서의 스캔행만 읽는다. 처리완료 발주서의 스캔행이 전체의 90% 를 넘어
 // 전부 읽으면 2초 이상 걸리는데, 이 맵을 쓰는 화면(발주서·요약·출고준비·검수)은 모두 진행중만 표시한다.
 // 처리완료까지 필요하면 ?all=1
+//   ?virtual=1 이면 { map, virtual } — virtual 은 같은 키로 가상스캔 수량 합(virtual_qty>0 인 것만). 발주서 관리의 '가상' 배지용.
+//   (기본 응답 형식은 그대로 — 요약·출고준비 등 다른 화면이 같은 맵을 쓴다)
 router.get('/api/ship-scan/scanned-map', async (req, res) => {
   try {
+    const withVirtual = String(req.query.virtual || '') === '1';
     const map = {};
+    const virtual = {};
     const add = (rows) => {
       for (const r of rows) {
         if (!r.order_number || !r.barcode) continue;
         const k = `${r.order_number}|${r.barcode}`;
         map[k] = (map[k] || 0) + (parseInt(r.qty, 10) || 0);
+        const vq = parseInt(r.virtual_qty, 10) || 0;
+        if (withVirtual && vq > 0) virtual[k] = (virtual[k] || 0) + vq;
       }
     };
-    const baseQuery = () => sb.from('rk_ship_box_items').select('order_number, barcode, qty');
+    const baseQuery = () => sb.from('rk_ship_box_items').select(withVirtual ? 'order_number, barcode, qty, virtual_qty' : 'order_number, barcode, qty');
     if (String(req.query.all || '') === '1') {
       add(await S.pageAll(() => baseQuery().order('id', { ascending: true })));
     } else {
@@ -302,7 +308,7 @@ router.get('/api/ship-scan/scanned-map', async (req, res) => {
           S.pageAll(() => baseQuery().in('order_number', nos).order('id', { ascending: true }))));
       }
     }
-    res.json(map);
+    res.json(withVirtual ? { map, virtual } : map);
   } catch (e) {
     console.error('[rk] ship-scan/scanned-map:', e);
     res.status(500).json({ error: '스캔개수 조회 실패: ' + e.message });

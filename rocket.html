@@ -144,6 +144,11 @@
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         .scan-zero{color:#cbd5e1;}
         .scan-pos{color:#1e293b;}
+        /* 가상스캔 배지 — 상품명 오른쪽 끝 (쉽먼트·출고스캔과 같은 규칙: 🔀 섞임 연보라 테두리 · 👾 전부 가상 진보라 채움) */
+        .vtag{float:right;display:inline-block;margin-left:8px;font-size:11px;font-weight:700;border-radius:5px;padding:1px 6px;white-space:nowrap;line-height:1.4;}
+        .vtag.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
+        .vtag.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
+        .vmark{margin-left:5px;font-size:12px;}   /* 발주번호 옆 발주서 단위 표시 */
         /* 스캔 열 배지: 확정==스캔 초록(연하게), 스캔>0 & 확정>스캔 주황 */
         .scan-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;font-size:12px;font-weight:500;line-height:1;}
         .scan-green{background:#dcfce7;color:#16a34a;}
@@ -250,6 +255,7 @@
                         <option value="all" selected>전체</option>
                         <option value="need">스캔필요</option>
                         <option value="done">스캔완료</option>
+                        <option value="virtual">가상 포함</option>
                     </select>
                 </div>
             </div>
@@ -363,12 +369,13 @@
                 const [res,slRes,scRes]=await Promise.all([
                     fetch('/api/orders'), // Supabase 기반, referer=/rocket → dedup
                     fetch('/api/shipping-list?active=1&status='+encodeURIComponent('출고예정')), // active=1: 진행중 발주서 행만
-                    fetch('/api/ship-scan/scanned-map')
+                    fetch('/api/ship-scan/scanned-map?virtual=1')   // { map, virtual } — virtual = 가상스캔 수량 (쉽먼트와 같은 '가상' 배지)
                 ]);
                 if(!res.ok) throw new Error('HTTP '+res.status);
                 const orders=await res.json();
                 // 스캔수량: rk_ship_box_items 합계(발주번호+바코드, 박스 무관)로 대체
-                const scanMap=scRes.ok?await scRes.json():{};
+                const scData=scRes.ok?await scRes.json():{};
+                const scanMap=scData.map||{}, virtualMap=scData.virtual||{};
                 // 발주번호|바코드 → {재고합, 입고합, 재고위치[]} (source: 재고→재고열+위치, 입고→입고V2열)
                 const slMap=new Map();
                 if(slRes.ok){
@@ -389,6 +396,7 @@
                         allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
                             상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
                             발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:scanMap[`${o.발주번호}|${p.상품바코드}`]||0,
+                            가상수량:virtualMap[`${o.발주번호}|${p.상품바코드}`]||0,   // 스캔수량 중 가상스캔 분량
                             준비:(p.준비==null?null:p.준비),
                             재고:(sl&&sl.재고>0)?sl.재고:null,입고V2:(sl&&sl.입고>0)?sl.입고:null,
                             재고위치:(sl&&sl.재고위치&&sl.재고위치.length)?sl.재고위치:null,
@@ -400,6 +408,26 @@
                 document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="15">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
+
+        // ── 가상스캔 표시 (쉽먼트·출고스캔과 같은 규칙: 🔀 섞임 = 연보라 테두리 · 👾 전부 가상 = 진보라 채움) ──
+        //   상품 행: 스캔수량 중 가상수량 → 상품명 오른쪽 끝 배지. 발주서: 그 발주서 상품 전체 기준 → 발주번호 옆 이모지
+        const vState=(scan,vq)=>vq<=0?'':(vq>=scan?'virtual-all':'virtual-part');
+        function rowVtag(r){
+            const st=vState(Number(r.스캔수량)||0, Number(r.가상수량)||0);
+            if(!st) return '';
+            return `<span class="vtag ${st}" title="가상 ${r.가상수량} / 스캔 ${r.스캔수량}">${st==='virtual-all'?'👾 가상':'🔀 일부 가상'}</span>`;
+        }
+        let orderVirtual=new Map();   // 발주번호 → '' | 'virtual-part' | 'virtual-all' (allRows 기준, applySearch 에서 계산)
+        function computeOrderVirtual(){
+            const agg=new Map();
+            for(const r of allRows){
+                const a=agg.get(r.발주번호)||{scan:0,vq:0};
+                a.scan+=Number(r.스캔수량)||0; a.vq+=Number(r.가상수량)||0;
+                agg.set(r.발주번호,a);
+            }
+            orderVirtual=new Map([...agg].map(([no,a])=>[no, vState(a.scan,a.vq)]));
+        }
+        const orderVmark=no=>{ const st=orderVirtual.get(no); return st?`<span class="vmark" title="${st==='virtual-all'?'전부 가상스캔':'가상스캔 포함'}">${st==='virtual-all'?'👾':'🔀'}</span>`:''; };
 
         function render(){
             const tb=document.getElementById('tbody');
@@ -420,8 +448,8 @@
                     const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
                     return `<tr data-i="${i}" data-ord="${esc(r.발주번호)}" data-bc="${esc(r.상품바코드)}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
-                        <td class="order-no">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
-                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
+                        <td class="order-no">${esc(r.발주번호)}${orderVmark(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
+                        <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}${rowVtag(r)}</td>
                         <td class="num dt">${esc(r.발주수량)}</td><td class="num dt">${esc(r.확정수량)}</td>
                         <td class="num dt">${scanHtml}</td>
                         <td class="ctr dt">${r.준비==null?'':esc(r.준비)}</td>
@@ -496,8 +524,12 @@
             // 발주서 단위 스캔 상태 (발주서의 전체 상품 기준 — 검색/행 필터와 무관하게 판정)
             //   스캔필요: (입고+재고) > 스캔 인 상품이 하나라도 있는 발주서
             //   스캔완료: 입고+재고 가 있고, 모든 상품이 (입고+재고) = 스캔 인 발주서
+            computeOrderVirtual();
             const orderMode=document.getElementById('orderScanFilter').value;
-            if(orderMode!=='all'){
+            if(orderMode==='virtual'){
+                // 가상 포함: 가상스캔 분량이 있는 발주서만 (상태는 발주서 전체 기준)
+                viewRows=viewRows.filter(r=>!!orderVirtual.get(r.발주번호));
+            }else if(orderMode!=='all'){
                 const st=new Map(); // 발주번호 → {need, mismatch, prep}
                 for(const r of allRows){
                     if(!st.has(r.발주번호)) st.set(r.발주번호,{need:false,mismatch:false,prep:0});
@@ -571,7 +603,7 @@
                     html+=corders.map(o=>{
                         const sel=terms.includes(o.발주번호)?'sel':'';
                         return `<div class="side-order ${sel}" onclick="toggleOrderInSearch('${esc(o.발주번호)}')">
-                            <div class="so-no">${esc(o.발주번호)} <span class="so-cnt">(${o.count})</span></div>
+                            <div class="so-no">${esc(o.발주번호)}${orderVmark(o.발주번호)} <span class="so-cnt">(${o.count})</span></div>
                             <div class="so-center">${esc(o.물류센터)}</div></div>`;
                     }).join('');
                     html+=`</div>`;
