@@ -50,9 +50,11 @@
         .size-chips{display:flex;flex-wrap:wrap;gap:4px;}
         .chip{display:inline-flex;align-items:center;gap:3px;background:#eef1f6;color:#475569;border-radius:6px;padding:2px 7px;font-size:11.5px;font-weight:600;}
         .chip b{color:#1e293b;}
-        /* 가상스캔 분량이 있는 박스/행 — 출고스캔과 같은 연보라 */
-        .chip.virtual{background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe;}
-        .chip.virtual i{font-style:normal;font-size:10px;font-weight:800;color:#7c3aed;margin-left:2px;}
+        /* 가상스캔 분량이 있는 박스 — 배지 자체를 보라색으로 (글자만 보라면 눈에 안 띔) */
+        .chip.virtual{background:#7c3aed;color:#fff;}
+        .chip.virtual b{color:#fff;}
+        .tabletop{display:flex;align-items:center;justify-content:flex-start;margin-bottom:8px;}
+        .tabletop select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
         .vtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;padding:0 6px;vertical-align:middle;}
         /* 머리글은 `table.main thead th`(왼쪽 정렬)가 더 구체적이라 체크 칸만 다시 가운데로 */
         th.chk,td.chk,table.main thead th.chk{width:44px;text-align:center;padding-left:0 !important;padding-right:0 !important;}
@@ -166,6 +168,15 @@
                 <input id="searchInput" type="text" placeholder="입고예정일 · 물류센터 · 발주번호 검색 후 Enter (콤마로 여러 개)" onkeydown="if(event.key==='Enter')applySearch()">
             </div>
 
+            <div class="tabletop">
+                <!-- 스캔 = 가상 없이 전부 실제 스캔된 발주서 · 가상 = 가상스캔 분량이 있는 발주서 -->
+                <select id="scanFilter" onchange="applySearch(true)">
+                    <option value="all" selected>전체</option>
+                    <option value="scan">스캔</option>
+                    <option value="virtual">가상</option>
+                </select>
+            </div>
+
             <div class="table-scroll">
                 <table class="main">
                     <colgroup>
@@ -266,7 +277,8 @@
                 const b=boxMap.get(p.box.no); b.virtualQty+=p.virtualQty; b.qty+=num(p.스캔수량);
             }
             const boxes=[...boxMap.entries()].map(([no,b])=>({no, size:b.size, virtualQty:b.virtualQty, qty:b.qty})).sort((a,b)=>boxNoCmp(a.no,b.no));
-            return {...o, items, boxes, skuCount:new Set(items.map(p=>p.상품바코드)).size, scanQty:items.reduce((s,p)=>s+num(p.스캔수량),0)};
+            return {...o, items, boxes, skuCount:new Set(items.map(p=>p.상품바코드)).size, scanQty:items.reduce((s,p)=>s+num(p.스캔수량),0),
+                virtualQty:items.reduce((s,p)=>s+p.virtualQty,0)};   // >0 이면 가상스캔 분량이 있는 발주서 (필터 '가상')
         }
 
         async function fetchOrders(){
@@ -286,12 +298,17 @@
             }
         }
 
-        // ── 검색: 입고예정일 · 물류센터 · 발주번호 (콤마 = OR). 검색하면 걸린 발주서를 펼친다 ──
+        // ── 검색: 입고예정일 · 물류센터 · 발주번호 (콤마 = OR) + 필터(전체/스캔/가상). 검색하면 걸린 발주서를 펼친다 ──
         function applySearch(keepOpen){
             const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
-            viewOrders=terms.length
-                ? allOrders.filter(o=>{ const hay=[o.입고예정일,o.물류센터,o.발주번호].map(v=>String(v||'').toLowerCase()); return terms.some(t=>hay.some(h=>h.includes(t))); })
-                : allOrders.slice();
+            const mode=document.getElementById('scanFilter').value;   // scan = 가상 없음 · virtual = 가상 포함
+            viewOrders=allOrders.filter(o=>{
+                if(mode==='virtual' && !(o.virtualQty>0)) return false;
+                if(mode==='scan' && o.virtualQty>0) return false;
+                if(!terms.length) return true;
+                const hay=[o.입고예정일,o.물류센터,o.발주번호].map(v=>String(v||'').toLowerCase());
+                return terms.some(t=>hay.some(h=>h.includes(t)));
+            });
             if(terms.length && keepOpen!==true){ opened.clear(); viewOrders.forEach(o=>opened.add(o.발주번호)); }
             render();
         }
@@ -307,7 +324,7 @@
             }
             tb.innerHTML=viewOrders.map(o=>{
                 const on=esc(o.발주번호), isOpen=opened.has(o.발주번호), isSel=selected.has(o.발주번호);
-                const chips=o.boxes.map(b=>`<span class="chip${b.virtualQty>0?' virtual':''}" title="${b.virtualQty>0?`가상스캔 ${b.virtualQty}개`:''}"><b>${esc(b.no)}</b>${esc(b.size)}${b.virtualQty>0?'<i>가상</i>':''}</span>`).join('');
+                const chips=o.boxes.map(b=>`<span class="chip${b.virtualQty>0?' virtual':''}" title="${b.virtualQty>0?`가상스캔 ${b.virtualQty}개`:''}"><b>${esc(b.no)}</b>${esc(b.size)}</span>`).join('');
                 const rows=o.items.map((p,i)=>{
                     const boxEnd=i<o.items.length-1 && o.items[i+1].box.no!==p.box.no;
                     return `<tr class="${boxEnd?'box-end':''}">
