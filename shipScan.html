@@ -671,7 +671,7 @@
         function boxIsVirtual(no){ return boxVirtualQty(no)>0; }
         // 박스 가상 상태 클래스: '' 가상 없음 · virtual-part 실제+가상 섞임 · virtual-all 전부 가상 (쉽먼트 배지와 같은 규칙)
         function boxVirtualCls(no){ const v=boxVirtualQty(no); return v<=0?'':(v>=boxQty(no)?'virtual-all':'virtual-part'); }
-        const boxVirtualLabel=no=>boxVirtualCls(no)==='virtual-all'?'가상':boxVirtualCls(no)==='virtual-part'?'일부 가상':'';
+        const boxVirtualLabel=no=>boxVirtualCls(no)==='virtual-all'?'👾 가상':boxVirtualCls(no)==='virtual-part'?'🔀 일부 가상':'';   // 🔀 섞임 · 👾 전부 가상
         const vtagHtml=(vq,qty)=>vq>0?`<span class="vtag" title="가상스캔 ${vq}개">가상${vq<qty?' '+vq:''}</span>`:'';
 
         // 상세 테이블 공용 행 (박스 · 바코드 · 상품명 · 스캔개수[클릭편집])
@@ -709,7 +709,7 @@
             const qtyOf=no=>boxItems.reduce((s,i)=>i.boxNo===no?s+(Number(i.qty)||0):s,0);
             btns.innerHTML=nos.map(no=>`<div class="lbx ${no===listSelBox?'sel':''} ${boxVirtualCls(no)}" onclick="selectListBox(${no})" title="${boxIsVirtual(no)?`가상 ${boxVirtualQty(no)} / 전체 ${qtyOf(no)}`:''}"><div class="e">📦<b>${no}</b></div><div class="t">${esc(boxSizeOf(no))}</div><div class="q">${qtyOf(no).toLocaleString()}개</div>${boxIsVirtual(no)?`<div class="v">${boxVirtualLabel(no)}</div>`:''}</div>`).join('');
             const vq=boxVirtualQty(listSelBox);
-            title.innerHTML=`📦 박스 ${listSelBox} · ${esc(boxSizeOf(listSelBox))}${vq>0?`<span class="vtag">가상 ${vq}개${vq===qtyOf(listSelBox)?' (전부)':''}</span>`:''}`;
+            title.innerHTML=`📦 박스 ${listSelBox} · ${esc(boxSizeOf(listSelBox))}${vq>0?`<span class="vtag">${vq===qtyOf(listSelBox)?'👾 전부 가상':'🔀 가상'} ${vq}개</span>`:''}`;
             const items=boxItems.filter(i=>i.boxNo===listSelBox);
             tb.innerHTML=items.length?items.map(rowDetailHtml).join(''):`<tr class="state-row"><td colspan="5">이 박스에 담긴 상품이 없습니다.</td></tr>`;
         }

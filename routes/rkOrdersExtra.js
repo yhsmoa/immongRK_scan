@@ -22,12 +22,22 @@ async function shipScanOrders(orderNumbers) {
   if (!orderNos.length) return [];
 
   // 1000행씩 나눠 읽으므로 반드시 id 순 정렬 — 정렬 없이 range 를 넘기면 행이 빠지거나 중복될 수 있다
-  const [boxes, boxItems] = await Promise.all([
+  const [boxes, boxItems, seqRows] = await Promise.all([
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
       .select('id, order_number, box_no, box_size').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
       .select('order_number, box_id, barcode, qty, product_name, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
+    // 출고 순서(rk_ship_seq, [순서저장] 스캔 순서) — 발주서 순서 = 그 발주서 행들의 최소 seq, 박스 순서 = (발주번호, 박스번호) 행의 seq
+    S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_seq')
+      .select('order_number, box_no, seq').in('order_number', nos).order('id', { ascending: true }))),
   ]);
+  const orderSeq = new Map();   // order_number → min seq
+  const boxSeq = new Map();     // `${order_number}|${box_no}` → seq
+  for (const r of seqRows) {
+    const cur = orderSeq.get(r.order_number);
+    if (cur == null || r.seq < cur) orderSeq.set(r.order_number, r.seq);
+    if (r.box_no != null) boxSeq.set(`${r.order_number}|${r.box_no}`, r.seq);
+  }
 
   // 박스 헤더: box_id → { order_number, box_no, box_size }
   const boxById = new Map(boxes.map((b) => [b.id, b]));
@@ -65,13 +75,69 @@ async function shipScanOrders(orderNumbers) {
         스캔수량: qty,
         가상수량: parseInt(it.virtual_qty, 10) || 0,   // 이 중 [가상스캔]으로 들어온 개수 (쉽먼트 화면 '가상' 태그)
         박스정보: `${box.box_no}-${box.box_size}`,
+        박스순서: boxSeq.get(`${order.발주번호}|${box.box_no}`) ?? null,   // 박스 단위로 스캔했을 때만 값이 있다
       });
     }
     if (!상품정보.length) continue;
-    result.push({ ...order, 상품정보 });
+    result.push({ ...order, 상품정보, 순서: orderSeq.get(order.발주번호) ?? null });
   }
   return result;
 }
+
+/** 출고 순서 정렬 키 — 박스 순서 > 발주서 순서 > 없음(맨 뒤). 같은 발주서 안에서 순서 없는 박스는 그 발주서 바로 뒤에 붙는다 */
+function seqKeyOf(order, product) {
+  if (product && product.박스순서 != null) return product.박스순서;
+  if (order.순서 != null) return order.순서 + 0.5;
+  return Number.POSITIVE_INFINITY;
+}
+
+// ── 출고 순서 저장 ([순서저장] 모달) ──
+//   body: { codes:[ "144287071", "144287071-1", "144287071 - 2", … ] }  — 박스 라벨/발주서 바코드를 스캔한 순서
+//   발주번호 = 앞의 숫자, 박스번호 = '-' 뒤 숫자(선택). rk_orders 에 있고 처리완료가 아닌 발주서만 저장.
+//   스캔된 발주서의 기존 순서 행은 지우고 새로 넣는다 (replace). 응답: { saved, invalid:[코드], orders:[발주번호…] }
+router.post('/api/shipment/sequence', async (req, res) => {
+  try {
+    const codes = (Array.isArray(req.body.codes) ? req.body.codes : []).map((c) => String(c == null ? '' : c).trim()).filter(Boolean);
+    if (!codes.length) return res.status(400).json({ error: '스캔한 바코드가 없습니다.' });
+
+    const parsed = [];
+    const invalid = [];
+    for (const code of codes) {
+      const m = code.replace(/\s+/g, '').match(/^(\d+)(?:-(\d+))?$/);
+      if (!m) { invalid.push(code); continue; }
+      parsed.push({ code, orderNumber: m[1], boxNo: m[2] != null ? parseInt(m[2], 10) : null });
+    }
+    const orderNos = [...new Set(parsed.map((p) => p.orderNumber))];
+    const headers = orderNos.length
+      ? await S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_orders')
+        .select('order_number, status').in('order_number', nos).order('id', { ascending: true })))
+      : [];
+    const validNos = new Set(headers.filter((h) => !S.isDoneOrder({ 상태: h.status })).map((h) => String(h.order_number)));
+
+    // 같은 (발주번호, 박스번호)를 두 번 찍으면 처음 순서를 쓴다
+    const rows = [];
+    const seen = new Set();
+    let seq = 0;
+    for (const p of parsed) {
+      if (!validNos.has(p.orderNumber)) { invalid.push(p.code); continue; }
+      const k = `${p.orderNumber}|${p.boxNo == null ? 0 : p.boxNo}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      rows.push({ order_number: p.orderNumber, box_no: p.boxNo, seq: ++seq });
+    }
+    const savedNos = [...new Set(rows.map((r) => r.order_number))];
+    if (savedNos.length) {
+      const { error: eDel } = await S.supabase.from('rk_ship_seq').delete().in('order_number', savedNos);
+      if (eDel) throw eDel;
+      const { error: eIns } = await S.supabase.from('rk_ship_seq').insert(rows);
+      if (eIns) throw eIns;
+    }
+    res.json({ saved: rows.length, orders: savedNos, invalid });
+  } catch (e) {
+    console.error('[rk] shipment/sequence:', e);
+    res.status(500).json({ error: '순서 저장 실패: ' + e.message });
+  }
+});
 
 // ── 쉽먼트 목록 (출고스캔 저장 데이터 기반) — 화면 테이블/송장 모달용 ──
 router.get('/api/shipment/orders', async (req, res) => {
@@ -149,7 +215,7 @@ router.post('/api/shipment/export', async (req, res) => {
 // ── CJ 운송장 내보내기 ──
 router.post('/api/shipment/export-cj', async (req, res) => {
   try {
-    const { orderNumbers } = req.body;
+    const { orderNumbers, ordered } = req.body;   // ordered: 화면의 [순서대로] 가 켜져 있으면 출고 순서(rk_ship_seq)대로
     const orders = await shipScanOrders(orderNumbers);
 
     const { data: centerData } = await S.supabase.from('coupang_centers').select('center, contact, address');
@@ -179,10 +245,12 @@ router.post('/api/shipment/export-cj', async (req, res) => {
         if (!processedBoxes.has(uniqueKey)) {
           processedBoxes.add(uniqueKey);
           const centerInfo = centerMap.get(order.물류센터);
-          cjData.push({ 물류센터: order.물류센터, 연락처: centerInfo?.contact || '', 주소: centerInfo?.address || '', 박스타입: boxType, 발주번호: `${order.발주번호} - ${boxNumber}` });
+          cjData.push({ 물류센터: order.물류센터, 연락처: centerInfo?.contact || '', 주소: centerInfo?.address || '', 박스타입: boxType, 발주번호: `${order.발주번호} - ${boxNumber}`, _seq: seqKeyOf(order, product) });
         }
       });
     });
+    // [순서대로] — 스캔 순서대로, 순서 없는 박스는 뒤에 (안정 정렬이라 원래 순서 유지)
+    if (ordered === true) cjData.sort((a, b) => a._seq - b._seq);
 
     cjData.forEach((data, index) => {
       const rowIndex = index + 2;

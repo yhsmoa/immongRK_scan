@@ -56,8 +56,31 @@
         .chip.virtual-part b{color:#3C3489;}
         .chip.virtual-all{background:#534AB7;color:#EEEDFE;}
         .chip.virtual-all b{color:#fff;}
-        .tabletop{display:flex;align-items:center;justify-content:flex-start;margin-bottom:8px;}
+        .tabletop{display:flex;align-items:center;justify-content:flex-start;gap:6px;margin-bottom:8px;}
         .tabletop select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        /* 전체 / 순서대로 토글 */
+        .seg{display:inline-flex;border:1px solid #e2e8f0;border-radius:9px;overflow:hidden;background:#fff;}
+        .seg button{height:32px;padding:0 13px;border:none;background:transparent;font-size:13px;font-weight:500;color:#64748b;cursor:pointer;font-family:inherit;}
+        .seg button+button{border-left:1px solid #e2e8f0;}
+        .seg button.on{background:var(--primary);color:#fff;font-weight:600;}
+        .seq-hint{font-size:12px;color:#94a3b8;margin-left:4px;}
+        .seq-no{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:999px;background:#eef2ff;color:var(--primary);font-size:11.5px;font-weight:700;margin-right:6px;font-variant-numeric:tabular-nums;}
+
+        /* 순서저장 모달 — 박스 라벨/발주서 바코드를 스캔한 순서 */
+        .seq-modal{background:#fff;border-radius:14px;width:640px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .seq-input{margin:14px 20px 0;height:48px;padding:0 16px;border:2px solid #c7d2fe;border-radius:10px;font-size:18px;font-weight:600;color:var(--ink);outline:none;font-family:inherit;letter-spacing:.02em;}
+        .seq-input:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(99,102,241,.12);}
+        .seq-list{display:flex;flex-wrap:wrap;gap:8px;padding:14px 20px;overflow-y:auto;flex:1;min-height:120px;align-content:flex-start;}
+        .seq-empty{color:#94a3b8;font-size:13px;}
+        .seq-chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px 0 6px;border-radius:999px;background:#eef2ff;border:1px solid #c7d2fe;color:#1e293b;font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums;}
+        .seq-chip .n{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:999px;background:var(--primary);color:#fff;font-size:11px;font-weight:700;}
+        .seq-chip .sub{color:#64748b;font-weight:500;font-size:12.5px;}
+        .seq-chip.bad{background:#fef2f2;border-color:#fecaca;color:#b91c1c;}
+        .seq-chip.bad .n{background:#dc2626;}
+        .seq-chip button{border:none;background:transparent;color:#94a3b8;cursor:pointer;font-size:14px;line-height:1;padding:0 0 0 2px;}
+        .seq-chip button:hover{color:#dc2626;}
+        .seq-stat{padding:0 20px;font-size:12.5px;color:#64748b;}
+        .seq-stat b{color:var(--ink);}
         .vtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;padding:0 6px;vertical-align:middle;}
         /* 머리글은 `table.main thead th`(왼쪽 정렬)가 더 구체적이라 체크 칸만 다시 가운데로 */
         th.chk,td.chk,table.main thead th.chk{width:44px;text-align:center;padding-left:0 !important;padding-right:0 !important;}
@@ -161,6 +184,7 @@
                     <button class="btn" id="expandBtn" onclick="toggleExpandAll()">발주서 펼쳐보기</button>
                     <span class="sep"></span>
                     <button class="btn" id="labelPrintBtn" onclick="openLabelPrint()">라벨출력</button>
+                    <button class="btn" onclick="openSeqModal()">순서저장</button>
                     <button class="btn" onclick="exportCJExcel()">CJ 엑셀</button>
                     <button class="btn primary" onclick="exportSelectedOrders()">쉽먼트 저장</button>
                 </div>
@@ -172,12 +196,18 @@
             </div>
 
             <div class="tabletop">
+                <!-- 정렬: 전체(기본 순서) / 순서대로([순서저장] 스캔 순서, 순서 없는 발주서는 뒤) -->
+                <div class="seg" id="orderSeg">
+                    <button type="button" class="on" data-mode="all" onclick="setOrderMode('all')">전체</button>
+                    <button type="button" data-mode="seq" onclick="setOrderMode('seq')">순서대로</button>
+                </div>
                 <!-- 스캔 = 가상 없이 전부 실제 스캔된 발주서 · 가상 = 가상스캔 분량이 있는 발주서 -->
                 <select id="scanFilter" onchange="applySearch(true)">
                     <option value="all" selected>전체</option>
                     <option value="scan">스캔</option>
                     <option value="virtual">가상</option>
                 </select>
+                <span class="seq-hint" id="seqHint"></span>
             </div>
 
             <div class="table-scroll">
@@ -247,6 +277,24 @@
         </div>
     </div>
 
+    <!-- 순서저장 모달 — 박스 라벨/발주서 바코드를 출고할 순서대로 스캔 → rk_ship_seq 저장 -->
+    <div class="modal-back" id="seqBack" onclick="if(event.target.id==='seqBack')closeSeqModal()">
+        <div class="seq-modal">
+            <div class="modal-head">
+                <h3>순서저장 <span class="sub" id="seqSub" style="font-size:12.5px;color:#94a3b8;font-weight:500;margin-left:8px;"></span></h3>
+                <button onclick="closeSeqModal()">✕</button>
+            </div>
+            <input class="seq-input" id="seqInput" type="text" inputmode="none" autocomplete="off" placeholder="박스 라벨 바코드 스캔 (발주번호 또는 발주번호-박스번호) 후 Enter">
+            <div class="seq-list" id="seqList"><span class="seq-empty">스캔한 순서대로 여기에 쌓입니다. 잘못 찍은 건 ✕ 로 뺄 수 있습니다.</span></div>
+            <div class="seq-stat" id="seqStat"></div>
+            <div class="modal-foot">
+                <button class="btn" onclick="clearSeq()">모두 지우기</button>
+                <button class="btn" onclick="closeSeqModal()">취소</button>
+                <button class="btn primary" id="seqSaveBtn" onclick="saveSeq()">순서저장</button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast"></div>
 
     <script>
@@ -281,7 +329,8 @@
             }
             const boxes=[...boxMap.entries()].map(([no,b])=>({no, size:b.size, virtualQty:b.virtualQty, qty:b.qty})).sort((a,b)=>boxNoCmp(a.no,b.no));
             return {...o, items, boxes, skuCount:new Set(items.map(p=>p.상품바코드)).size, scanQty:items.reduce((s,p)=>s+num(p.스캔수량),0),
-                virtualQty:items.reduce((s,p)=>s+p.virtualQty,0)};   // >0 이면 가상스캔 분량이 있는 발주서 (필터 '가상')
+                virtualQty:items.reduce((s,p)=>s+p.virtualQty,0),   // >0 이면 가상스캔 분량이 있는 발주서 (필터 '가상')
+                seq:o.순서==null?null:Number(o.순서)};              // 출고 순서 ([순서저장] 스캔 순서, 없으면 null)
         }
 
         async function fetchOrders(){
@@ -312,8 +361,21 @@
                 const hay=[o.입고예정일,o.물류센터,o.발주번호].map(v=>String(v||'').toLowerCase());
                 return terms.some(t=>hay.some(h=>h.includes(t)));
             });
+            // [순서대로] — 스캔 순서대로, 순서 없는 발주서는 뒤 (원래 순서 유지)
+            if(orderMode==='seq') viewOrders.sort((a,b)=>(a.seq==null?Infinity:a.seq)-(b.seq==null?Infinity:b.seq));
             if(terms.length && keepOpen!==true){ opened.clear(); viewOrders.forEach(o=>opened.add(o.발주번호)); }
             render();
+        }
+        // ── 정렬 토글: 전체 / 순서대로 ──
+        let orderMode='all';
+        function setOrderMode(mode){
+            orderMode=mode;
+            document.querySelectorAll('#orderSeg button').forEach(b=>b.classList.toggle('on', b.dataset.mode===mode));
+            applySearch(true);
+        }
+        function updateSeqHint(){
+            const n=allOrders.filter(o=>o.seq!=null).length;
+            document.getElementById('seqHint').textContent=n?`순서 저장된 발주서 ${n}건`:'';
         }
 
         function render(){
@@ -321,6 +383,7 @@
             document.getElementById('cntOrders').textContent=viewOrders.length.toLocaleString();
             document.getElementById('cntBoxes').textContent=viewOrders.reduce((s,o)=>s+o.boxes.length,0).toLocaleString();
             document.getElementById('cntQty').textContent=viewOrders.reduce((s,o)=>s+o.scanQty,0).toLocaleString();
+            updateSeqHint();
             if(!viewOrders.length){
                 tb.innerHTML=`<tr class="state-row"><td colspan="8">${allOrders.length?'검색 결과가 없습니다.':'스캔된 발주서가 없습니다.'}</td></tr>`;
                 syncCheckAll(); updateExpandBtn(); return;
@@ -331,7 +394,8 @@
                 const chips=o.boxes.map(b=>{
                     const st=b.virtualQty<=0?'':(b.virtualQty>=b.qty?' virtual-all':' virtual-part');
                     const tip=b.virtualQty>0?` title="가상 ${b.virtualQty} / 전체 ${b.qty}"`:'';
-                    return `<span class="chip${st}"${tip}><b>${esc(b.no)}</b>${esc(b.size)}</span>`;
+                    const emoji=st===' virtual-all'?' 👾':st===' virtual-part'?' 🔀':'';   // 🔀 섞임 · 👾 전부 가상 — 색만으로는 약해서
+                    return `<span class="chip${st}"${tip}><b>${esc(b.no)}</b>${esc(b.size)}${emoji}</span>`;
                 }).join('');
                 const rows=o.items.map((p,i)=>{
                     const boxEnd=i<o.items.length-1 && o.items[i+1].box.no!==p.box.no;
@@ -345,7 +409,7 @@
                 }).join('');
                 return `<tr class="order-row ${isOpen?'open':''} ${isSel?'checked':''}" data-on="${on}" onclick="onRowClick(event,this)">
                         <td class="chk"><input type="checkbox" class="rowchk" ${isSel?'checked':''} onclick="event.stopPropagation();toggleOne(this)"></td>
-                        <td class="order-no"><span class="order-toggle" onclick="event.stopPropagation();toggleDetail(this.closest('tr'))"><span class="caret">▶</span>${on}</span></td>
+                        <td class="order-no">${orderMode==='seq'&&o.seq!=null?`<span class="seq-no" title="출고 순서">${o.seq}</span>`:''}<span class="order-toggle" onclick="event.stopPropagation();toggleDetail(this.closest('tr'))"><span class="caret">▶</span>${on}</span></td>
                         <td>${esc(o.물류센터)}</td>
                         <td class="ctr">${o.skuCount}</td><td class="ctr">${o.scanQty.toLocaleString()}</td><td class="ctr">${o.boxes.length}</td>
                         <td><div class="size-chips">${chips}</div></td>
@@ -538,8 +602,60 @@
         async function exportCJExcel(){
             const sel=selectedOrders();
             if(!sel.length){ toast('다운로드할 발주서를 선택해주세요.'); return; }
-            try{ await downloadPost('/api/shipment/export-cj',{orderNumbers:sel},'CJ_shipment.xlsx'); }
+            // [순서대로] 가 켜져 있으면 CJ 운송장 행도 출고 순서대로
+            try{ await downloadPost('/api/shipment/export-cj',{orderNumbers:sel, ordered:orderMode==='seq'},'CJ_shipment.xlsx'); }
             catch(e){ toast('CJ 엑셀 다운로드 실패: '+e.message); }
+        }
+
+        // ── 순서저장 모달: USB 스캐너로 박스 라벨 바코드를 출고 순서대로 스캔 (값 + Enter) ──
+        //   발주번호 또는 "발주번호-박스번호". 목록(allOrders)에 없는 번호는 빨간 배지 — 저장 시 서버가 rk_orders 로 다시 검증한다.
+        let seqCodes=[];   // [{code, orderNumber, boxNo}] 스캔 순서
+        function parseSeqCode(raw){
+            const m=String(raw||'').replace(/\s+/g,'').match(/^(\d+)(?:-(\d+))?$/);
+            return m?{code:raw.trim(), orderNumber:m[1], boxNo:m[2]!=null?Number(m[2]):null}:null;
+        }
+        function openSeqModal(){
+            document.getElementById('seqBack').classList.add('show');
+            renderSeq();
+            setTimeout(()=>document.getElementById('seqInput').focus(),50);
+        }
+        function closeSeqModal(){ document.getElementById('seqBack').classList.remove('show'); }
+        function clearSeq(){ seqCodes=[]; renderSeq(); document.getElementById('seqInput').focus(); }
+        function removeSeq(i){ seqCodes.splice(i,1); renderSeq(); document.getElementById('seqInput').focus(); }
+        document.getElementById('seqInput').addEventListener('keydown',e=>{
+            if(e.key!=='Enter') return;
+            e.preventDefault();
+            const inp=e.target, raw=inp.value; inp.value='';
+            if(!raw.trim()) return;
+            const p=parseSeqCode(raw);
+            if(!p){ toast('발주번호 형식이 아닙니다: '+raw.trim()); return; }
+            const dup=seqCodes.some(x=>x.orderNumber===p.orderNumber && x.boxNo===p.boxNo);
+            if(dup){ toast(`이미 스캔했습니다: ${p.code}`); return; }
+            seqCodes.push(p); renderSeq();
+        });
+        function renderSeq(){
+            const list=document.getElementById('seqList');
+            const known=new Set(allOrders.map(o=>o.발주번호));
+            if(!seqCodes.length){ list.innerHTML='<span class="seq-empty">스캔한 순서대로 여기에 쌓입니다. 잘못 찍은 건 ✕ 로 뺄 수 있습니다.</span>'; }
+            else list.innerHTML=seqCodes.map((p,i)=>`<span class="seq-chip ${known.has(p.orderNumber)?'':'bad'}" title="${known.has(p.orderNumber)?'':'쉽먼트 목록에 없는 발주서 (저장 시 검증)'}"><span class="n">${i+1}</span>${esc(p.orderNumber)}${p.boxNo!=null?`<span class="sub">- ${p.boxNo}</span>`:''}<button type="button" title="빼기" onclick="removeSeq(${i})">✕</button></span>`).join('');
+            const orders=new Set(seqCodes.map(p=>p.orderNumber)).size, bad=seqCodes.filter(p=>!known.has(p.orderNumber)).length;
+            document.getElementById('seqSub').textContent=seqCodes.length?`${seqCodes.length}건 스캔`:'';
+            document.getElementById('seqStat').innerHTML=seqCodes.length?`발주서 <b>${orders}</b>건 · 스캔 <b>${seqCodes.length}</b>건${bad?` · <span style="color:#dc2626">목록에 없음 ${bad}건</span>`:''}`:'';
+            document.getElementById('seqSaveBtn').disabled=!seqCodes.length;
+        }
+        async function saveSeq(){
+            if(!seqCodes.length) return;
+            const btn=document.getElementById('seqSaveBtn'); btn.disabled=true;
+            try{
+                const res=await fetch('/api/shipment/sequence',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codes:seqCodes.map(p=>p.code)})});
+                const j=await res.json();
+                if(!res.ok) throw new Error(j.error||'순서 저장 실패');
+                closeSeqModal(); seqCodes=[];
+                toast(`순서저장 완료 — 발주서 ${j.orders.length}건, 스캔 ${j.saved}건${j.invalid.length?`\n제외(없거나 처리완료): ${j.invalid.join(', ')}`:''}`);
+                await loadOrders();
+                if(orderMode!=='seq') setOrderMode('seq');   // 저장하면 바로 순서대로 본다
+            }catch(e){ toast('순서 저장 실패: '+e.message); }
+            finally{ btn.disabled=false; }
         }
 
         // ============================================================
@@ -617,7 +733,7 @@
 
         let toastTimer;
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
-        document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSummary(); closeInvoiceModal(); closeLabelPrint(); } });
+        document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSummary(); closeInvoiceModal(); closeLabelPrint(); closeSeqModal(); } });
 
         loadOrders();
     </script>
