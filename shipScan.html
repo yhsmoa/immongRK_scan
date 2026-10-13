@@ -193,6 +193,10 @@
         .lbx.virtual-all{background:#534AB7;border-color:#534AB7;}
         .lbx.virtual-all .e b,.lbx.virtual-all .t,.lbx.virtual-all .q,.lbx.virtual-all .v{color:#fff;}
         .lbx.virtual-all.sel{background:#3C3489;}
+        .lbx.virtual-ok{background:#E1F5EE;border:1.5px solid #1D9E75;}            /* 가상확정 — 상품 다 찾아옴 */
+        .lbx.virtual-ok .v{color:#085041;}
+        .box-cell.virtual-ok.exists{background:#E1F5EE;border:1.5px solid #1D9E75;}
+        .box-cell.virtual-ok.exists .vmark{background:#E1F5EE;color:#085041;border-color:#9FE1CB;}
         .lbx .v{font-size:10px;font-weight:800;color:#7c3aed;line-height:1;}
         .box-cell{position:relative;}
         .box-cell .vmark{position:absolute;top:6px;right:6px;font-size:10px;font-weight:800;color:#3C3489;background:#EEEDFE;border:1px solid #AFA9EC;border-radius:4px;padding:1px 5px;}
@@ -479,7 +483,8 @@
                 boxItems=(data.items||[]).map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName||nameByBc.get(i.barcode)||'', qty:i.qty, virtualQty:Number(i.virtualQty)||0}));
                 recomputeScanned();
                 // 박스 목록 (저장분)
-                savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt,isVirtual:!!b.isVirtual}));
+                savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt,isVirtual:!!b.isVirtual,
+                    virtualConfirmedQty:Number(b.virtualConfirmedQty)||0}));   // 가상확정 당시 가상 합 (지금 가상 합과 같으면 '확정')
                 boxSizeMap.clear(); savedBoxes.forEach(b=>boxSizeMap.set(b.boxNo,b.boxSize));
                 records=[]; currentBoxNo=null; lastScanBarcode=null; dirty=false; listSelBox=null;
                 setBoxBtn();
@@ -669,9 +674,15 @@
         function boxVirtualQty(no){ return boxItems.reduce((s,i)=>i.boxNo===no?s+(Number(i.virtualQty)||0):s,0); }
         function boxQty(no){ return boxItems.reduce((s,i)=>i.boxNo===no?s+(Number(i.qty)||0):s,0); }
         function boxIsVirtual(no){ return boxVirtualQty(no)>0; }
-        // 박스 가상 상태 클래스: '' 가상 없음 · virtual-part 실제+가상 섞임 · virtual-all 전부 가상 (쉽먼트 배지와 같은 규칙)
-        function boxVirtualCls(no){ const v=boxVirtualQty(no); return v<=0?'':(v>=boxQty(no)?'virtual-all':'virtual-part'); }
-        const boxVirtualLabel=no=>boxVirtualCls(no)==='virtual-all'?'👾 가상':boxVirtualCls(no)==='virtual-part'?'🔀 일부 가상':'';   // 🔀 섞임 · 👾 전부 가상
+        // 박스 가상 상태 클래스: '' 가상 없음 · virtual-part 실제+가상 섞임 · virtual-all 전부 가상 · virtual-ok 가상확정 (쉽먼트 배지와 같은 규칙)
+        //   가상확정 = 가상확정 페이지에서 확인한 당시 가상 합이 지금 가상 합과 같을 때 (이 화면에서 가상을 더 넣으면 바로 미확정으로 보인다)
+        function boxVirtualCls(no){
+            const v=boxVirtualQty(no); if(v<=0) return '';
+            const sv=savedBoxes.find(b=>b.boxNo===no);
+            if(sv && sv.virtualConfirmedQty===v) return 'virtual-ok';
+            return v>=boxQty(no)?'virtual-all':'virtual-part';
+        }
+        const boxVirtualLabel=no=>({'virtual-ok':'✅ 가상확정','virtual-all':'👾 가상','virtual-part':'🔀 일부 가상'}[boxVirtualCls(no)]||'');
         const vtagHtml=(vq,qty)=>vq>0?`<span class="vtag" title="가상스캔 ${vq}개">가상${vq<qty?' '+vq:''}</span>`:'';
 
         // 상세 테이블 공용 행 (박스 · 바코드 · 상품명 · 스캔개수[클릭편집])
@@ -709,7 +720,7 @@
             const qtyOf=no=>boxItems.reduce((s,i)=>i.boxNo===no?s+(Number(i.qty)||0):s,0);
             btns.innerHTML=nos.map(no=>`<div class="lbx ${no===listSelBox?'sel':''} ${boxVirtualCls(no)}" onclick="selectListBox(${no})" title="${boxIsVirtual(no)?`가상 ${boxVirtualQty(no)} / 전체 ${qtyOf(no)}`:''}"><div class="e">📦<b>${no}</b></div><div class="t">${esc(boxSizeOf(no))}</div><div class="q">${qtyOf(no).toLocaleString()}개</div>${boxIsVirtual(no)?`<div class="v">${boxVirtualLabel(no)}</div>`:''}</div>`).join('');
             const vq=boxVirtualQty(listSelBox);
-            title.innerHTML=`📦 박스 ${listSelBox} · ${esc(boxSizeOf(listSelBox))}${vq>0?`<span class="vtag">${vq===qtyOf(listSelBox)?'👾 전부 가상':'🔀 가상'} ${vq}개</span>`:''}`;
+            title.innerHTML=`📦 박스 ${listSelBox} · ${esc(boxSizeOf(listSelBox))}${vq>0?`<span class="vtag">${boxVirtualCls(listSelBox)==='virtual-ok'?'✅ 가상확정':vq===qtyOf(listSelBox)?'👾 전부 가상':'🔀 가상'} ${vq}개</span>`:''}`;
             const items=boxItems.filter(i=>i.boxNo===listSelBox);
             tb.innerHTML=items.length?items.map(rowDetailHtml).join(''):`<tr class="state-row"><td colspan="5">이 박스에 담긴 상품이 없습니다.</td></tr>`;
         }

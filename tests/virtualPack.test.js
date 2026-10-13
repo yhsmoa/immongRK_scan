@@ -2,7 +2,8 @@
  * 가상스캔 배정 알고리즘 단위 테스트 — 프레임워크 없이 node 로 실행
  *   node tests/virtualPack.test.js
  *
- * 단위: 상품 1개 = 10 L (1000×1000×10 mm), 0.5 kg. 용량(10% 포함) 극소 39.6 → 3개 · 중 132 → 13개 · 대2 308 → 30개
+ * 단위: 상품 1개 = 10 L (1000×1000×10 mm), 0.5 kg. 용량(overfill 5% 포함) 극소 37.8 → 3개 · 중 126 → 12개 · 대2 294 → 29개
+ *   (2026-10-13 overfill 10% → 5% 로 보수적으로 바꾸면서 기대값 갱신: 이전 극소 39.6/중 132/대2 308)
  */
 const assert = require('assert');
 const { planVirtualScan, CONFIG, capL, unitOf } = require('../virtualPack');
@@ -16,9 +17,9 @@ const shape = (plan) => plan.boxes.map((b) => `${b.boxNo}:${b.size}:${b.addQty}`
 let n = 0;
 function test(name, fn) { fn(); n++; console.log('ok -', name); }
 
-test('용량: base × 1.1', () => {
-  assert.strictEqual(capL('극소', CONFIG), 36 * 1.1);
-  assert.strictEqual(capL('대2', CONFIG), 280 * 1.1);
+test('용량: base × (1 + overfill)', () => {
+  assert.strictEqual(capL('극소', CONFIG), 36 * (1 + CONFIG.overfill));
+  assert.strictEqual(capL('대2', CONFIG), 280 * (1 + CONFIG.overfill));
   assert.strictEqual(capL('소', CONFIG), null);
 });
 
@@ -30,19 +31,19 @@ test('단위: 측정값 / 임시값 / 누락', () => {
   assert.strictEqual(unitOf({ w: 100, l: 100, h: 100, g: null }, CONFIG).kg, CONFIG.defaultUnitKg);
 });
 
-test('딱 대2 두 박스 (60개 = 600 L)', () => {
-  const p = run([prod('A', 60)]);
+test('딱 대2 두 박스 (58개 = 580 L)', () => {
+  const p = run([prod('A', 58)]);
   assert.ok(p.ok);
-  assert.strictEqual(shape(p), '1:대2:30 2:대2:30');
+  assert.strictEqual(shape(p), '1:대2:29 2:대2:29');
   assert.strictEqual(p.totals.newBoxes, 2);
 });
 
 test('대2 + 중 (40개 = 400 L)', () => {
-  assert.strictEqual(shape(run([prod('A', 40)])), '1:대2:30 2:중:10');
+  assert.strictEqual(shape(run([prod('A', 40)])), '1:대2:29 2:중:11');
 });
 
 test('대2 + 극소 (32개 = 320 L)', () => {
-  assert.strictEqual(shape(run([prod('A', 32)])), '1:대2:30 2:극소:2');
+  assert.strictEqual(shape(run([prod('A', 32)])), '1:대2:29 2:극소:3');
 });
 
 test('중 1개 (10개) · 극소 1개 (3개) · 극소 한도 넘으면 중 (4개)', () => {
@@ -53,10 +54,10 @@ test('중 1개 (10개) · 극소 1개 (3개) · 극소 한도 넘으면 중 (4�
 
 test('수량 많은 상품부터 담는다 (바코드 분할 허용)', () => {
   const p = run([prod('B', 5), prod('A', 32), prod('C', 1)]);
-  // A 32 → 박스1(대2) 30 + 박스2 2, 그 다음 B 5, C 1 → 박스2 = 8개(80 L) → 중
-  assert.strictEqual(shape(p), '1:대2:30 2:중:8');
+  // A 32 → 박스1(대2) 29 + 박스2 3, 그 다음 B 5, C 1 → 박스2 = 9개(90 L) → 중
+  assert.strictEqual(shape(p), '1:대2:29 2:중:9');
   assert.strictEqual(p.boxes[0].items[0].barcode, 'A');
-  assert.deepStrictEqual(p.boxes[1].items.map((i) => `${i.barcode}:${i.qty}`), ['A:2', 'B:5', 'C:1']);
+  assert.deepStrictEqual(p.boxes[1].items.map((i) => `${i.barcode}:${i.qty}`), ['A:3', 'B:5', 'C:1']);
 });
 
 test('목표 = min(배정, 확정) − 스캔 · 배정 없음/이미 완료 제외', () => {
@@ -86,7 +87,7 @@ test('기존 박스(저장됨) 남은 용량부터 채운다 — 다 들어가�
 });
 
 test('크기 UP: 마지막 박스에 다 안 들어가면 다 들어가는 가장 작은 크기로 올린다', () => {
-  // 박스1 중 5개(50 L) + 신규 20개(200 L) = 250 L > 중 132 → 대2(308) 로 올리고 전부 담는다
+  // 박스1 중 5개(50 L) + 신규 20개(200 L) = 250 L > 중 126 → 대2(294) 로 올리고 전부 담는다
   const p = planVirtualScan(withBox1('중', 5, [prod('A', 20)]));
   assert.strictEqual(shape(p), '1:대2:20');
   assert.strictEqual(p.boxes[0].sizeFrom, '중');
@@ -100,15 +101,15 @@ test('크기 UP: 마지막 박스에 다 안 들어가면 다 들어가는 가�
 });
 
 test('크기 UP: 대2 로도 다 안 들어가면 대2 로 올리고 나머지는 새 박스', () => {
-  // 박스1 극소 1개(10 L) + 60개(600 L) → 대2(308) 에 29개 더, 나머지 31개 → 대2 30 + 극소 1
+  // 박스1 극소 1개(10 L) + 60개(600 L) → 대2(294) 에 28개 더, 나머지 32개 → 대2 29 + 극소 3
   const p = planVirtualScan(withBox1('극소', 1, [prod('A', 60)]));
-  assert.strictEqual(shape(p), '1:대2:29 2:대2:30 3:극소:1');
+  assert.strictEqual(shape(p), '1:대2:28 2:대2:29 3:극소:3');
   assert.strictEqual(p.boxes[0].sizeFrom, '극소');
 });
 
 test('크기 UP 은 부피 기준 — 무게 때문에 못 담는 건 올리지 않는다', () => {
   const heavy = { w: 1000, l: 1000, h: 10, g: 2500 };
-  // 박스1 중 1개(10 L · 2.5 kg) + 10개(100 L · 25 kg): 부피 110 ≤ 132 → 크기 유지, 무게로 8개까지 → 나머지 2개 새 박스
+  // 박스1 중 1개(10 L · 2.5 kg) + 10개(100 L · 25 kg): 부피 110 ≤ 126 → 크기 유지, 무게로 8개까지 → 나머지 2개 새 박스
   const p = planVirtualScan({ products: [prod('A', 10, { size: heavy }), prod('Z', 1, { scanned: 1, size: heavy })],
     boxItems: [{ boxNo: 1, barcode: 'Z', qty: 1 }], savedBoxes: [{ boxNo: 1, boxSize: '중' }], boxSizeMap: new Map() });
   assert.strictEqual(shape(p), '1:중:8 2:극소:2');
@@ -116,15 +117,16 @@ test('크기 UP 은 부피 기준 — 무게 때문에 못 담는 건 올리지 
 });
 
 test('이미 가장 큰 크기(대2)가 꽉 찼으면 그대로 두고 새 박스 (경고)', () => {
-  // 박스1 대2 에 31개(310 L > 308) → 0개 추가, 신규 5개(50 L > 극소 39.6) → 중
+  // 박스1 대2 에 31개(310 L > 294) → 0개 추가, 신규 5개(50 L > 극소 37.8) → 중
   const p = planVirtualScan(withBox1('대2', 31, [prod('A', 5)]));
   assert.strictEqual(shape(p), '1:대2:0 2:중:5');
   assert.ok(p.warnings.some((w) => w.includes('그대로 둔 기존 박스')));
 });
 
 test('옵션 upgradeLastBox=false — 크기를 올리지 않고 남은 용량만 채운다', () => {
+  // 박스1 중 5개(50 L) 남은 76 L → 7개, 나머지 13개(130 L) > 중 126 → 대2
   const p = planVirtualScan(withBox1('중', 5, [prod('A', 20)]), { upgradeLastBox: false });
-  assert.strictEqual(shape(p), '1:중:8 2:중:12');
+  assert.strictEqual(shape(p), '1:중:7 2:대2:13');
   assert.strictEqual(p.boxes[0].sizeFrom, null);
 });
 
@@ -151,7 +153,7 @@ test('옵션 topUpExisting=false — 기존 박스는 그대로 두고 새 박�
   const on = planVirtualScan(input);
   const off = planVirtualScan(input, { topUpExisting: false });
   assert.strictEqual(shape(on), '1:대2:20');                  // 박스1 을 대2 로 올려 전부
-  assert.strictEqual(shape(off), '2:대2:20');                 // 200 L > 중 132 → 대2, 박스1은 건드리지 않음
+  assert.strictEqual(shape(off), '2:대2:20');                 // 200 L > 중 126 → 대2, 박스1은 건드리지 않음
   assert.ok(off.boxes.every((b) => b.isNew));
   assert.strictEqual(off.totals.topUpBoxes, 0);
   assert.strictEqual(off.assumptions.topUpExisting, false);
@@ -197,7 +199,7 @@ test('담을 것이 없으면 ok=false + 사유', () => {
 });
 
 test('단일 상품이 한도를 넘어도 멈추지 않는다 (1개 강제 + 경고)', () => {
-  const huge = { w: 1000, l: 1000, h: 400, g: 500 }; // 400 L > 대2 308
+  const huge = { w: 1000, l: 1000, h: 400, g: 500 }; // 400 L > 대2 294
   const p = run([prod('A', 2, { size: huge })]);
   assert.ok(p.ok);
   assert.deepStrictEqual(p.boxes.map((b) => `${b.size}:${b.addQty}`), ['대2:1', '대2:1']);

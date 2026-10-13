@@ -63,6 +63,11 @@
         td.code{font-weight:600;color:#1e293b;}
         td.ord{font-weight:600;color:#1e293b;}
         .dash{color:#cbd5e1;}
+        /* 박스 열 — 출고스캔에서 가상으로 잡힌 박스 (쉽먼트·발주서 관리와 같은 규칙: 🔀 섞임 연보라 테두리 · 👾 전부 가상 진보라 채움) */
+        .vbox{display:inline-block;margin-right:4px;font-size:11.5px;font-weight:700;border-radius:5px;padding:1px 6px;white-space:nowrap;line-height:1.5;font-variant-numeric:tabular-nums;}
+        .vbox.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
+        .vbox.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
+        .vbox.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}   /* 가상확정 — 상품 다 찾아옴 */
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
         .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
         .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
@@ -185,7 +190,7 @@
             <div class="table-scroll">
                 <table id="tbl">
                     <thead id="thead"></thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="12">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="13">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -257,7 +262,7 @@
                 if(shipments[0]) selectShipment(shipments[0]);   // 처음에는 가장 최근 출고코드를 기본으로 (목록은 created_at 내림차순)
                 await loadArranged();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="12">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="13">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
             }
         }
 
@@ -289,22 +294,37 @@
         function selectedCode(){ return document.getElementById('codeSel').value; }
 
         // 저장된 출고배정 로드 (출고리스트=저장분, 남은상품=아이템수량-배정합계)
+        //   + 출고스캔 박스 맵 (발주번호|바코드 → 박스들) — 가상으로 잡힌 박스를 '박스' 열에 보여준다
         let arrangeReq=0;
+        let boxMap={};
         async function loadArranged(){
             const code=selectedCode();
             const my=++arrangeReq;
             // 출고코드를 선택하지 않으면 아무것도 표시하지 않음
             if(!code){ shippingRows=[]; stockRows=[]; prepared=false; render(); return; }
             try{
-                const res=await fetch('/api/inbound/arranged'+(code?('?shipmentCode='+encodeURIComponent(code)):''));
+                const [res,bmRes]=await Promise.all([
+                    fetch('/api/inbound/arranged'+(code?('?shipmentCode='+encodeURIComponent(code)):'')),
+                    fetch('/api/ship-scan/box-map').catch(()=>null),
+                ]);
                 const data=await res.json();
                 if(my!==arrangeReq) return; // 더 최신 요청이 있으면 무시 (레이스 방지)
                 if(!res.ok) throw new Error(data.error||'조회 실패');
                 shippingRows=data.shipping||[];
                 stockRows=data.stock||[];
                 prepared=shippingRows.length>0;
+                boxMap=(bmRes&&bmRes.ok)?await bmRes.json():{};   // 실패해도 박스 열만 비는 것으로
                 render();
             }catch(e){ if(my===arrangeReq) toast('조회 실패: '+e.message); }
+        }
+        // 박스 열: 그 출고번호(=발주번호)+바코드가 가상으로 잡힌 박스만 (가상 없는 박스는 표시 안 함 → 기존 방식 그대로 비어 있음)
+        function boxCell(r){
+            const list=boxMap[`${r.출고번호}|${r.바코드}`]||[];
+            const html=list.filter(b=>b.virtualQty>0).map(b=>{
+                const st=b.confirmed?'virtual-ok':(b.virtualQty>=b.qty?'virtual-all':'virtual-part');   // ✅ 가상확정(다 찾아옴) · 👾 전부 가상 · 🔀 섞임
+                return `<span class="vbox ${st}" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}">📦${b.boxNo} ${st==='virtual-ok'?'✅':st==='virtual-all'?'👾':'🔀'}</span>`;
+            }).join('');
+            return html||'';
         }
 
         function switchTab(t){
@@ -352,13 +372,13 @@
             const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
             // 헤더에 정렬 순위 표시 (예: 출고예정일 1↑)
             const ind=k=>{ const i=sortRules.findIndex(r=>r.k===k); return i<0?'':`<span class="sort-ind">${i+1}${sortRules[i].dir>0?'↑':'↓'}</span>`; };
-            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차${ind('회차')}</th><th>출고코드${ind('출고코드')}</th><th>박스명${ind('박스명')}</th><th>중국번호${ind('중국번호')}</th><th>상품명${ind('상품명')}</th><th class="ctr">수량${ind('수량')}</th><th>바코드${ind('바코드')}</th><th>출고번호${ind('출고번호')}</th><th>센터${ind('센터')}</th><th class="ctr">출고개수${ind('출고개수')}</th><th>출고예정일${ind('출고예정일')}</th></tr>`;
+            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차${ind('회차')}</th><th>출고코드${ind('출고코드')}</th><th>박스명${ind('박스명')}</th><th>중국번호${ind('중국번호')}</th><th>상품명${ind('상품명')}</th><th class="ctr">수량${ind('수량')}</th><th>바코드${ind('바코드')}</th><th>출고번호${ind('출고번호')}</th><th style="width:96px">박스</th><th>센터${ind('센터')}</th><th class="ctr">출고개수${ind('출고개수')}</th><th>출고예정일${ind('출고예정일')}</th></tr>`;
             if(rows.length===0){
                 let msg;
                 if(!selectedCode()) msg='연도 · 월 · 출고코드를 선택하세요.';
                 else if(activeTab==='shipping') msg=prepared?'출고 배정된 항목이 없습니다.':'‘출고준비’ 버튼으로 발주서를 선택해 정리하세요.';
                 else msg='남은상품이 없습니다.';
-                tb.innerHTML=`<tr class="state-row"><td colspan="12">${msg}</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="13">${msg}</td></tr>`;
             }else{
                 tb.innerHTML=rows.map((r,idx)=>{
                     // 출고번호 그룹 끝(마지막 행 또는 다음 행의 출고번호가 다름) → 인쇄 시 굵은 구분선
@@ -373,7 +393,7 @@
                         <td class="ctr">${batchCell}</td>
                         <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
                         <td class="pname">${modelBadge(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
-                        <td class="ord">${dashCell(r.출고번호)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td>
+                        <td class="ord">${dashCell(r.출고번호)}</td><td>${boxCell(r)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td>
                     </tr>`;
                 }).join('');
             }

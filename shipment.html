@@ -56,6 +56,9 @@
         .chip.virtual-part b{color:#3C3489;}
         .chip.virtual-all{background:#534AB7;color:#EEEDFE;}
         .chip.virtual-all b{color:#fff;}
+        .chip.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;padding:1px 6px;}   /* 가상확정 — 상품 다 찾아옴 */
+        .chip.virtual-ok b{color:#085041;}
+        .vtag.ok{background:#E1F5EE;color:#085041;border-color:#9FE1CB;}
         .tabletop{display:flex;align-items:center;justify-content:flex-start;gap:6px;margin-bottom:8px;}
         .tabletop select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
         /* 전체 / 순서대로 토글 */
@@ -319,15 +322,15 @@
         // 발주서 하나를 화면용으로 정리: 스캔된 상품, 박스 목록(번호순)
         function shapeOrder(o){
             const items=(o.상품정보||[]).filter(p=>num(p.스캔수량)>0 && p.박스정보 && p.박스정보!=='-')
-                .map(p=>({...p, box:parseBox(p.박스정보), virtualQty:num(p.가상수량)}))
+                .map(p=>({...p, box:parseBox(p.박스정보), virtualQty:num(p.가상수량), confirmed:p.가상확정===true}))
                 .sort((a,b)=>boxNoCmp(a.box.no,b.box.no) || String(a.상품바코드).localeCompare(String(b.상품바코드)));
-            // 박스별 크기 + 가상스캔 수량 합 (출고스캔 [가상스캔]으로 들어온 분량 → '가상' 표시)
+            // 박스별 크기 + 가상스캔 수량 합 (출고스캔 [가상스캔]으로 들어온 분량 → '가상' 표시) + 가상확정(박스 단위)
             const boxMap=new Map();
             for(const p of items){
-                if(!boxMap.has(p.box.no)) boxMap.set(p.box.no,{size:p.box.size, virtualQty:0, qty:0});
+                if(!boxMap.has(p.box.no)) boxMap.set(p.box.no,{size:p.box.size, virtualQty:0, qty:0, confirmed:p.confirmed});
                 const b=boxMap.get(p.box.no); b.virtualQty+=p.virtualQty; b.qty+=num(p.스캔수량);
             }
-            const boxes=[...boxMap.entries()].map(([no,b])=>({no, size:b.size, virtualQty:b.virtualQty, qty:b.qty})).sort((a,b)=>boxNoCmp(a.no,b.no));
+            const boxes=[...boxMap.entries()].map(([no,b])=>({no, size:b.size, virtualQty:b.virtualQty, qty:b.qty, confirmed:b.confirmed})).sort((a,b)=>boxNoCmp(a.no,b.no));
             return {...o, items, boxes, skuCount:new Set(items.map(p=>p.상품바코드)).size, scanQty:items.reduce((s,p)=>s+num(p.스캔수량),0),
                 virtualQty:items.reduce((s,p)=>s+p.virtualQty,0),   // >0 이면 가상스캔 분량이 있는 발주서 (필터 '가상')
                 seq:o.순서==null?null:Number(o.순서)};              // 출고 순서 ([순서저장] 스캔 순서, 없으면 null)
@@ -390,11 +393,11 @@
             }
             tb.innerHTML=viewOrders.map(o=>{
                 const on=esc(o.발주번호), isOpen=opened.has(o.발주번호), isSel=selected.has(o.발주번호);
-                // 박스 배지: 가상 없음 = 회색 · 일부 가상 = 연보라+테두리 · 전부 가상 = 진보라 채움
+                // 박스 배지: 가상 없음 = 회색 · 일부 가상 = 연보라+테두리 🔀 · 전부 가상 = 진보라 채움 👾 · 가상확정(다 찾아옴) = 초록 ✅
                 const chips=o.boxes.map(b=>{
-                    const st=b.virtualQty<=0?'':(b.virtualQty>=b.qty?' virtual-all':' virtual-part');
-                    const tip=b.virtualQty>0?` title="가상 ${b.virtualQty} / 전체 ${b.qty}"`:'';
-                    const emoji=st===' virtual-all'?' 👾':st===' virtual-part'?' 🔀':'';   // 🔀 섞임 · 👾 전부 가상 — 색만으로는 약해서
+                    const st=b.virtualQty<=0?'':b.confirmed?' virtual-ok':(b.virtualQty>=b.qty?' virtual-all':' virtual-part');
+                    const tip=b.virtualQty>0?` title="${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}"`:'';
+                    const emoji=st===' virtual-ok'?' ✅':st===' virtual-all'?' 👾':st===' virtual-part'?' 🔀':'';
                     return `<span class="chip${st}"${tip}><b>${esc(b.no)}</b>${esc(b.size)}${emoji}</span>`;
                 }).join('');
                 const rows=o.items.map((p,i)=>{
@@ -402,7 +405,7 @@
                     return `<tr class="${boxEnd?'box-end':''}">
                         <td class="box-emoji">📦 ${esc(p.box.no)}<span class="sz">${esc(p.box.size)}</span></td>
                         <td>${esc(p.상품번호)||'<span class="dash">-</span>'}</td><td>${esc(p.상품바코드)}</td>
-                        <td class="pname">${esc(p.상품이름)||'<span class="dash">-</span>'}${p.virtualQty>0?`<span class="vtag" title="가상스캔 ${p.virtualQty}개">가상${p.virtualQty<num(p.스캔수량)?' '+p.virtualQty:''}</span>`:''}</td>
+                        <td class="pname">${esc(p.상품이름)||'<span class="dash">-</span>'}${p.virtualQty>0?`<span class="vtag${p.confirmed?' ok':''}" title="${p.confirmed?'가상확정 · ':''}가상 ${p.virtualQty} / 스캔 ${num(p.스캔수량)}">${p.confirmed?'✅':(p.virtualQty>=num(p.스캔수량)?'👾':'🔀')} ${p.virtualQty}</span>`:''}</td>
                         <td class="ctr">${esc(num(p.발주수량))}</td><td class="ctr">${esc(num(p.확정수량))}</td>
                         <td class="ctr"><span class="scan-badge">${esc(num(p.스캔수량))}</span></td>
                     </tr>`;

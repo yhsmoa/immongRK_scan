@@ -22,7 +22,7 @@
   'use strict';
 
   const CONFIG = {
-    overfill: 0.10,                                   // 옷 포장 — 용량의 10% 를 더 담는다
+    overfill: 0.05,                                   // 옷 포장 — 용량의 5% 를 더 담는다 (처음 0.10 → 테스트 없이 운영에 들어가서 조금 보수적으로, 2026-10-13)
     baseCapL: { '극소': 36, '중': 120, '대2': 280 },  // 10% 가산 전 용량 (명목 부피 합, L) — 과거 꽉 찬 박스의 상위 25~35% 수준
     newSizes: ['극소', '중', '대2'],                  // 신규 박스 후보 (작은 것부터). 소/대는 쓰지 않는다
     maxKg: 25,                                        // 박스당 무게 상한 (이 값 미만)
@@ -43,7 +43,7 @@
     return cfg;
   }
 
-  // 크기별 용량(L) — 10% 가산 포함. 모르는 크기(소/대 등)는 null
+  // 크기별 용량(L) — overfill 가산 포함(현재 5%). 모르는 크기(소/대 등)는 null
   function capL(size, cfg) {
     const base = cfg.baseCapL[size];
     return base == null ? null : base * (1 + cfg.overfill);

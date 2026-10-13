@@ -61,6 +61,11 @@
         .stock-v2{color:#F0492F;font-weight:600;}
         .stock-v2s{color:#111827;font-weight:600;}
         .dash{color:#cbd5e1;}
+        /* 박스 열 — 출고스캔에서 가상으로 잡힌 박스 (입고정리와 같은 규칙: 🔀 섞임 연보라 테두리 · 👾 전부 가상 진보라 채움 · ✅ 가상확정 초록) */
+        .vbox{display:inline-block;margin-right:4px;font-size:11.5px;font-weight:700;border-radius:5px;padding:1px 6px;white-space:nowrap;line-height:1.5;font-variant-numeric:tabular-nums;}
+        .vbox.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
+        .vbox.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
+        .vbox.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}
         /* 기존 탭 회차 배지 */
         tbody tr.latest td{background:#f5f7ff;}
         tbody tr.latest:hover td{background:#eef1fe;}
@@ -174,10 +179,24 @@
         function prepMonth(r){ const d=prepDate(r); return d?d.slice(0,7):''; }
         function ymd(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}-${m[2]}-${m[3]}`:String(s||''); }
 
+        // ── 출고스캔 박스 맵 (발주번호|바코드 → 박스들) — 가상으로 잡힌 박스를 '박스' 열에 보여준다 (입고정리와 같은 규칙) ──
+        let boxMap={};
+        async function loadBoxMap(){
+            try{ const r=await fetch('/api/ship-scan/box-map'); boxMap=r.ok?await r.json():{}; }catch(e){ boxMap={}; }   // 실패해도 박스 열만 빈다
+        }
+        // 가상 박스만 표시: ✅ 가상확정(다 찾아옴) · 👾 전부 가상 · 🔀 섞임. 가상 없으면 빈 칸
+        function boxCell(orderNumber,barcode){
+            const list=boxMap[`${orderNumber}|${barcode}`]||[];
+            return list.filter(b=>b.virtualQty>0).map(b=>{
+                const st=b.confirmed?'virtual-ok':(b.virtualQty>=b.qty?'virtual-all':'virtual-part');
+                return `<span class="vbox ${st}" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}">📦${b.boxNo} ${st==='virtual-ok'?'✅':st==='virtual-all'?'👾':'🔀'}</span>`;
+            }).join('');
+        }
+
         // ── 기존(저장분) 로드 ──
         async function loadSaved(){
             try{
-                const res=await fetch('/api/shipping-list?source=재고');
+                const [res]=await Promise.all([fetch('/api/shipping-list?source=재고'), loadBoxMap()]);
                 if(!res.ok) throw new Error('출고리스트 조회 실패');
                 savedRows=await res.json();
                 maxBatch=savedRows.reduce((m,r)=>Math.max(m,r.batchNo||0),0);
@@ -400,7 +419,7 @@
             const terms=searchTerms();
 
             if(activeTab==='new'){
-                thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="selAll" onclick="toggleSelAll(this)"></th><th>발주번호</th><th>물류센터</th><th>상품번호</th><th>상품바코드</th><th>상품명</th>
+                thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="selAll" onclick="toggleSelAll(this)"></th><th>발주번호</th><th style="width:96px">박스</th><th>물류센터</th><th>상품번호</th><th>상품바코드</th><th>상품명</th>
                     <th class="ctr">발주수량</th><th class="ctr">스캔수량</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th class="ctr">입고예정일</th></tr>`;
                 let list=sortedNewRows(newRows);
                 if(terms.length){
@@ -409,14 +428,14 @@
                         return terms.some(t=>hay.some(h=>h.includes(t)));
                     });
                 }
-                if(!list.length){ tb.innerHTML='<tr class="state-row"><td colspan="12">[위치] 버튼으로 발주서를 선택해 재고 배정을 계산하세요.</td></tr>'; }
+                if(!list.length){ tb.innerHTML='<tr class="state-row"><td colspan="13">[위치] 버튼으로 발주서를 선택해 재고 배정을 계산하세요.</td></tr>'; }
                 else{
                     tb.innerHTML=list.map((r,idx)=>{
                         const groupEnd=(idx===list.length-1)||(list[idx+1].발주번호!==r.발주번호);
                         const k=`${r.발주번호}|${r.상품바코드}`;
                         return `<tr class="${groupEnd?'ge':''}">
                             <td class="chk"><input type="checkbox" class="rowchk" data-key="${esc(k)}" onclick="toggleRowSel(this)" ${selNew.has(k)?'checked':''}></td>
-                            <td class="code">${esc(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
+                            <td class="code">${esc(r.발주번호)}</td><td>${boxCell(r.발주번호,r.상품바코드)}</td><td>${esc(r.물류센터)}</td>
                             <td>${esc(r.상품번호)}</td><td>${esc(r.상품바코드)}</td>
                             <td class="pname">${modelBold(r.상품명)}</td>
                             <td class="ctr">${esc(r.발주수량)}</td><td class="ctr">${esc(r.스캔수량)}</td>
@@ -428,7 +447,7 @@
                 const allocRows=newRows.filter(r=>r.위치v2&&r.위치v2.length);
                 document.getElementById('subtitle').innerHTML=`신규 <b>${newRows.length}</b>행 · 배정 <b>${allocRows.length}</b>행 · 배정수량 <b>${allocRows.reduce((s,r)=>s+(Number(r.재고)||0),0)}</b>`;
             }else{
-                thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="selAll" onclick="toggleSelAll(this)"></th><th class="ctr" style="width:64px">회차</th><th class="ctr" style="width:96px">준비일</th><th style="width:110px">발주번호</th>
+                thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="selAll" onclick="toggleSelAll(this)"></th><th class="ctr" style="width:64px">회차</th><th class="ctr" style="width:96px">준비일</th><th style="width:110px">발주번호</th><th style="width:96px">박스</th>
                     <th style="width:96px">물류센터</th><th class="ctr" style="width:96px">입고예정일</th><th>상품명</th><th style="width:140px">바코드</th>
                     <th style="width:96px">위치</th><th class="ctr" style="width:64px">수량</th></tr>`;
                 const month=document.getElementById('monthSel').value;
@@ -446,7 +465,7 @@
                     || String(a.orderNumber||'').localeCompare(String(b.orderNumber||''))
                     || String(a.barcode||'').localeCompare(String(b.barcode||''))
                     || String(a.location||'').localeCompare(String(b.location||''),'ko',{numeric:true}));
-                if(!list.length){ tb.innerHTML='<tr class="state-row"><td colspan="10">데이터가 없습니다.</td></tr>'; }
+                if(!list.length){ tb.innerHTML='<tr class="state-row"><td colspan="11">데이터가 없습니다.</td></tr>'; }
                 else{
                     tb.innerHTML=list.map(r=>{
                         const isLatest=maxBatch>0&&r.batchNo===maxBatch;
@@ -455,6 +474,7 @@
                             <td class="ctr"><span class="batch-badge">${r.batchNo||'-'}</span>${isLatest?'<span class="new-tag">NEW</span>':''}</td>
                             <td class="ctr">${esc(prepDate(r))}</td>
                             <td class="code">${esc(r.orderNumber)}</td>
+                            <td>${boxCell(r.orderNumber,r.barcode)}</td>
                             <td>${esc(r.center)}</td>
                             <td class="ctr">${esc(ymd(r.shippingDate))}</td>
                             <td class="pname">${esc(r.productName)}</td>

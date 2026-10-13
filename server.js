@@ -1232,6 +1232,11 @@ app.get('/shipScan', (req, res) => {
     res.sendFile(path.join(__dirname, 'shipScan.html'));
 });
 
+// 출고스캔 > 가상확정 (가상스캔 박스의 상품을 다 찾아왔다고 확인 — 발주번호-박스번호 스캔)
+app.get('/virtualConfirm', (req, res) => {
+    res.sendFile(path.join(__dirname, 'virtualConfirm.html'));
+});
+
 // CN입고 > 입고리스트 (엑셀 원본 적재)
 app.get('/inboundList', (req, res) => {
     res.sendFile(path.join(__dirname, 'inboundList.html'));
