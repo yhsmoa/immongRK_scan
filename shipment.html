@@ -199,7 +199,7 @@
             </div>
 
             <div class="tabletop">
-                <!-- 정렬: 전체(기본 순서) / 순서대로([순서저장] 스캔 순서, 순서 없는 발주서는 뒤) -->
+                <!-- 정렬: 전체(기본 순서) / 순서대로([순서저장] 스캔 순서로 저장된 발주서만 표시) -->
                 <div class="seg" id="orderSeg">
                     <button type="button" class="on" data-mode="all" onclick="setOrderMode('all')">전체</button>
                     <button type="button" data-mode="seq" onclick="setOrderMode('seq')">순서대로</button>
@@ -364,8 +364,8 @@
                 const hay=[o.입고예정일,o.물류센터,o.발주번호].map(v=>String(v||'').toLowerCase());
                 return terms.some(t=>hay.some(h=>h.includes(t)));
             });
-            // [순서대로] — 스캔 순서대로, 순서 없는 발주서는 뒤 (원래 순서 유지)
-            if(orderMode==='seq') viewOrders.sort((a,b)=>(a.seq==null?Infinity:a.seq)-(b.seq==null?Infinity:b.seq));
+            // [순서대로] — [순서저장] 으로 순서가 저장된 발주서만, 그 순서대로. 순서 없는 발주서는 보이지 않는다 (2026-10-14: 뒤에 붙이던 것을 제외로)
+            if(orderMode==='seq') viewOrders=viewOrders.filter(o=>o.seq!=null).sort((a,b)=>a.seq-b.seq);
             if(terms.length && keepOpen!==true){ opened.clear(); viewOrders.forEach(o=>opened.add(o.발주번호)); }
             render();
         }
@@ -388,7 +388,7 @@
             document.getElementById('cntQty').textContent=viewOrders.reduce((s,o)=>s+o.scanQty,0).toLocaleString();
             updateSeqHint();
             if(!viewOrders.length){
-                tb.innerHTML=`<tr class="state-row"><td colspan="8">${allOrders.length?'검색 결과가 없습니다.':'스캔된 발주서가 없습니다.'}</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="8">${orderMode==='seq'&&!allOrders.some(o=>o.seq!=null)?'순서가 저장된 발주서가 없습니다. [순서저장] 으로 출고 순서를 먼저 스캔하세요.':allOrders.length?'검색 결과가 없습니다.':'스캔된 발주서가 없습니다.'}</td></tr>`;
                 syncCheckAll(); updateExpandBtn(); return;
             }
             tb.innerHTML=viewOrders.map(o=>{
