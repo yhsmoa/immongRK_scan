@@ -782,8 +782,8 @@
                 const res=await fetch('/api/label/order-boxes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
                 const j=await res.json();
                 if(!res.ok) throw new Error(j.error||'박스 데이터 조회 실패');
-                if(!j.items.length){ toast('선택한 발주서에 출고스캔된 박스가 없습니다.'); return; }
-                if(j.noBox.length) toast(`출고스캔된 박스가 없는 발주서 ${j.noBox.length}건은 제외됩니다.\n${j.noBox.join(', ')}`);
+                if(!j.items.length){ toast('선택한 발주번호를 발주서에서 찾지 못했습니다.'); return; }
+                if(j.noBox.length) toast(`출고스캔 전 발주서 ${j.noBox.length}건은 박스 정보 없이(박스 1/1) 발주번호 라벨 1장만 나갑니다.\n${j.noBox.join(', ')}`);
                 showLabelModal(cfg, '박스 라벨출력', `박스 ${j.items.length}개 · 발주서 ${j.orderCount}건`, 'box', j.items);
             }catch(e){ toast('박스 라벨 출력 준비 실패: '+e.message); }
             finally{ btn.disabled=false; }

@@ -120,6 +120,7 @@ router.post('/api/label/items', async (req, res) => {
 
 // ── 발주서 박스 라벨 데이터 (쉽먼트 /shipment · 발주서 관리 /rocket 의 [박스라벨출력]) ──
 //   출고스캔이 저장한 박스(rk_ship_boxes)마다 라벨 1장. 상품이 담기지 않은 빈 박스는 쉽먼트·CJ 운송장과 같은 기준으로 뺀다.
+//   출고스캔 전(박스 없음) 발주서는 제외하지 않고 박스 1/1 · 크기 없음으로 1장 만든다 (noBox 에 발주번호를 돌려줘 호스트가 안내).
 //   bx_order_box 는 CJ 운송장 접수 엑셀의 발주번호 열("144287071 - 1")과 같은 형식 — 운송장과 박스 라벨을 맞춰 볼 수 있게.
 //   라벨 서비스로는 labelType:'box' 로 보낸다 (성인/키즈 구분 없음).
 router.post('/api/label/order-boxes', async (req, res) => {
@@ -158,7 +159,7 @@ router.post('/api/label/order-boxes', async (req, res) => {
     }
 
     const items = [];
-    const noBox = [];      // 발주서는 있는데 상품이 담긴 박스가 없음 (출고스캔 전)
+    const noBox = [];      // 발주서는 있는데 상품이 담긴 박스가 없음 (출고스캔 전) — 제외하지 않고 박스 1개 기준으로 1장 만든다
     const notFound = [];   // rk_orders 에 없는 발주번호
     let orderCount = 0;
     for (const no of orderNumbers) {
@@ -167,8 +168,30 @@ router.post('/api/label/order-boxes', async (req, res) => {
       const list = (boxesByOrder.get(no) || [])
         .filter((b) => sumByBox.has(b.id))
         .sort((a, b) => ((parseInt(a.box_no, 10) || 0) - (parseInt(b.box_no, 10) || 0)) || (a.id - b.id));
-      if (!list.length) { noBox.push(no); continue; }
       orderCount++;
+      if (!list.length) {
+        // 출고스캔 전: 박스 정보가 없어도 발주번호 라벨은 필요하다(2026-10-14 요청). 박스는 "1/1" 로 두고 크기·수량은 비운다.
+        //   라벨 서비스의 "발주서당 1장" 템플릿이면 어차피 발주번호만 찍힌다.
+        noBox.push(no);
+        items.push({
+          qty: 1,
+          data: {
+            po_order_number: no,
+            po_center: S.str(h.logistics_center),
+            po_arrival_date: S.dateToYmd(h.arrival_date),
+            po_order_qty: h.order_qty == null ? '' : h.order_qty,
+            po_scan_qty: 0,
+            po_box_count: 0,
+            bx_order_box: `${no} - 1`,
+            bx_no: '1',
+            bx_size: '',
+            bx_seq: '1/1',
+            bx_qty: '',
+            bx_item_count: '',
+          },
+        });
+        continue;
+      }
       const scanQty = list.reduce((s, b) => s + sumByBox.get(b.id).qty, 0);
       list.forEach((b, i) => {
         const sum = sumByBox.get(b.id);
