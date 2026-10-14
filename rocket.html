@@ -201,6 +201,7 @@
                     <button class="btn" onclick="openOrderPanel()">요약</button>
                     <button class="btn" onclick="loadLocations()">위치</button>
                     <button class="btn" id="labelPrintBtn" onclick="openLabelPrint()">라벨출력</button>
+                    <button class="btn" id="boxLabelPrintBtn" onclick="openBoxLabelPrint()">박스라벨출력</button>
 
                     <div class="dd">
                         <button class="btn" onclick="toggleDd(event,'ddChange')">변경
@@ -318,11 +319,11 @@
         </div>
     </div>
 
-    <!-- 라벨출력 — 선택한 행의 상품 라벨 (label-service 임베드 → QZ Tray). 박스 라벨은 쉽먼트 페이지에 있다 -->
+    <!-- 라벨출력 모달 — [라벨출력](선택 행의 상품 라벨) 과 [박스라벨출력](선택 행 발주서의 출고 박스 라벨) 이 같은 임베드를 쓴다 (label-service → QZ Tray) -->
     <div class="label-back" id="labelBack" onclick="if(event.target.id==='labelBack')closeLabelPrint()">
         <div class="label-modal">
             <div class="label-head">
-                <h3>라벨출력<span class="sub" id="labelPrintSub"></span></h3>
+                <h3><span id="labelPrintTitle">라벨출력</span><span class="sub" id="labelPrintSub"></span></h3>
                 <button onclick="closeLabelPrint()">✕</button>
             </div>
             <!-- allow: 임베드(다른 origin)가 이 PC 의 QZ Tray(wss://localhost)에 붙으려면 크롬 로컬 네트워크 접근(LNA) 권한을
@@ -729,7 +730,7 @@
         //   1) 선택 행의 상품바코드 → POST /api/label/items → coupang_items 기반 items[{ data, qty:1 }]
         //   2) iframe(label-service /print-embed) 이 준비되면 postMessage(labelType:'both' — 바코드 스티커·케어 라벨)
         //   3) 임베드에서 템플릿·프린터 확인 후 QZ Tray 로 인쇄. 결과는 message 로 돌아온다
-        //   박스 라벨(발주번호-박스번호·박스 크기)은 쉽먼트 페이지(/shipment)의 [라벨출력] 이 맡는다.
+        //   박스 라벨(발주번호-박스번호·박스 크기)은 아래 [박스라벨출력](openBoxLabelPrint) — 쉽먼트 페이지(/shipment)의 [박스라벨출력] 과 같은 흐름.
         //   템플릿별 프린터 지정값은 이 사이트가 기억한다 (localStorage — 상품관리·쉽먼트와 같은 키라 PC 마다 한 번만 지정).
         //   ?labeldebug=1 로 이 페이지를 열면 임베드에 [인쇄 명령 저장] 버튼이 생긴다 (프린터로 갈 바이트를 파일로).
         // ============================================================
@@ -765,25 +766,48 @@
                 if(!j.items.length){ toast('선택한 바코드가 상품 데이터에 없습니다.'); return; }
                 if(j.missing.length) toast(`${j.missing.length}개 바코드는 쿠팡 상품정보(coupang_items)에 없어 재고 정보(상품명·SKU)만으로 출력됩니다.`);
 
-                labelPending={
-                    type:'label-print:print',
-                    requestId:String(Date.now()),
-                    source:cfg.source,
-                    userId:cfg.userId,
-                    labelType:'both',
-                    autoPrint:false,
-                    printerMap:loadLabelPrinterMap(),   // 이 PC 에서 기억해 둔 템플릿별 프린터
-                    items:j.items
-                };
-                document.getElementById('labelPrintSub').textContent=`${j.items.length}개 상품`;
-                document.getElementById('labelPrintStatus').textContent='';
-                document.getElementById('labelBack').classList.add('show');
-
-                const frame=document.getElementById('labelPrintFrame');
-                if(frame.dataset.ready==='1') sendLabelPending();                                   // 이미 로드된 iframe 재사용
-                else frame.src=cfg.url+'/print-embed'+(labelDebug?'?debug=1':'');                  // 로드되면 'label-print:ready' 가 온다
+                showLabelModal(cfg, '라벨출력', `${j.items.length}개 상품`, 'both', j.items);
             }catch(e){ toast('라벨 출력 준비 실패: '+e.message); }
             finally{ btn.disabled=false; }
+        }
+        // 박스라벨출력 — 선택한 행이 속한 발주서(발주번호 기준, 중복 제거)의 출고스캔 박스마다 박스 라벨 1장.
+        //   쉽먼트 페이지 [박스라벨출력] 과 같은 API(/api/label/order-boxes)·같은 종류(labelType:'box').
+        //   출고스캔이 안 된 발주서는 박스가 없으므로 제외된다 (안내 토스트).
+        async function openBoxLabelPrint(){
+            const orderNumbers=selectedOrderNumbers().map(v=>String(v==null?'':v).trim()).filter(Boolean);
+            if(!orderNumbers.length){ toast('박스 라벨을 출력할 발주서의 행을 선택해주세요.'); return; }
+            const btn=document.getElementById('boxLabelPrintBtn'); btn.disabled=true;
+            try{
+                const cfg=await getLabelCfg();
+                const res=await fetch('/api/label/order-boxes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                const j=await res.json();
+                if(!res.ok) throw new Error(j.error||'박스 데이터 조회 실패');
+                if(!j.items.length){ toast('선택한 발주서에 출고스캔된 박스가 없습니다.'); return; }
+                if(j.noBox.length) toast(`출고스캔된 박스가 없는 발주서 ${j.noBox.length}건은 제외됩니다.\n${j.noBox.join(', ')}`);
+                showLabelModal(cfg, '박스 라벨출력', `박스 ${j.items.length}개 · 발주서 ${j.orderCount}건`, 'box', j.items);
+            }catch(e){ toast('박스 라벨 출력 준비 실패: '+e.message); }
+            finally{ btn.disabled=false; }
+        }
+        // 모달 열고 임베드에 인쇄 요청 — 상품 라벨·박스 라벨 공용
+        function showLabelModal(cfg, title, sub, labelType, items){
+            labelPending={
+                type:'label-print:print',
+                requestId:String(Date.now()),
+                source:cfg.source,
+                userId:cfg.userId,
+                labelType,
+                autoPrint:false,
+                printerMap:loadLabelPrinterMap(),   // 이 PC 에서 기억해 둔 템플릿별 프린터
+                items
+            };
+            document.getElementById('labelPrintTitle').textContent=title;
+            document.getElementById('labelPrintSub').textContent=sub;
+            document.getElementById('labelPrintStatus').textContent='';
+            document.getElementById('labelBack').classList.add('show');
+
+            const frame=document.getElementById('labelPrintFrame');
+            if(frame.dataset.ready==='1') sendLabelPending();                                   // 이미 로드된 iframe 재사용
+            else frame.src=cfg.url+'/print-embed'+(labelDebug?'?debug=1':'');                  // 로드되면 'label-print:ready' 가 온다
         }
         function closeLabelPrint(){ document.getElementById('labelBack').classList.remove('show'); labelPending=null; }
         // 임베드 → 이 창: 준비 완료 / 프린터 지정 변경 / 인쇄 결과
@@ -794,7 +818,7 @@
             else if(d.type==='label-print:printer-map'){ if(d.map&&typeof d.map==='object'&&!Array.isArray(d.map)) saveLabelPrinterMap(d.map); }
             else if(d.type==='label-print:result'){
                 const st=document.getElementById('labelPrintStatus');
-                const type=d.labelType==='care'?'케어 라벨':'라벨 스티커';
+                const type=d.labelType==='box'?'박스 라벨':d.labelType==='care'?'케어 라벨':'라벨 스티커';
                 st.textContent=d.ok?(st.textContent?st.textContent+' · ':'')+`✓ ${type} ${d.printed}장 전송됨`:`✕ ${type} 실패`;   // 상세 사유는 임베드가 alert 로 띄운다
             }
         });

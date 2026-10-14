@@ -186,7 +186,7 @@
                     <button class="btn" onclick="openSummary()">요약</button>
                     <button class="btn" id="expandBtn" onclick="toggleExpandAll()">발주서 펼쳐보기</button>
                     <span class="sep"></span>
-                    <button class="btn" id="labelPrintBtn" onclick="openLabelPrint()">라벨출력</button>
+                    <button class="btn" id="labelPrintBtn" onclick="openLabelPrint()">박스라벨출력</button>
                     <button class="btn" onclick="openSeqModal()">순서저장</button>
                     <button class="btn" onclick="exportCJExcel()">CJ 엑셀</button>
                     <button class="btn primary" onclick="exportSelectedOrders()">쉽먼트 저장</button>
@@ -668,6 +668,7 @@
         //   2) iframe(label-service /print-embed) 이 준비되면 postMessage(labelType:'box')
         //   3) 임베드에서 템플릿·프린터 확인 후 QZ Tray 로 인쇄. 결과는 message 로 돌아온다
         //   양식은 라벨 설정(/labelSettings)의 "박스 라벨" 종류 템플릿. 상품 라벨은 발주서 관리·상품관리의 [라벨출력].
+        //   발주서 관리(/rocket)의 [박스라벨출력] 도 같은 API·같은 종류로 찍는다 (선택 행의 발주번호 기준).
         //   템플릿별 프린터 지정값은 이 사이트가 기억한다 (localStorage — 다른 페이지 라벨출력과 같은 키라 PC 마다 한 번만 지정).
         //   ?labeldebug=1 로 이 페이지를 열면 임베드에 [인쇄 명령 저장] 버튼이 생긴다 (프린터로 갈 바이트를 파일로).
         // ============================================================

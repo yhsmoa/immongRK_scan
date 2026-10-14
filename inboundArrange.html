@@ -147,7 +147,19 @@
         .modal-foot .btn{height:36px;}
         @media (max-width:560px){ .dir button{padding:0 7px;} .sort-rank{flex-basis:44px;} }
 
-        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:90vw;white-space:pre-line;text-align:center;}
+        /* 박스라벨출력 — label-service 임베드 (쉽먼트 페이지와 같은 모달) */
+        .label-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10004;}
+        .label-back.show{display:flex;}
+        .label-modal{background:#fff;border-radius:14px;width:560px;max-width:94vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .label-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #eef2f7;}
+        .label-head h3{margin:0;font-size:16px;color:var(--ink);}
+        .label-head .sub{font-size:12.5px;color:#94a3b8;font-weight:500;margin-left:8px;}
+        .label-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .label-modal iframe{display:block;width:100%;height:480px;min-height:300px;flex:1 1 auto;border:0;background:#fff;}
+        .label-status{padding:8px 18px;font-size:13px;color:#15803d;border-top:1px solid #eef2f7;}
+        .label-status:empty{display:none;}
+
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10010;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
     </style>
 </head>
@@ -166,6 +178,8 @@
                     <select id="monthSel" onchange="onMonthChange()"></select>
                     <select id="codeSel" class="sel-code" onchange="onCodeChange()"></select>
                     <button class="btn primary" id="prepareBtn" onclick="openOrderPanel()">출고준비</button>
+                    <!-- 임시: 체크한 행의 출고번호(=발주번호)로 쉽먼트와 같은 박스 라벨을 찍는다 (표 순서 = 인쇄 순서) -->
+                    <button class="btn" id="boxLabelPrintBtn" onclick="openBoxLabelPrint()">박스라벨출력</button>
                 </div>
             </div>
 
@@ -228,6 +242,21 @@
                     <button class="btn primary" onclick="applySort()">적용</button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- 박스라벨출력 — 체크한 행의 발주서마다 출고 박스 라벨 (label-service 임베드 → QZ Tray). 쉽먼트 페이지와 같은 흐름 -->
+    <div class="label-back" id="labelBack" onclick="if(event.target.id==='labelBack')closeLabelPrint()">
+        <div class="label-modal">
+            <div class="label-head">
+                <h3>박스 라벨출력<span class="sub" id="labelPrintSub"></span></h3>
+                <button onclick="closeLabelPrint()">✕</button>
+            </div>
+            <!-- allow: 임베드(다른 origin)가 이 PC 의 QZ Tray(wss://localhost)에 붙으려면 크롬 로컬 네트워크 접근(LNA) 권한을
+                 부모 페이지가 위임해야 한다. src 를 넣기 전부터 이 속성이 있어야 한다 (iframe 이동 시 적용). -->
+            <iframe id="labelPrintFrame" title="박스 라벨 출력"
+                    allow="loopback-network; local-network; local-network-access"></iframe>
+            <div class="label-status" id="labelPrintStatus"></div>
         </div>
     </div>
 
@@ -596,6 +625,87 @@
                 toast(msg);
             }catch(e){toast('출고준비 실패: '+e.message);}
         }
+
+        // ============================================================
+        // 박스라벨출력 — 박스 라벨 (label-service 임베드). 쉽먼트(/shipment)·발주서 관리(/rocket)의 [박스라벨출력] 과 같은 흐름
+        //   체크한 행의 출고번호(=발주번호)를 표에 보이는 순서(= [인쇄] 순서)대로 모아 → POST /api/label/order-boxes
+        //   → 발주서마다 출고스캔 박스(rk_ship_boxes) 1장씩, 그 순서 그대로 임베드에 넘긴다 (labelType:'box').
+        //   같은 발주서 상품 행을 여러 개 체크해도 발주서 1건. 출고스캔 전이라 박스가 없는 발주서는 제외(토스트 안내).
+        //   템플릿별 프린터 지정값은 이 사이트가 기억한다 (localStorage — 다른 페이지 라벨출력과 같은 키라 PC 마다 한 번만 지정).
+        // ============================================================
+        let labelCfg=null, labelOrigin=null, labelPending=null;
+        const LABEL_PRINTER_KEY='label_printer_map_v1';
+        const labelDebug=new URLSearchParams(location.search).get('labeldebug')==='1';
+        function loadLabelPrinterMap(){ try{ const j=JSON.parse(localStorage.getItem(LABEL_PRINTER_KEY)||'{}'); return j&&typeof j==='object'&&!Array.isArray(j)?j:{}; }catch(_){ return {}; } }
+        function saveLabelPrinterMap(map){ try{ localStorage.setItem(LABEL_PRINTER_KEY, JSON.stringify(map||{})); }catch(_){ /* 저장 불가 시 무시 */ } }
+        async function getLabelCfg(){
+            if(labelCfg) return labelCfg;
+            const res=await fetch('/api/label/config');
+            const j=await res.json();
+            if(!res.ok) throw new Error(j.error||'라벨 서비스 설정을 불러오지 못했습니다.');
+            labelCfg=j; labelOrigin=new URL(j.url).origin;
+            return j;
+        }
+        function sendLabelPending(){
+            const frame=document.getElementById('labelPrintFrame');
+            if(!labelPending||!frame.contentWindow||frame.dataset.ready!=='1') return;
+            frame.contentWindow.postMessage(labelPending, labelOrigin);
+            labelPending=null;
+        }
+        // 체크된 행의 출고번호 — 표 위→아래 순서, 중복 제거 (체크박스는 출고리스트 행에만 있다)
+        function checkedOrderNumbers(){
+            const out=[];
+            document.querySelectorAll('#tbody tr').forEach(tr=>{
+                const c=tr.querySelector('.rowchk'); if(!c||!c.checked) return;
+                const no=String((tr.querySelector('td.ord')||{}).textContent||'').trim();
+                if(no&&no!=='-'&&!out.includes(no)) out.push(no);
+            });
+            return out;
+        }
+        async function openBoxLabelPrint(){
+            const orderNumbers=checkedOrderNumbers();
+            if(!orderNumbers.length){ toast('박스 라벨을 출력할 행(출고리스트)을 선택해주세요.'); return; }
+            const btn=document.getElementById('boxLabelPrintBtn'); btn.disabled=true;
+            try{
+                const cfg=await getLabelCfg();
+                const res=await fetch('/api/label/order-boxes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                const j=await res.json();
+                if(!res.ok) throw new Error(j.error||'박스 데이터 조회 실패');
+                if(!j.items.length){ toast('선택한 발주서에 출고스캔된 박스가 없습니다.'); return; }
+                if(j.noBox.length) toast(`출고스캔된 박스가 없는 발주서 ${j.noBox.length}건은 제외됩니다.\n${j.noBox.join(', ')}`);
+
+                labelPending={
+                    type:'label-print:print',
+                    requestId:String(Date.now()),
+                    source:cfg.source,
+                    userId:cfg.userId,
+                    labelType:'box',
+                    autoPrint:false,
+                    printerMap:loadLabelPrinterMap(),   // 이 PC 에서 기억해 둔 템플릿별 프린터
+                    items:j.items
+                };
+                document.getElementById('labelPrintSub').textContent=`박스 ${j.items.length}개 · 발주서 ${j.orderCount}건`;
+                document.getElementById('labelPrintStatus').textContent='';
+                document.getElementById('labelBack').classList.add('show');
+
+                const frame=document.getElementById('labelPrintFrame');
+                if(frame.dataset.ready==='1') sendLabelPending();                                   // 이미 로드된 iframe 재사용
+                else frame.src=cfg.url+'/print-embed'+(labelDebug?'?debug=1':'');                  // 로드되면 'label-print:ready' 가 온다
+            }catch(e){ toast('박스 라벨 출력 준비 실패: '+e.message); }
+            finally{ btn.disabled=false; }
+        }
+        function closeLabelPrint(){ document.getElementById('labelBack').classList.remove('show'); labelPending=null; }
+        // 임베드 → 이 창: 준비 완료 / 프린터 지정 변경 / 인쇄 결과
+        window.addEventListener('message',function(e){
+            if(!labelOrigin||e.origin!==labelOrigin) return;
+            const d=e.data||{};
+            if(d.type==='label-print:ready'){ document.getElementById('labelPrintFrame').dataset.ready='1'; sendLabelPending(); }
+            else if(d.type==='label-print:printer-map'){ if(d.map&&typeof d.map==='object'&&!Array.isArray(d.map)) saveLabelPrinterMap(d.map); }
+            else if(d.type==='label-print:result'){
+                document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨`:'✕ 박스 라벨 실패';   // 상세 사유는 임베드가 alert 로 띄운다
+            }
+        });
+        document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeLabelPrint(); });
 
         let toastTimer;
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
