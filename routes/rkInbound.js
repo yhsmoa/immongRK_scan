@@ -304,21 +304,36 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
     const boxById = new Map(boxes.map(b => [b.id, b]));
     // 칩에는 **가상으로 담긴 분량만** 보여준다 — 실제 스캔으로 이미 담은 분량(virtual_qty 0)은 찾을 대상이 아니다.
     //   (같은 바코드가 다른 입고코드로 먼저 실제 포장된 박스가 카드에 같이 붙던 문제, 2026-10-15)
-    const boxesByBc = {};
+    //   가상스캔은 바코드 단위라 어느 입고 행(BR7/BR8)의 물건이 어느 박스로 가는지는 정해져 있지 않다
+    //   → 카드 순서대로 박스 번호 순으로 채워 나눈다 (같은 바코드의 두 행에 같은 박스가 중복 표시되던 문제, 2026-10-15).
+    //   예: 바코드 가상 34 = 1번(30)+2번(4), 입고 행 BR7 22 · BR8 12 → BR7: 1번 ×22 / BR8: 1번 ×8 + 2번 ×4
+    const virtualByBc = {};   // 바코드 → [{ boxNo, boxSize, boxQty, remain }] 박스번호 순
     if (boxes.length) {
       const bItems = await S.pageAll(() => sb.from('rk_ship_box_items').select('box_id, barcode, qty, virtual_qty').eq('order_number', orderNumber).order('id', { ascending: true }));
       for (const it of bItems) {
         const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0; const vq = parseInt(it.virtual_qty, 10) || 0;
         if (!b || !it.barcode || qty <= 0 || vq <= 0) continue;
-        if (boxNo != null && b.box_no !== boxNo) continue;   // 박스 라벨로 들어왔으면 그 박스만
-        (boxesByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, qty, virtualQty: vq });
+        (virtualByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, boxQty: qty, remain: vq });
       }
-      for (const l of Object.values(boxesByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
+      for (const l of Object.values(virtualByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
     }
     const boxExists = boxNo == null || boxes.some(b => b.box_no === boxNo);
-    // 박스 라벨로 들어왔으면 그 박스에 가상으로 담긴 바코드의 행만 (배정 행은 입고코드·BR 박스 단위라 여러 행이 같은 바코드일 수 있다)
-    const out = (boxNo == null ? rows : rows.filter(r => (boxesByBc[r.바코드] || []).length > 0))
-      .map(r => ({ ...r, img: img[r.바코드] || null, boxes: boxesByBc[r.바코드] || [] }));
+    // 행마다 출고개수만큼 박스를 앞에서부터 차지한다. 박스 라벨로 들어왔으면(boxNo) 배정 결과 중 그 박스 몫만 남기고, 몫이 없는 행은 뺀다.
+    const out = [];
+    for (const r of rows) {
+      const assigned = [];
+      let need = parseInt(r.출고개수, 10) || 0;
+      for (const b of (virtualByBc[r.바코드] || [])) {
+        if (need <= 0) break;
+        if (b.remain <= 0) continue;
+        const take = Math.min(need, b.remain);
+        b.remain -= take; need -= take;
+        assigned.push({ boxNo: b.boxNo, boxSize: b.boxSize, qty: b.boxQty, virtualQty: take });
+      }
+      const mine = boxNo == null ? assigned : assigned.filter(b => b.boxNo === boxNo);
+      if (boxNo != null && !mine.length) continue;
+      out.push({ ...r, img: img[r.바코드] || null, boxes: mine });
+    }
     res.json({ rows: out, boxNo, boxExists });
   } catch (e) {
     console.error('[rk] inbound/mobile-list:', e);
