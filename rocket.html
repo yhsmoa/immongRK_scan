@@ -185,6 +185,10 @@
         .label-modal iframe{display:block;width:100%;height:560px;min-height:300px;flex:1 1 auto;border:0;background:#fff;}
         .label-status{padding:8px 18px;font-size:13px;color:#15803d;border-top:1px solid #eef2f7;}
         .label-status:empty{display:none;}
+        .label-opts{padding:10px 18px;border-bottom:1px solid #eef2f7;font-size:13.5px;color:#1e293b;}
+        .label-opts label{display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap;}
+        .label-opts input{width:16px;height:16px;accent-color:#6366f1;}
+        .label-opts small{color:#94a3b8;font-size:12px;}
     </style>
 </head>
 <body>
@@ -326,6 +330,8 @@
                 <h3><span id="labelPrintTitle">라벨출력</span><span class="sub" id="labelPrintSub"></span></h3>
                 <button onclick="closeLabelPrint()">✕</button>
             </div>
+            <!-- 박스 라벨에서만 보임. 기본 = 이미 뽑힌 박스(실제 스캔·가상확정)는 빼고 아직 미확정인 가상 박스만. 풀면 전부 (2026-10-15) -->
+            <div class="label-opts" id="labelOpts" style="display:none"><label><input type="checkbox" id="labelSkipPrinted" checked onchange="reloadBoxLabels()"> 이미 뽑힌 박스 라벨 제외 <small>실제 스캔됐거나 가상확정(모바일로 다 찾음)된 박스는 빼고 뽑습니다 · 풀면 전부</small></label></div>
             <!-- allow: 임베드(다른 origin)가 이 PC 의 QZ Tray(wss://localhost)에 붙으려면 크롬 로컬 네트워크 접근(LNA) 권한을
                  부모 페이지가 위임해야 한다. 크롬 버전마다 기능 이름이 달라 셋 다 넣는다.
                  ⚠ 권한은 iframe 이 이동할 때 적용되므로 src 를 넣기 전부터 이 속성이 있어야 한다. -->
@@ -773,23 +779,35 @@
         // 박스라벨출력 — 선택한 행이 속한 발주서(발주번호 기준, 중복 제거)의 출고스캔 박스마다 박스 라벨 1장.
         //   쉽먼트 페이지 [박스라벨출력] 과 같은 API(/api/label/order-boxes)·같은 종류(labelType:'box').
         //   출고스캔이 안 된 발주서는 박스가 없으므로 제외된다 (안내 토스트).
+        let boxLabelOrders=[];   // 모달에 띄운 발주번호 — 체크박스를 바꾸면 같은 발주서로 다시 조회
+        function reloadBoxLabels(){ if(boxLabelOrders.length) loadBoxLabels(); }
         async function openBoxLabelPrint(){
             const orderNumbers=selectedOrderNumbers().map(v=>String(v==null?'':v).trim()).filter(Boolean);
             if(!orderNumbers.length){ toast('박스 라벨을 출력할 발주서의 행을 선택해주세요.'); return; }
+            boxLabelOrders=orderNumbers;
+            await loadBoxLabels();
+        }
+        async function loadBoxLabels(){
+            const orderNumbers=boxLabelOrders;
             const btn=document.getElementById('boxLabelPrintBtn'); btn.disabled=true;
             try{
                 const cfg=await getLabelCfg();
-                const res=await fetch('/api/label/order-boxes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                const skipPrinted=document.getElementById('labelSkipPrinted').checked;
+                const res=await fetch('/api/label/order-boxes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers, skipPrinted})});
                 const j=await res.json();
                 if(!res.ok) throw new Error(j.error||'박스 데이터 조회 실패');
-                if(!j.items.length){ toast('선택한 발주번호를 발주서에서 찾지 못했습니다.'); return; }
+                const skippedN=(j.skipped||[]).length, allPrintedN=(j.allPrinted||[]).length;
+                if(!j.items.length && !skippedN){ toast('선택한 발주번호를 발주서에서 찾지 못했습니다.'); return; }
                 if(j.noBox.length) toast(`출고스캔 전 발주서 ${j.noBox.length}건은 박스 정보 없이(박스 1/1) 발주번호 라벨 1장만 나갑니다.\n${j.noBox.join(', ')}`);
-                showLabelModal(cfg, '박스 라벨출력', `박스 ${j.items.length}개 · 발주서 ${j.orderCount}건`, 'box', j.items);
+                else if(skippedN) toast(`이미 뽑힌 박스 ${skippedN}개(실제 스캔·가상확정)는 제외했습니다.${allPrintedN?` 발주서 ${allPrintedN}건은 전부 제외.`:''}`);
+                showLabelModal(cfg, '박스 라벨출력', `박스 ${j.items.length}개 · 발주서 ${j.orderCount}건${skippedN?` · 제외 ${skippedN}`:''}`, 'box', j.items);
+                document.getElementById('labelPrintStatus').textContent=(!j.items.length&&skippedN)?`선택한 발주서의 박스 라벨은 모두 이미 뽑힌 것으로 봅니다 (${skippedN}박스). 전부 뽑으려면 위 체크를 푸세요.`:'';
             }catch(e){ toast('박스 라벨 출력 준비 실패: '+e.message); }
             finally{ btn.disabled=false; }
         }
-        // 모달 열고 임베드에 인쇄 요청 — 상품 라벨·박스 라벨 공용
+        // 모달 열고 임베드에 인쇄 요청 — 상품 라벨·박스 라벨 공용 (체크박스 줄은 박스 라벨에서만)
         function showLabelModal(cfg, title, sub, labelType, items){
+            document.getElementById('labelOpts').style.display=labelType==='box'?'':'none';
             labelPending={
                 type:'label-print:print',
                 requestId:String(Date.now()),

@@ -123,21 +123,34 @@ router.post('/api/label/items', async (req, res) => {
 //   출고스캔 전(박스 없음) 발주서는 제외하지 않고 박스 1/1 · 크기 없음으로 1장 만든다 (noBox 에 발주번호를 돌려줘 호스트가 안내).
 //   bx_order_box 는 CJ 운송장 접수 엑셀의 발주번호 열("144287071 - 1")과 같은 형식 — 운송장과 박스 라벨을 맞춰 볼 수 있게.
 //   라벨 서비스로는 labelType:'box' 로 보낸다 (성인/키즈 구분 없음).
+//   skipPrinted(기본 true, 2026-10-15): "이미 뽑힌 라벨" 로 보는 박스는 뺀다 — 실제 스캔 박스(가상 0, 옛 흐름은 스캔 후 라벨) 와
+//   가상확정된 박스(라벨 확정 또는 모바일 입고로 다 찾음 = 라벨을 이미 붙이고 찾은 것). 아직 미확정인 가상 박스만 남는다.
+//   모달의 체크박스를 풀면 skipPrinted:false 로 전부 만든다.
 router.post('/api/label/order-boxes', async (req, res) => {
   try {
     const orderNumbers = [...new Set((Array.isArray(req.body.orderNumbers) ? req.body.orderNumbers : [])
       .map((v) => String(v == null ? '' : v).trim()).filter(Boolean))];
     if (!orderNumbers.length) return res.status(400).json({ error: '발주번호가 없습니다.' });
+    const skipPrinted = req.body.skipPrinted !== false;
 
     // 1000행씩 나눠 읽으므로 id 순 정렬 (정렬 없는 range 는 행이 빠지거나 겹칠 수 있다)
-    const [headers, boxes, boxItems] = await Promise.all([
+    const [headers, boxes, boxItems, found] = await Promise.all([
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_orders')
         .select('order_number, logistics_center, arrival_date, order_qty').in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
-        .select('id, order_number, box_no, box_size').in('order_number', nos).order('id', { ascending: true }))),
+        .select('id, order_number, box_no, box_size, virtual_confirmed_qty').in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
-        .select('box_id, order_number, barcode, qty').in('order_number', nos).order('id', { ascending: true }))),
+        .select('box_id, order_number, barcode, qty, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
+      skipPrinted ? S.mobileFoundByKey(orderNumbers) : Promise.resolve(new Map()),
     ]);
+    // 가상 준비완료 판정(가상확정 ✅ 통합 규칙) — 라벨 확정 또는 모바일 입고로 그 박스의 가상 상품을 다 찾음
+    const readiness = S.virtualReadiness(boxItems, found);
+    const alreadyPrinted = (b, sum) => {
+      const vSum = readiness.virtualSumByBox.get(b.id) || 0;
+      if (vSum <= 0 && sum && sum.qty > 0) return '실제 스캔';        // 실제로 스캔해 담은 박스 (옛 흐름: 스캔 후 라벨)
+      if (vSum > 0 && readiness.boxOk(b)) return '가상확정';           // 라벨 붙여 찾기까지 끝난 가상 박스
+      return null;
+    };
 
     const headerByNo = new Map();
     for (const h of headers) { const k = String(h.order_number); if (!headerByNo.has(k)) headerByNo.set(k, h); }
@@ -161,15 +174,22 @@ router.post('/api/label/order-boxes', async (req, res) => {
     const items = [];
     const noBox = [];      // 발주서는 있는데 상품이 담긴 박스가 없음 (출고스캔 전) — 제외하지 않고 박스 1개 기준으로 1장 만든다
     const notFound = [];   // rk_orders 에 없는 발주번호
+    const skipped = [];    // 이미 뽑힌 라벨로 보고 뺀 박스 [{orderNo, boxNo, reason}] (skipPrinted 일 때)
+    const allPrinted = []; // 박스는 있는데 전부 이미 뽑힌 발주서 (라벨 0장)
     let orderCount = 0;
     for (const no of orderNumbers) {
       const h = headerByNo.get(no);
       if (!h) { notFound.push(no); continue; }
-      const list = (boxesByOrder.get(no) || [])
+      const full = (boxesByOrder.get(no) || [])
         .filter((b) => sumByBox.has(b.id))
         .sort((a, b) => ((parseInt(a.box_no, 10) || 0) - (parseInt(b.box_no, 10) || 0)) || (a.id - b.id));
+      // 이미 뽑힌 박스 제외 — 순번(bx_seq)·박스 수(po_box_count)는 전체 박스 기준으로 유지한다 (3/5 처럼 실제 자리)
+      const list = skipPrinted
+        ? full.filter((b) => { const r = alreadyPrinted(b, sumByBox.get(b.id)); if (r) skipped.push({ orderNo: no, boxNo: b.box_no, reason: r }); return !r; })
+        : full;
+      if (full.length && !list.length) { allPrinted.push(no); continue; }
       orderCount++;
-      if (!list.length) {
+      if (!full.length) {
         // 출고스캔 전: 박스 정보가 없어도 발주번호 라벨은 필요하다(2026-10-14 요청). 박스는 "1/1" 로 두고 크기·수량은 비운다.
         //   라벨 서비스의 "발주서당 1장" 템플릿이면 어차피 발주번호만 찍힌다.
         noBox.push(no);
@@ -192,9 +212,10 @@ router.post('/api/label/order-boxes', async (req, res) => {
         });
         continue;
       }
-      const scanQty = list.reduce((s, b) => s + sumByBox.get(b.id).qty, 0);
-      list.forEach((b, i) => {
+      const scanQty = full.reduce((s, b) => s + sumByBox.get(b.id).qty, 0);
+      for (const b of list) {
         const sum = sumByBox.get(b.id);
+        const i = full.indexOf(b);
         items.push({
           qty: 1,
           data: {
@@ -203,18 +224,18 @@ router.post('/api/label/order-boxes', async (req, res) => {
             po_arrival_date: S.dateToYmd(h.arrival_date),
             po_order_qty: h.order_qty == null ? '' : h.order_qty,
             po_scan_qty: scanQty,
-            po_box_count: list.length,
+            po_box_count: full.length,
             bx_order_box: `${no} - ${b.box_no}`,
             bx_no: String(b.box_no),
             bx_size: S.str(b.box_size),
-            bx_seq: `${i + 1}/${list.length}`,
+            bx_seq: `${i + 1}/${full.length}`,
             bx_qty: sum.qty,
             bx_item_count: sum.barcodes.size,
           },
         });
-      });
+      }
     }
-    res.json({ items, orderCount, noBox, notFound });
+    res.json({ items, orderCount, noBox, notFound, skipPrinted, skipped, allPrinted });
   } catch (e) {
     console.error('[rk] label/order-boxes:', e);
     res.status(500).json({ error: '박스 라벨 데이터 조회 중 오류가 발생했습니다: ' + e.message });
