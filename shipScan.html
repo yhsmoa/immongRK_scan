@@ -1001,8 +1001,8 @@
                 <div class="vs-stat"><div class="k">필요 박스</div><div class="v hi">${boxCnt}<small>개</small><small class="gap">기존 ${t.topUpBoxes} · 신규 ${t.newBoxes}${t.upgradedBoxes?` · 크기 UP ${t.upgradedBoxes}`:''}</small></div></div>
             </div>`;
             top+=`<div class="vs-assume"><span class="i">!</span><div>
-                옷 포장 보정으로 용량의 <strong>${Math.round(a.overfill*100)}%를 더 담는 것</strong>으로 계산했습니다.
-                용량 기준 ${capTxt}, 박스당 <strong>${a.maxKg} kg 미만</strong>.
+                ${a.overfill>0?`옷 포장 보정으로 용량의 <strong>${Math.round(a.overfill*100)}%를 더 담는 것</strong>으로 계산했습니다.`:'용량은 <strong>실제로 포장한 박스 통계</strong>(명목 부피 합 상위 10%) 기준입니다.'}
+                용량 기준 ${capTxt}${a.maxKg?`, 박스당 <strong>${a.maxKg} kg 미만</strong>`:', 무게 제한 없음'}.
                 ${a.assumedCount?`<span class="flag">사이즈 미측정 상품 ${a.assumedCount}종은 1개 ${a.defaultUnitL} L로 가정했습니다.</span>`:'모든 상품에 측정 사이즈가 있습니다.'}
             </div></div>`;
             document.getElementById('vsTop').innerHTML=top;

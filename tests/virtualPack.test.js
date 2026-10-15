@@ -2,15 +2,20 @@
  * 가상스캔 배정 알고리즘 단위 테스트 — 프레임워크 없이 node 로 실행
  *   node tests/virtualPack.test.js
  *
- * 단위: 상품 1개 = 10 L (1000×1000×10 mm), 0.5 kg. 용량(overfill 5% 포함) 극소 37.8 → 3개 · 중 126 → 12개 · 대2 294 → 29개
- *   (2026-10-13 overfill 10% → 5% 로 보수적으로 바꾸면서 기대값 갱신: 이전 극소 39.6/중 132/대2 308)
+ * 단위: 상품 1개 = 10 L (1000×1000×10 mm), 0.5 kg.
+ * 알고리즘 테스트는 **고정 보정값(TEST_CAL)** 으로 돈다: 용량(overfill 5% 포함) 극소 37.8 → 3개 · 중 126 → 12개 · 대2 294 → 29개, 무게 25 kg 미만.
+ *   (운영 CONFIG 는 2026-10-15 에 실제 박스 표본 용량 100/200/480 · 무게 제한 없음으로 바뀌었다 — 기본값 자체는 맨 아래 'CONFIG 기본값' 테스트로 본다)
  */
 const assert = require('assert');
-const { planVirtualScan, applyPlan, CONFIG, capL, unitOf } = require('../virtualPack');
+const { planVirtualScan: planRaw, applyPlan, CONFIG, capL, unitOf } = require('../virtualPack');
 
 const SIZE10 = { w: 1000, l: 1000, h: 10, g: 500 };
 const prod = (barcode, alloc, { conf = alloc, scanned = 0, size = SIZE10, name = barcode } = {}) =>
   ({ barcode, productName: name, orderQty: conf, allocQty: alloc, scannedQty: scanned, size, location: '' });
+const TEST_CAL = { baseCapL: { '극소': 36, '중': 120, '대2': 280 }, overfill: 0.05, maxKg: 25 };
+const CAL = Object.assign({}, CONFIG, TEST_CAL);   // capL/unitOf 직접 호출용
+// 알고리즘 테스트는 전부 TEST_CAL 로 (직접 호출도 같은 보정값). 운영 기본값을 보는 테스트만 planRaw 를 쓴다
+const planVirtualScan = (input, cfg) => planRaw(input, Object.assign({}, TEST_CAL, cfg || {}));
 const run = (products, extra = {}, cfg) => planVirtualScan(Object.assign({ products, boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, extra), cfg);
 const shape = (plan) => plan.boxes.map((b) => `${b.boxNo}:${b.size}:${b.addQty}`).join(' ');
 
@@ -18,9 +23,9 @@ let n = 0;
 function test(name, fn) { fn(); n++; console.log('ok -', name); }
 
 test('용량: base × (1 + overfill)', () => {
-  assert.strictEqual(capL('극소', CONFIG), 36 * (1 + CONFIG.overfill));
-  assert.strictEqual(capL('대2', CONFIG), 280 * (1 + CONFIG.overfill));
-  assert.strictEqual(capL('소', CONFIG), null);
+  assert.strictEqual(capL('극소', CAL), 36 * 1.05);
+  assert.strictEqual(capL('대2', CAL), 280 * 1.05);
+  assert.strictEqual(capL('소', CAL), null);
 });
 
 test('단위: 측정값 / 임시값 / 누락', () => {
@@ -327,6 +332,25 @@ test('applyPlan: 출처 분리로 같은 바코드가 두 박스에 나뉘어도
   const r = applyPlan({ boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, plan);
   assert.deepStrictEqual(r.items.map((i) => `${i.boxNo}:${i.qty}/${i.virtualQty}`), ['1:4/4', '2:2/2']);
   assert.strictEqual(r.boxes.length, 2);
+});
+
+// ── 운영 기본값 (CONFIG) — 통계 용량 · 무게 제한 없음 (2026-10-15) ──
+test('CONFIG 기본값: 용량은 실제 박스 상위 10개 표본 최솟값(극소 100 · 중 200 · 대2 480), 가산 0, 무게 제한 없음', () => {
+  assert.deepStrictEqual(CONFIG.baseCapL, { '극소': 100, '중': 200, '대2': 480 });
+  assert.strictEqual(CONFIG.overfill, 0);
+  assert.strictEqual(CONFIG.maxKg, null);
+  assert.strictEqual(capL('중', CONFIG), 200);
+});
+
+test('기본값으로는 무게 때문에 박스를 나누지 않는다 (부피로만) · 무게 경고 없음', () => {
+  // 1개 10 L · 5 kg × 17 = 170 L · 85 kg → 중(200) 하나 (TEST_CAL 이면 25 kg 에 걸려 4개씩 나뉜다)
+  const heavy = { w: 1000, l: 1000, h: 10, g: 5000 };
+  const p = planRaw({ products: [prod('A', 17, { size: heavy })], boxItems: [], savedBoxes: [], boxSizeMap: new Map() });
+  assert.deepStrictEqual(p.boxes.map((b) => `${b.size}:${b.addQty}`), ['중:17']);
+  assert.ok(!p.boxes[0].warnings.some((w) => w.includes('무게')));
+  assert.strictEqual(p.assumptions.maxKg, null);
+  const q = planRaw({ products: [prod('A', 17, { size: heavy })], boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, { maxKg: 25 });
+  assert.deepStrictEqual(q.boxes.map((b) => b.addQty), [4, 4, 4, 4, 1]);   // 값을 주면 예전처럼 무게로 나눈다
 });
 
 console.log(`\n${n} tests passed`);

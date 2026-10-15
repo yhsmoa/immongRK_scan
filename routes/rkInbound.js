@@ -247,33 +247,91 @@ const mobileCmp = (a, b) =>
   || String(a.박스명 || '').localeCompare(String(b.박스명 || ''), 'ko', { numeric: true })
   || ((a.allocId || 0) - (b.allocId || 0));
 
-// 출고코드의 발주서 목록 + 진행 (?shipmentCode=)
-// 응답: [{ orderNumber, center, shippingDate, batch, total, found, missing }] — 기본 정렬 순
+// 발주서들의 가상 박스 — 발주번호 → { boxes:[{id,box_no,box_size}], virtualByBc:{바코드:[{boxNo,boxSize,boxQty,remain}]} } (mobile-list · mobile-orders 공용)
+//   칩/목록에는 **가상으로 담긴 분량만** 쓴다 — 실제 스캔으로 이미 담은 분량(virtual_qty 0)은 찾을 대상이 아니다.
+//   (같은 바코드가 다른 입고코드로 먼저 실제 포장된 박스가 카드에 같이 붙던 문제, 2026-10-15)
+async function loadVirtualBoxes(orderNumbers) {
+  const out = {};
+  const nos = [...new Set(orderNumbers.map(String).filter(Boolean))];
+  if (!nos.length) return out;
+  const [boxes, bItems] = await Promise.all([
+    S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_boxes').select('id, order_number, box_no, box_size').in('order_number', part).order('id', { ascending: true }))),
+    S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_box_items').select('order_number, box_id, barcode, qty, virtual_qty').in('order_number', part).order('id', { ascending: true }))),
+  ]);
+  const boxById = new Map();
+  for (const b of boxes) { boxById.set(b.id, b); (out[String(b.order_number)] ||= { boxes: [], virtualByBc: {} }).boxes.push(b); }
+  for (const it of bItems) {
+    const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0; const vq = parseInt(it.virtual_qty, 10) || 0;
+    if (!b || !it.barcode || qty <= 0 || vq <= 0) continue;
+    const o = out[String(b.order_number)];
+    (o.virtualByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, boxQty: qty, remain: vq });
+  }
+  for (const o of Object.values(out)) for (const l of Object.values(o.virtualByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
+  return out;
+}
+// 가상 박스 배정 — 가상스캔은 바코드 단위라 어느 입고 행(BR7/BR8)의 물건이 어느 박스로 가는지는 정해져 있지 않다
+//   → 카드 순서(mobileCmp)대로 박스 번호 순으로 채워 나눈다 (같은 바코드의 두 행에 같은 박스가 중복 표시되던 문제, 2026-10-15).
+//   예: 바코드 가상 34 = 1번(30)+2번(4), 입고 행 BR7 22 · BR8 12 → BR7: 1번 ×22 / BR8: 1번 ×8 + 2번 ×4
+//   rows 순서대로 [{ boxNo, boxSize, qty, virtualQty }][] 를 돌려준다 (virtualByBc 의 remain 을 소모하므로 발주서당 한 번만 부를 것)
+function assignVirtualBoxes(rows, virtualByBc) {
+  return rows.map((r) => {
+    const assigned = [];
+    let need = parseInt(r.출고개수, 10) || 0;
+    for (const b of ((virtualByBc || {})[r.바코드] || [])) {
+      if (need <= 0) break;
+      if (b.remain <= 0) continue;
+      const take = Math.min(need, b.remain);
+      b.remain -= take; need -= take;
+      assigned.push({ boxNo: b.boxNo, boxSize: b.boxSize, qty: b.boxQty, virtualQty: take });
+    }
+    return assigned;
+  });
+}
+
+// 출고코드의 **박스** 목록 + 진행 (?shipmentCode=) — 2026-10-15: 발주서 단위 → (발주서, 가상 박스) 단위
+//   박스 라벨(발주번호-박스번호)을 박스 단위로 뽑아 박스 단위로 찾으므로 목록도 박스 단위로. 한 발주서에 가상 박스가 여럿이면 줄이 여럿.
+//   가상 박스에 안 잡힌 행(출고스캔 전·실제 스캔분)은 그 발주서의 "박스 미정"(boxNo null) 줄로 따로.
+//   진행(total/found/missing)은 그 박스 몫의 카드 수 — 한 행이 두 박스에 걸치면 둘 다에 센다 (mobile-list 가 두 박스 모두에서 그 카드를 보여주는 것과 같다)
+// 응답: [{ orderNumber, boxNo(null=미정), boxSize, center, shippingDate, batch, total, found, missing }] — 기본 정렬 › 박스번호 순(미정은 그 발주서 끝)
 router.get('/api/inbound/mobile-orders', async (req, res) => {
   try {
     const code = String(req.query.shipmentCode || '').trim();
     if (!code) return res.status(400).json({ error: '출고코드가 필요합니다.' });
     const ids = await shipmentIdsFromQuery({ shipmentCode: code });
     if (!ids.length) return res.json([]);
-    const allocs = await pageAll('rk_cn_shipping', 'id, order_number, center, shipping_date, batch_no, mobile_status', q => q.in('shipment_id', ids));
-    const byOrder = new Map();
-    for (const a of allocs) {
-      const no = String(a.order_number || '');
-      if (!no) continue;
-      if (!byOrder.has(no)) byOrder.set(no, { orderNumber: no, center: a.center || '', shippingDate: a.shipping_date || '', batch: a.batch_no || 1, total: 0, found: 0, missing: 0 });
-      const o = byOrder.get(no);
-      o.total++;
-      if (a.mobile_status === 'found') o.found++;
-      else if (a.mobile_status === 'missing') o.missing++;
-      o.batch = Math.min(o.batch, a.batch_no || 1);
+    const allocs = await pageAll('rk_cn_shipping', '*', q => q.in('shipment_id', ids));
+    if (!allocs.length) return res.json([]);
+    const itemIds = [...new Set(allocs.map(a => a.shipment_item_id))];
+    const items = await S.chunked(itemIds, 200, (part) => pageAll('rk_cn_shipment_items', '*, rk_cn_shipments(shipment_code, status)', q => q.in('id', part)));
+    const rows = buildArranged(items, allocs).shipping.sort(mobileCmp);
+    const byOrder = new Map();   // 발주번호 → 행들 (정렬 순서 유지 = 첫 등장 순)
+    for (const r of rows) { const no = String(r.출고번호 || ''); if (!no) continue; if (!byOrder.has(no)) byOrder.set(no, []); byOrder.get(no).push(r); }
+    const vb = await loadVirtualBoxes([...byOrder.keys()]);
+    const list = [];
+    for (const [no, ors] of byOrder) {
+      const assigned = assignVirtualBoxes(ors, (vb[no] || {}).virtualByBc);
+      const byBox = new Map();   // boxNo(0 = 미정) → 집계
+      ors.forEach((r, i) => {
+        const keys = assigned[i].length ? assigned[i].map(b => b.boxNo) : [0];
+        for (const k of keys) {
+          if (!byBox.has(k)) {
+            const bx = assigned[i].find(b => b.boxNo === k);
+            byBox.set(k, { orderNumber: no, boxNo: k || null, boxSize: bx ? bx.boxSize || null : null,
+              center: r.센터 || '', shippingDate: r.출고예정일 || '', batch: r.회차 || 1, total: 0, found: 0, missing: 0 });
+          }
+          const o = byBox.get(k);
+          o.total++;
+          if (r.모바일 === 'found') o.found++;
+          else if (r.모바일 === 'missing') o.missing++;
+          o.batch = Math.min(o.batch, r.회차 || 1);
+        }
+      });
+      for (const k of [...byBox.keys()].sort((a, b) => ((a === 0) - (b === 0)) || (a - b))) list.push(byBox.get(k));
     }
-    const list = [...byOrder.values()].sort((a, b) => mobileCmp(
-      { 회차: a.batch, 출고예정일: a.shippingDate, 센터: a.center, 출고번호: a.orderNumber },
-      { 회차: b.batch, 출고예정일: b.shippingDate, 센터: b.center, 출고번호: b.orderNumber }));
     res.json(list);
   } catch (e) {
     console.error('[rk] inbound/mobile-orders:', e);
-    res.status(500).json({ error: '발주서 목록 조회 실패: ' + e.message });
+    res.status(500).json({ error: '박스 목록 조회 실패: ' + e.message });
   }
 });
 
@@ -284,6 +342,7 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
     const code = String(req.query.shipmentCode || '').trim();
     const orderNumber = String(req.query.orderNumber || '').trim();
     // boxNo: 박스 라벨("발주번호-박스번호")을 스캔한 경우 — 그 박스에 가상으로 담긴 상품 카드만, 칩도 그 박스만 (2026-10-15)
+    //        0 = "박스 미정" (목록의 미정 줄) — 가상 박스에 안 잡힌 행만
     const boxNo = req.query.boxNo != null && String(req.query.boxNo).trim() !== '' ? parseInt(req.query.boxNo, 10) : null;
     if (!code || !orderNumber) return res.status(400).json({ error: '출고코드와 발주번호가 필요합니다.' });
     const ids = await shipmentIdsFromQuery({ shipmentCode: code });
@@ -294,46 +353,25 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
     const items = await S.chunked(itemIds, 200, (part) => pageAll('rk_cn_shipment_items', '*, rk_cn_shipments(shipment_code, status)', q => q.in('id', part)));
     const rows = buildArranged(items, allocs).shipping.sort(mobileCmp);
     const barcodes = [...new Set(rows.map(r => r.바코드).filter(Boolean))];
-    // 이미지(rk_inventories.img) + 이 발주서의 출고스캔 박스 (가상 박스에 잡힌 상품은 어느 박스에 몇 개인지 카드에 보여준다)
-    const [imgRows, boxes] = await Promise.all([
+    // 이미지(rk_inventories.img) + 이 발주서의 출고스캔 가상 박스 (가상 박스에 잡힌 상품은 어느 박스에 몇 개인지 카드에 보여준다)
+    const [imgRows, vb] = await Promise.all([
       S.chunked(barcodes, 200, async (part) => { const { data, error } = await sb.from('rk_inventories').select('barcode, img').in('barcode', part); if (error) throw error; return data || []; }),
-      S.pageAll(() => sb.from('rk_ship_boxes').select('id, box_no, box_size').eq('order_number', orderNumber).order('id', { ascending: true })),
+      loadVirtualBoxes([orderNumber]),
     ]);
     const img = {};
     for (const r of imgRows) { const u = String(r.img || '').trim(); if (r.barcode && u && !img[r.barcode]) img[r.barcode] = u; }
-    const boxById = new Map(boxes.map(b => [b.id, b]));
-    // 칩에는 **가상으로 담긴 분량만** 보여준다 — 실제 스캔으로 이미 담은 분량(virtual_qty 0)은 찾을 대상이 아니다.
-    //   (같은 바코드가 다른 입고코드로 먼저 실제 포장된 박스가 카드에 같이 붙던 문제, 2026-10-15)
-    //   가상스캔은 바코드 단위라 어느 입고 행(BR7/BR8)의 물건이 어느 박스로 가는지는 정해져 있지 않다
-    //   → 카드 순서대로 박스 번호 순으로 채워 나눈다 (같은 바코드의 두 행에 같은 박스가 중복 표시되던 문제, 2026-10-15).
-    //   예: 바코드 가상 34 = 1번(30)+2번(4), 입고 행 BR7 22 · BR8 12 → BR7: 1번 ×22 / BR8: 1번 ×8 + 2번 ×4
-    const virtualByBc = {};   // 바코드 → [{ boxNo, boxSize, boxQty, remain }] 박스번호 순
-    if (boxes.length) {
-      const bItems = await S.pageAll(() => sb.from('rk_ship_box_items').select('box_id, barcode, qty, virtual_qty').eq('order_number', orderNumber).order('id', { ascending: true }));
-      for (const it of bItems) {
-        const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0; const vq = parseInt(it.virtual_qty, 10) || 0;
-        if (!b || !it.barcode || qty <= 0 || vq <= 0) continue;
-        (virtualByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, boxQty: qty, remain: vq });
-      }
-      for (const l of Object.values(virtualByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
-    }
-    const boxExists = boxNo == null || boxes.some(b => b.box_no === boxNo);
-    // 행마다 출고개수만큼 박스를 앞에서부터 차지한다. 박스 라벨로 들어왔으면(boxNo) 배정 결과 중 그 박스 몫만 남기고, 몫이 없는 행은 뺀다.
+    const boxes = (vb[orderNumber] || {}).boxes || [];
+    const boxExists = boxNo == null || boxNo === 0 || boxes.some(b => b.box_no === boxNo);
+    // 행마다 출고개수만큼 박스를 앞에서부터 차지한다(assignVirtualBoxes). 박스 라벨로 들어왔으면(boxNo) 배정 결과 중 그 박스 몫만 남기고, 몫이 없는 행은 뺀다.
+    //   boxNo 0(박스 미정)은 반대로 어느 가상 박스에도 안 잡힌 행만.
+    const assigned = assignVirtualBoxes(rows, (vb[orderNumber] || {}).virtualByBc);
     const out = [];
-    for (const r of rows) {
-      const assigned = [];
-      let need = parseInt(r.출고개수, 10) || 0;
-      for (const b of (virtualByBc[r.바코드] || [])) {
-        if (need <= 0) break;
-        if (b.remain <= 0) continue;
-        const take = Math.min(need, b.remain);
-        b.remain -= take; need -= take;
-        assigned.push({ boxNo: b.boxNo, boxSize: b.boxSize, qty: b.boxQty, virtualQty: take });
-      }
-      const mine = boxNo == null ? assigned : assigned.filter(b => b.boxNo === boxNo);
-      if (boxNo != null && !mine.length) continue;
+    rows.forEach((r, i) => {
+      let mine = assigned[i];
+      if (boxNo === 0) { if (mine.length) return; }
+      else if (boxNo != null) { mine = mine.filter(b => b.boxNo === boxNo); if (!mine.length) return; }
       out.push({ ...r, img: img[r.바코드] || null, boxes: mine });
-    }
+    });
     res.json({ rows: out, boxNo, boxExists });
   } catch (e) {
     console.error('[rk] inbound/mobile-list:', e);

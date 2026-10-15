@@ -9,8 +9,8 @@
  * 핵심 규칙
  *  · 바코드별 목표 = min(출고예정 배정량(재고+입고), 확정수량) − 이미 스캔량
  *  · 부피 = coupang_items 가로×세로×높이(mm) → L. 임시값(300×300×20)·누락은 측정 중앙값(2.85 L)으로 가정
- *  · 용량 = 과거 출고 박스의 명목 부피 합으로 보정한 base × (1 + 10%)  — 박스 치수가 아니다 (옷이 눌림)
- *  · 박스당 무게는 25 kg 미만. 넘치면 다음 박스
+ *  · 용량 = 실제로 포장한 박스 중 가장 많이 담긴 상위 10개 표본의 최솟값 (극소 100 · 중 200 · 대2 480 L) — 박스 치수가 아니다 (옷이 눌림). 2026-10-15 교체
+ *  · 무게 제한 없음 (CONFIG.maxKg = null. 값을 주면 그 미만으로 나눈다)
  *  · 이미 있는 박스는 **마지막 박스(가장 큰 번호) 하나만** 남은 용량부터 채운다 — 앞 박스들은 이미 마감(테이핑)된 것으로 본다
  *  · 마지막 박스가 극소/중인데 남은 상품이 다 안 들어가면 크기를 올린다 (극소→중→대2). 확정 시 DB 의 box_size 도 바뀐다
  *  · 신규 박스는 남은 전체가 들어가는 가장 작은 크기(극소→중→대2), 안 들어가면 대2
@@ -26,10 +26,12 @@
   'use strict';
 
   const CONFIG = {
-    overfill: 0.05,                                   // 옷 포장 — 용량의 5% 를 더 담는다 (처음 0.10 → 테스트 없이 운영에 들어가서 조금 보수적으로, 2026-10-13)
-    baseCapL: { '극소': 36, '중': 120, '대2': 280 },  // 10% 가산 전 용량 (명목 부피 합, L) — 과거 꽉 찬 박스의 상위 25~35% 수준
+    overfill: 0,                                      // 보정 가산 없음 — 용량 자체를 실제 포장 통계로 잡았다 (2026-10-15. 그전엔 보수적 용량 + 5~10% 가산)
+    baseCapL: { '극소': 100, '중': 200, '대2': 480 }, // 용량(명목 부피 합, L) = 실제로 스캔·포장한 박스 중 **가장 많이 담긴 상위 10개 표본의 최솟값** (2026-10-15, docs §7-14)
+                                                      //   표본: 2026-07~10 실제 스캔 박스 1,970개. 크기 기록 의심(수량이 그 크기 상위 5% 초과)은 빼고 상위 10개 → 극소 99 · 중 198 · 대2 478
+                                                      //   (한 박스만 보면 극소 145 · 중 282 · 대2 616 까지 있지만 한 표본은 믿지 않는다)
     newSizes: ['극소', '중', '대2'],                  // 신규 박스 후보 (작은 것부터). 소/대는 쓰지 않는다
-    maxKg: 25,                                        // 박스당 무게 상한 (이 값 미만)
+    maxKg: null,                                      // 박스당 무게 상한 (이 값 미만). null = 제한 없음 (2026-10-15 요청으로 해제 — 옷이라 부피가 먼저 찬다)
     defaultUnitL: 2.85,                               // 사이즈 임시값·누락 상품의 1개 부피 (측정 상품 중앙값)
     defaultUnitKg: 0.2,                               // 무게 누락 상품의 1개 무게 (중앙값 200 g)
     placeholder: { w: 300, l: 300, h: 20 },           // 쿠팡 등록 시 넣어 둔 임시 사이즈
@@ -51,7 +53,7 @@
     return cfg;
   }
 
-  // 크기별 용량(L) — overfill 가산 포함(현재 5%). 모르는 크기(소/대 등)는 null
+  // 크기별 용량(L) — overfill 가산 포함(현재 0). 모르는 크기(소/대 등)는 null
   function capL(size, cfg) {
     const base = cfg.baseCapL[size];
     return base == null ? null : base * (1 + cfg.overfill);
@@ -235,10 +237,11 @@
       boxes.push(b);
       return b;
     };
-    // 이 박스에 더 담을 수 있는 개수 (부피 ≤ 용량, 무게 < 상한)
+    // 이 박스에 더 담을 수 있는 개수 (부피 ≤ 용량, 무게 < 상한 — maxKg 가 null 이면 무게는 보지 않는다)
+    const hasKg = Number.isFinite(cfg.maxKg) && cfg.maxKg > 0;
     const fitCount = (b, it) => {
       const byL = Math.floor((b.cap - b.usedL) / it.unitL + EPS);
-      const byKg = Math.ceil((cfg.maxKg - b.usedKg) / it.unitKg - EPS) - 1;
+      const byKg = hasKg ? Math.ceil((cfg.maxKg - b.usedKg) / it.unitKg - EPS) - 1 : Infinity;
       return Math.max(0, Math.min(byL, byKg));
     };
     const put = (b, it, n) => {
@@ -267,7 +270,7 @@
         if (b.isNew && b.usedL === 0 && b.items.length === 0) {
           // 새 박스인데 1개도 못 담는 상품 = 단일 상품이 용량/무게 한도를 넘음 → 1개 강제 + 경고
           put(b, it, 1);
-          b.warnings.push(`${it.barcode} 1개가 박스 한도(부피 ${b.cap.toFixed(0)} L · ${cfg.maxKg} kg)를 넘습니다.`);
+          b.warnings.push(`${it.barcode} 1개가 박스 한도(부피 ${b.cap.toFixed(0)} L${hasKg ? ` · ${cfg.maxKg} kg` : ''})를 넘습니다.`);
           cursor++; continue;
         }
         cursor++;                    // 박스 마감 → 다음 박스
@@ -282,7 +285,7 @@
       b.fillPct0 = b.cap ? (b.usedL0 / b.cap) * 100 : 0;
       b.addQty = b.items.reduce((s, i) => s + i.qty, 0);
       if (b.sizeFrom) b.warnings.push(`크기 변경 ${b.sizeFrom} → ${b.size} — 확정하면 박스 크기도 바뀝니다.`);
-      if (b.usedKg >= cfg.maxKg * 0.9) b.warnings.push(`무게 ${b.usedKg.toFixed(1)} kg — 상한 ${cfg.maxKg} kg 에 근접`);
+      if (hasKg && b.usedKg >= cfg.maxKg * 0.9) b.warnings.push(`무게 ${b.usedKg.toFixed(1)} kg — 상한 ${cfg.maxKg} kg 에 근접`);
       if (b.items.some((i) => i.flag)) b.warnings.push(`사이즈 가정 상품 ${b.items.filter((i) => i.flag).length}종 포함`);
     }
     totals.newBoxes = result.filter((b) => b.isNew).length;

@@ -92,6 +92,8 @@
         .orow .no{font-size:19px;font-weight:900;letter-spacing:.01em;color:var(--ink);}
         .orow.done .no,.orow.miss .no{color:var(--ink2);}
         .orow .meta{font-size:12.5px;color:var(--muted);font-weight:500;}
+        .orow .no .bx{display:inline-block;margin-left:7px;padding:2px 9px;border-radius:999px;background:#EEEDFE;color:#3C3489;font-size:13.5px;font-weight:800;vertical-align:middle;letter-spacing:0;}
+        .orow .no .bx.none{background:var(--fill);color:var(--muted);}
         .orow .prog{font-size:14px;font-weight:800;padding:6px 12px;border-radius:999px;background:var(--fill);color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;}
         .orow .prog.part{background:var(--coral-tint);color:var(--coral-dark);}
         .orow .prog.ok{background:var(--green-tint);color:var(--green-dark);font-size:13.5px;}
@@ -246,7 +248,7 @@
             </div>
             <button class="btn primary" style="height:54px;font-size:17px" onclick="startOrder(document.getElementById('orderInput').value)">진행 <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow"/></svg></button>
             <div class="olist">
-                <div class="sub"><span id="olistSub">발주서 목록</span><button onclick="startNextOrder()">다음 미처리 발주서<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-r"/></svg></button></div>
+                <div class="sub"><span id="olistSub">발주서 목록</span><button onclick="startNextOrder()">다음 미처리 박스<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-r"/></svg></button></div>
                 <div id="olist" style="display:flex;flex-direction:column;gap:8px"><div class="empty">불러오는 중…</div></div>
             </div>
         </div>
@@ -381,9 +383,11 @@
             }catch(e){ $('olist').innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
         }
         const isDoneOrder=o=>o.found+o.missing>=o.total;
+        // 목록은 (발주서, 가상 박스) 단위 — 박스 라벨(발주번호-박스번호)을 박스 단위로 뽑아 찾으므로 (2026-10-15). 가상 박스에 안 잡힌 행은 "박스 미정" 줄(-0)
+        const orderKey=o=>o.boxNo!=null?`${o.orderNumber}-${o.boxNo}`:`${o.orderNumber}-0`;
         function renderOrders(){
-            const left=orders.filter(o=>!isDoneOrder(o)).length;
-            $('olistSub').innerHTML=`발주서 ${orders.length}건 · <b>남음 ${left}</b>`;
+            const left=orders.filter(o=>!isDoneOrder(o)).length, nOrders=new Set(orders.map(o=>o.orderNumber)).size;
+            $('olistSub').innerHTML=`박스 ${orders.length}개 · 발주서 ${nOrders}건 · <b>남음 ${left}</b>`;
             if(!orders.length){ $('olist').innerHTML='<div class="empty">이 입고코드에는 출고리스트(배정)가 없습니다.<br>PC 입고정리에서 [출고준비]를 먼저 하세요.</div>'; return; }
             $('olist').innerHTML=orders.map(o=>{
                 const done=isDoneOrder(o), n=o.found+o.missing;
@@ -391,28 +395,30 @@
                 const pill=done
                     ? (o.missing?`<span class="prog miss">찾음 ${o.found} · 없음 ${o.missing}</span>`:`<span class="prog ok">${ICON('i-check',15,3)}완료</span>`)
                     : `<span class="prog ${n>0?'part':''}">${n} / ${o.total}</span>`;
-                return `<div class="orow ${rowCls}" onclick="startOrder('${esc(o.orderNumber)}')">
-                    <div class="body"><div class="no">${esc(o.orderNumber)}</div>
+                const bx=o.boxNo!=null?`<span class="bx">📦${o.boxNo}${o.boxSize?' '+esc(o.boxSize):''}</span>`:'<span class="bx none">박스 미정</span>';
+                return `<div class="orow ${rowCls}" onclick="startOrder('${esc(orderKey(o))}')">
+                    <div class="body"><div class="no">${esc(o.orderNumber)}${bx}</div>
                     <div class="meta">${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}</div></div>${pill}</div>`;
             }).join('');
         }
-        // "144287071-1" (박스 라벨) → 발주번호 + 박스번호 / "144287071" → 발주번호만
+        // "144287071-1" (박스 라벨) → 발주번호 + 박스번호 / "144287071" → 발주번호만(전체) / "144287071-0" → 박스 미정(가상 박스에 안 잡힌 행만)
         //   박스번호가 있으면 그 박스에 가상으로 담긴 상품 카드만 본다 (2026-10-15 — 박스 번호를 존중, 이미 찾은 분량은 찾을 필요 없음)
         function parseOrderCode(raw){ const m=String(raw||'').replace(/\s+/g,'').match(/^(\d{5,})(?:-(\d+))?$/); return m?{no:m[1], boxNo:m[2]!=null?Number(m[2]):null}:null; }
         function parseOrderNo(raw){ const p=parseOrderCode(raw); return p?p.no:null; }
-        let curBox=null;   // 박스 라벨로 들어온 경우의 박스번호 (발주번호만이면 null = 전체)
+        let curBox=null;   // 박스 라벨로 들어온 경우의 박스번호 (발주번호만이면 null = 전체 · 0 = 박스 미정)
+        const boxTag=()=>curBox==null?'':curBox===0?' · 박스 미정':` · 📦${curBox}`;
         $('orderInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); startOrder($('orderInput').value); } });
         function startNextOrder(){
             const o=orders.find(x=>!isDoneOrder(x));
-            if(!o){ toast('남은 발주서가 없습니다.'); return; }
-            startOrder(o.orderNumber);
+            if(!o){ toast('남은 박스가 없습니다.'); return; }
+            startOrder(orderKey(o));
         }
         async function startOrder(raw){
             const p=parseOrderCode(raw);
             if(!p){ playWarn(); toast('발주번호 형식이 아닙니다: '+String(raw||'').trim()); return; }
             $('orderInput').value='';
             curOrder=p.no; curBox=p.boxNo;
-            $('deckTitle').innerHTML=`<b>${esc(p.no)}${curBox!=null?` · 📦${curBox}`:''}</b><small></small>`;
+            $('deckTitle').innerHTML=`<b>${esc(p.no)}${boxTag()}</b><small></small>`;
             $('deck').innerHTML='<div class="cardw"><div class="card"><div class="empty">불러오는 중…</div></div></div>';
             show('s3');
             await reloadDeck(true);
@@ -427,12 +433,13 @@
                 rows=d.rows||[];
                 if(!rows.length){
                     playWarn();
-                    if(curBox!=null) toast(d.boxExists===false?`발주서 ${curOrder} 에 📦${curBox} 박스가 없습니다.`:`📦${curBox} 에 가상으로 담긴 입고코드 ${active.code} 상품이 없습니다. (이미 찾았거나 다른 입고코드)`);
+                    if(curBox===0) toast(`발주서 ${curOrder} 에 박스 미정 상품이 없습니다. (전부 가상 박스에 잡힘)`);
+                    else if(curBox!=null) toast(d.boxExists===false?`발주서 ${curOrder} 에 📦${curBox} 박스가 없습니다.`:`📦${curBox} 에 가상으로 담긴 입고코드 ${active.code} 상품이 없습니다. (이미 찾았거나 다른 입고코드)`);
                     else toast(`입고코드 ${active.code} 에 발주서 ${curOrder} 배정이 없습니다.`);
                     backToPick(); return;
                 }
                 const h=rows[0];
-                $('deckTitle').innerHTML=`<b>${esc(curOrder)}${curBox!=null?` · 📦${curBox}`:''}</b><small>${esc(h.센터)||''} · ${esc(md(h.출고예정일))||''}</small>`;
+                $('deckTitle').innerHTML=`<b>${esc(curOrder)}${boxTag()}</b><small>${esc(h.센터)||''} · ${esc(md(h.출고예정일))||''}</small>`;
                 renderDeck();
                 // 처음 열면 첫 미처리 카드로, 새로고침이면 현재 자리 유지
                 const target=first?Math.max(0,rows.findIndex(r=>!r.모바일)):Math.min(idx,rows.length);
