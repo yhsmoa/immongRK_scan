@@ -14,6 +14,9 @@
  *  · 마지막 박스가 극소/중인데 남은 상품이 다 안 들어가면 크기를 올린다 (극소→중→대2). 확정 시 DB 의 box_size 도 바뀐다
  *  · 신규 박스는 남은 전체가 들어가는 가장 작은 크기(극소→중→대2), 안 들어가면 대2
  *  · 상품은 수량 많은 것부터 담는다 (찾아 담기 편한 순서)
+ *  · 출처별 분리(splitBySource, 2026-10-15): 배정량을 입고분/재고분으로 나눠 **입고분을 먼저, 재고분을 그다음** 담고
+ *    출처가 바뀌는 자리에서 박스를 마감해 새 박스부터 시작한다 → 한 박스는 한 작업대(입고 작업대 / 재고 선반)에서 끝난다.
+ *    기존 마지막 박스 채우기는 먼저 담는 출처(입고)만 한다. 그 대신 출처당 마지막 박스가 덜 찰 수 있다 (박스가 하나 더 나올 수 있음).
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -32,6 +35,8 @@
     maxBoxNo: 20,                                     // 박스 번호 1~20 (화면 그리드와 동일)
     topUpExisting: true,                              // true = 기존 박스 남은 용량부터 채움 · false = 기존 박스는 그대로 두고 새 박스만
     upgradeLastBox: true,                             // 마지막 기존 박스(극소/중)에 남은 상품이 다 안 들어가면 크기를 올린다 (극소→중→대2). 확정 시 DB box_size 도 바뀜
+    splitBySource: true,                              // true = 입고분/재고분을 다른 박스에 담는다 (products 에 allocInbound/allocStock 이 있을 때만 효과)
+    sourceOrder: ['입고', '재고'],                     // 담는 순서 — 앞 출처가 기존 마지막 박스를 채운다
   };
 
   const EPS = 1e-9;
@@ -103,19 +108,38 @@
       if (alloc <= 0) { excluded.push({ barcode: bc, productName: p.productName || '', reason: '배정 없음' }); continue; }
       if (remain <= 0) { excluded.push({ barcode: bc, productName: p.productName || '', reason: '이미 완료' }); continue; }
       if (u.flag) assumedCount++;
-      items.push({ barcode: bc, productName: p.productName || '', location: p.location || '', qty: remain,
-        unitL: u.L, unitKg: u.kg, flag: u.flag, capped: alloc > conf });
+      const base = { barcode: bc, productName: p.productName || '', location: p.location || '',
+        unitL: u.L, unitKg: u.kg, flag: u.flag, capped: alloc > conf };
+      // 출처별 분리: 배정량을 입고분/재고분으로 나눈다. 확정수량이 배정보다 작으면 재고분부터 줄이고,
+      // 이미 스캔한 개수는 입고분부터 뺀다 (입고분을 먼저 담는 순서와 맞춤).
+      const inb = Math.max(0, parseInt(p.allocInbound, 10) || 0), stk = Math.max(0, parseInt(p.allocStock, 10) || 0);
+      if (cfg.splitBySource && (inb > 0 || stk > 0)) {
+        const inbT = Math.min(inb, target);
+        const remInb = Math.max(0, inbT - scanned);
+        const remStk = remain - remInb;
+        if (remInb > 0) items.push(Object.assign({}, base, { qty: remInb, source: '입고' }));
+        if (remStk > 0) items.push(Object.assign({}, base, { qty: remStk, source: '재고' }));
+      } else {
+        items.push(Object.assign({}, base, { qty: remain, source: null }));
+      }
     }
-    // 수량 많은 것부터, 같으면 바코드순
-    items.sort((a, b) => (b.qty - a.qty) || String(a.barcode).localeCompare(String(b.barcode), 'ko', { numeric: true }));
+    // 출처 순서(입고 → 재고, 출처 정보 없는 것은 맨 앞) → 수량 많은 것부터 → 바코드순
+    const srcRank = (s) => { if (s == null) return 0; const i = cfg.sourceOrder.indexOf(s); return i < 0 ? 99 : i + 1; };
+    items.sort((a, b) => (srcRank(a.source) - srcRank(b.source)) || (b.qty - a.qty)
+      || String(a.barcode).localeCompare(String(b.barcode), 'ko', { numeric: true }));
+    const sources = [...new Set(items.map((i) => i.source))];   // 담는 순서대로의 출처 목록
+    const splitActive = sources.length > 1;
 
     const assumptions = {
       overfill: cfg.overfill, maxKg: cfg.maxKg, defaultUnitL: cfg.defaultUnitL, assumedCount, topUpExisting: !!cfg.topUpExisting,
+      splitBySource: !!cfg.splitBySource, splitActive,
       cap: Object.fromEntries(cfg.newSizes.map((s) => [s, capL(s, cfg)])),
     };
-    const totals = { skus: items.length, qty: items.reduce((s, i) => s + i.qty, 0),
+    const bySource = {};
+    for (const i of items) bySource[i.source || '미구분'] = (bySource[i.source || '미구분'] || 0) + i.qty;
+    const totals = { skus: new Set(items.map((i) => i.barcode)).size, qty: items.reduce((s, i) => s + i.qty, 0),
       L: items.reduce((s, i) => s + i.qty * i.unitL, 0), kg: items.reduce((s, i) => s + i.qty * i.unitKg, 0),
-      newBoxes: 0, topUpBoxes: 0 };
+      newBoxes: 0, topUpBoxes: 0, bySource };
     const warnings = [];
     if (!items.length) {
       return { ok: false, reason: products.length ? '담을 상품이 없습니다. (출고예정 배정이 없거나 이미 모두 스캔됨)' : '발주서 상품이 없습니다.',
@@ -159,19 +183,18 @@
     if (!cfg.topUpExisting && existingNos.length) warnings.push(`기존 박스 ${existingNos.length}개(${existingNos.map((n) => `📦${n}`).join(', ')})는 그대로 두고 새 박스만 썼습니다.`);
 
     // ── 3. 채우기 ──
-    const restL = () => items.reduce((s, i) => s + i.qty * i.unitL, 0);
-    const restKg = () => items.reduce((s, i) => s + i.qty * i.unitKg, 0);
+    //   새 박스 크기는 "지금 담는 출처의 남은 부피" 로 정한다 (다른 출처 분량은 다른 박스로 가므로 셈에 넣지 않는다)
+    const restL = (src) => items.reduce((s, i) => s + (i.source === src ? i.qty * i.unitL : 0), 0);
     const nextBoxNo = () => { for (let n = 1; n <= cfg.maxBoxNo; n++) if (!usedNos.has(n)) return n; return null; };
-    const openNewBox = () => {
-      const rL = restL(), rKg = restKg();
+    const openNewBox = (src) => {
+      const rL = restL(src);
       let size = cfg.newSizes[cfg.newSizes.length - 1];
       for (const s of cfg.newSizes) { const c = capL(s, cfg); if (c != null && rL <= c + EPS) { size = s; break; } }
       const no = nextBoxNo();
       if (no == null) return null;
       usedNos.add(no);
       const b = { boxNo: no, size, isNew: true, cap: capL(size, cfg), usedL0: 0, usedKg0: 0, usedQty0: 0,
-        usedL: 0, usedKg: 0, items: [], warnings: [] };
-      void rKg;
+        usedL: 0, usedKg: 0, items: [], warnings: [], source: null };
       boxes.push(b);
       return b;
     };
@@ -182,18 +205,25 @@
       return Math.max(0, Math.min(byL, byKg));
     };
     const put = (b, it, n) => {
-      const ex = b.items.find((x) => x.barcode === it.barcode);
+      const ex = b.items.find((x) => x.barcode === it.barcode && (x.source || null) === (it.source || null));
       if (ex) ex.qty += n;
-      else b.items.push({ barcode: it.barcode, productName: it.productName, location: it.location, qty: n, unitL: it.unitL, unitKg: it.unitKg, flag: it.flag });
+      else b.items.push({ barcode: it.barcode, productName: it.productName, location: it.location, qty: n, unitL: it.unitL, unitKg: it.unitKg, flag: it.flag, source: it.source || null });
       b.usedL += n * it.unitL; b.usedKg += n * it.unitKg; it.qty -= n;
+      // 박스의 출처 표시 — 한 출처면 그 출처, 둘 이상이면 '혼합' (출처 분리 중에는 새 박스가 섞이지 않는다)
+      if (b.source === undefined || b.source === null) b.source = it.source || null;
+      else if (it.source && b.source !== it.source) b.source = '혼합';
     };
 
     let cursor = 0;                 // boxes[] 의 현재 위치 (기존 박스 → 신규 박스 순)
     let stop = null;
+    let curSrc, started = false;
     for (const it of items) {
+      // 출처가 바뀌면 지금 박스를 마감하고 새 박스부터 — 한 박스에 입고분·재고분을 섞지 않는다
+      if (started && it.source !== curSrc) cursor = boxes.length;
+      started = true; curSrc = it.source;
       while (it.qty > 0) {
         let b = boxes[cursor];
-        if (!b) { b = openNewBox(); if (!b) { stop = `박스 번호가 부족합니다 (1~${cfg.maxBoxNo} 모두 사용).`; break; } }
+        if (!b) { b = openNewBox(it.source); if (!b) { stop = `박스 번호가 부족합니다 (1~${cfg.maxBoxNo} 모두 사용).`; break; } }
         const n = Math.min(it.qty, fitCount(b, it));
         if (n > 0) { put(b, it, n); continue; }
         // 이 박스에는 1개도 안 들어감
@@ -221,6 +251,11 @@
     totals.newBoxes = result.filter((b) => b.isNew).length;
     totals.topUpBoxes = result.filter((b) => !b.isNew && b.items.length > 0).length;
     totals.upgradedBoxes = result.filter((b) => b.sizeFrom).length;
+    if (splitActive) {
+      const cnt = (src) => result.filter((b) => b.items.length && b.source === src).length;
+      totals.boxesBySource = Object.fromEntries(sources.map((s) => [s || '미구분', cnt(s)]));
+      warnings.push(`출처별로 나눠 담았습니다 — ${sources.map((s) => `${s || '미구분'} ${cnt(s)}박스`).join(' · ')}${result.some((b) => b.source === '혼합') ? ' · 기존 박스에 더한 분량은 섞임' : ''}.`);
+    }
     const untouchedExisting = result.filter((b) => !b.isNew && !b.items.length);
     if (untouchedExisting.length) warnings.push(`남은 용량이 없어 그대로 둔 기존 박스: ${untouchedExisting.map((b) => `📦${b.boxNo}`).join(', ')}`);
     if (items.some((i) => i.capped)) warnings.push(`배정량이 확정수량보다 큰 상품 ${items.filter((i) => i.capped).length}종은 확정수량까지만 담았습니다.`);

@@ -78,15 +78,21 @@ async function locationsByBarcode(orderNumber, barcodes) {
 
 // 바코드별 출고예정 배정량(재고+입고 합) — 가상스캔의 목표 수량 기준 (docs/plan-virtual-scan.md §1-1)
 // 준비수량(prepared_qty)과는 별개 값이다. 실패해도 조용히 빈 맵 (가상스캔만 영향).
+//   바코드 → { total, stock(재고), inbound(입고) } — 가상스캔이 출처별로 박스를 나눠 담을 수 있게 source 도 같이 센다 (2026-10-15)
 async function allocByBarcode(orderNumber) {
   const out = new Map();
   try {
     const { data, error } = await sb.from('rk_shipping_list')
-      .select('barcode, qty').eq('order_number', orderNumber).eq('status', '출고예정');
+      .select('barcode, qty, source').eq('order_number', orderNumber).eq('status', '출고예정');
     if (error) throw error;
     for (const r of (data || [])) {
       if (!r.barcode) continue;
-      out.set(r.barcode, (out.get(r.barcode) || 0) + (parseInt(r.qty, 10) || 0));
+      const q = parseInt(r.qty, 10) || 0;
+      const a = out.get(r.barcode) || { total: 0, stock: 0, inbound: 0 };
+      a.total += q;
+      if (r.source === '재고') a.stock += q;
+      else if (r.source === '입고') a.inbound += q;
+      out.set(r.barcode, a);
     }
   } catch (e) {
     console.error('[rk] ship-scan 배정량 조회 실패(가상스캔만 영향):', e.message);
@@ -135,7 +141,9 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
       barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0,
       preparedQty: prep.has(bc) ? prep.get(bc) : null,      // 미입력은 null (0 과 구분)
       location: locMap.get(bc) || loc.get(bc) || '',        // 정렬용
-      allocQty: allocMap.get(bc) || 0,                      // 출고예정 배정량 (가상스캔 목표)
+      allocQty: (allocMap.get(bc) || {}).total || 0,        // 출고예정 배정량 (가상스캔 목표)
+      allocStock: (allocMap.get(bc) || {}).stock || 0,      //   그중 재고분 — 가상스캔 출처별 박스 분리용
+      allocInbound: (allocMap.get(bc) || {}).inbound || 0,  //   그중 입고분
       size: sizeMap.get(bc) || null,                        // {w,l,h,g} mm·g (가상스캔 부피/무게)
     }));
 

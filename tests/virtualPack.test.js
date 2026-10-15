@@ -213,4 +213,46 @@ test('입력을 변형하지 않는다', () => {
   assert.strictEqual(JSON.stringify({ products, boxItems }), snap);
 });
 
+// ── 출처별 분리 (2026-10-15): 입고분을 먼저, 재고분은 새 박스부터 ──
+const prodS = (barcode, inb, stk, opts = {}) => Object.assign(prod(barcode, inb + stk, opts), { allocInbound: inb, allocStock: stk });
+
+test('출처 분리: 입고분과 재고분이 다른 박스에, 입고가 먼저', () => {
+  const p = run([prodS('A', 5, 5), prodS('B', 4, 2)]);   // 입고 9개(90 L → 중) · 재고 7개(70 L → 중)
+  assert.ok(p.ok);
+  assert.deepStrictEqual(p.boxes.map((b) => `${b.boxNo}:${b.size}:${b.source}:${b.addQty}`), ['1:중:입고:9', '2:중:재고:7']);
+  assert.deepStrictEqual(p.totals.bySource, { '입고': 9, '재고': 7 });
+  assert.ok(p.warnings.some((w) => w.includes('출처별로 나눠')));
+  assert.ok(p.boxes[0].items.every((i) => i.source === '입고') && p.boxes[1].items.every((i) => i.source === '재고'));
+});
+
+test('출처 분리: 새 박스 크기는 그 출처의 남은 부피로 정한다 (재고 2개 → 극소)', () => {
+  const p = run([prodS('A', 12, 2)]);   // 입고 12 → 중 · 재고 2 → 극소 (합쳐 셌다면 대2 하나)
+  assert.deepStrictEqual(shape(p), '1:중:12 2:극소:2');
+});
+
+test('출처 분리 끔(splitBySource:false): 예전처럼 한데 담는다', () => {
+  const p = run([prodS('A', 12, 2)], {}, { splitBySource: false });
+  assert.deepStrictEqual(shape(p), '1:대2:14');   // 140 L > 중 126 L → 대2 하나 (나누면 중 + 극소)
+  assert.strictEqual(p.boxes[0].source, null);
+  assert.strictEqual(p.assumptions.splitActive, false);
+});
+
+test('출처 분리: 기존 마지막 박스는 먼저 담는 출처(입고)만 채우고, 재고는 새 박스', () => {
+  const p = run([prodS('A', 2, 3)], { boxItems: [{ boxNo: 1, barcode: 'Z', qty: 1 }], savedBoxes: [{ boxNo: 1, boxSize: '중' }] });
+  assert.deepStrictEqual(p.boxes.map((b) => `${b.boxNo}:${b.isNew ? '신규' : '기존'}:${b.source}:${b.addQty}`), ['1:기존:입고:2', '2:신규:재고:3']);
+});
+
+test('출처 분리: 스캔한 개수는 입고분부터 빼고, 확정이 배정보다 작으면 재고분부터 줄인다', () => {
+  const p1 = run([prodS('A', 4, 3, { scanned: 5 })]);                 // 남은 2 = 재고분
+  assert.deepStrictEqual(p1.boxes.map((b) => `${b.source}:${b.addQty}`), ['재고:2']);
+  const p2 = run([prodS('A', 4, 3, { conf: 5 })]);                    // 목표 5 = 입고 4 + 재고 1
+  assert.deepStrictEqual(p2.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:4', '재고:1']);
+});
+
+test('출처 분리: 출처 정보가 없는 상품은 예전과 같다', () => {
+  const p = run([prod('A', 5), prod('B', 3)]);
+  assert.deepStrictEqual(shape(p), '1:중:8');
+  assert.strictEqual(p.boxes[0].source, null);
+});
+
 console.log(`\n${n} tests passed`);

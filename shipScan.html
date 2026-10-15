@@ -148,6 +148,9 @@
         .vs-tag.sz-m{background:#fdebd3;color:#b45309;}    /* 중 = 주황 */
         .vs-tag.sz-xl{background:#efe3d8;color:#7a4b1d;}   /* 대2 = 갈색 */
         .vs-tag.from{text-decoration:line-through;opacity:.55;}
+        .vs-tag.src-inb{background:#dbeafe;color:#1d4ed8;}  /* 입고분 = 파랑 */
+        .vs-tag.src-stk{background:#dcfce7;color:#15803d;}  /* 재고분 = 초록 */
+        .vs-tag.src-mix{background:#f1f5f9;color:#475569;}  /* 기존 박스에 더해 섞임 */
         .vs-tags{align-items:center;}
         .vs-tags .arrow{font-size:12px;color:#70727c;}
         .vs-box.old{background:#f3f4f7;}                   /* 기존 박스에 추가하는 카드 = 회색 보드 */
@@ -476,7 +479,8 @@
                 // 스캔목록 = 발주서 상품 리스트 (발주수량=확정수량)
                 products=(data.products||[]).map(p=>({barcode:p.barcode, productName:p.productName||'', orderQty:p.confirmedQty||0,
                     preparedQty:(p.preparedQty==null?null:Number(p.preparedQty)), location:p.location||'', scannedQty:0,
-                    allocQty:Number(p.allocQty)||0, size:p.size||null}));   // allocQty/size = 가상스캔 계산용 (준비 열과 별개)
+                    allocQty:Number(p.allocQty)||0, allocStock:Number(p.allocStock)||0, allocInbound:Number(p.allocInbound)||0,   // 배정량(재고분/입고분) = 가상스캔 계산용 (준비 열과 별개)
+                    size:p.size||null}));
                 const nameByBc=new Map(products.map(p=>[p.barcode,p.productName]));
                 // 저장된 박스 아이템(박스별)
                 // virtualQty = qty 중 [가상스캔]으로 들어온 개수 (DB rk_ship_box_items.virtual_qty) → 화면 '가상' 태그
@@ -902,8 +906,17 @@
             try{ localStorage.setItem(VS_OPT_KEY, vsTopUp?'1':'0'); }catch(e){}
             if(document.getElementById('vsBack').classList.contains('show')) buildVirtualPlan(); // 열려 있으면 다시 계산
         }
+        // 옵션: 출처별 분리(true, 입고분·재고분을 다른 박스에) / 같이 담기(false) — 브라우저에 기억 (기본 = 분리)
+        const VS_SPLIT_KEY='shipScan.vsSplit';
+        let vsSplit=true;
+        try{ const v=localStorage.getItem(VS_SPLIT_KEY); if(v==='0') vsSplit=false; }catch(e){}
+        function setVsSplit(on){
+            vsSplit=!!on;
+            try{ localStorage.setItem(VS_SPLIT_KEY, vsSplit?'1':'0'); }catch(e){}
+            if(document.getElementById('vsBack').classList.contains('show')) buildVirtualPlan();
+        }
         function buildVirtualPlan(){
-            vsPlan=VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap }, { topUpExisting: vsTopUp });
+            vsPlan=VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap }, { topUpExisting: vsTopUp, splitBySource: vsSplit });
             renderVirtualModal(vsPlan);
             return vsPlan;
         }
@@ -931,6 +944,18 @@
                 </div>
                 <span class="hint">${existCnt?`이 발주서에 박스 ${existCnt}개가 있습니다. ${vsTopUp?(existCnt>1?`마지막 박스(📦${lastNo})만 남은 용량부터 채우고, 앞 박스는 마감으로 봅니다.`:`📦${lastNo}의 남은 용량부터 채웁니다.`):'그대로 두고 새 박스에만 담습니다.'}`:'아직 박스가 없어 어느 쪽이든 새 박스에 담습니다.'}</span>
             </div>`;
+            // 출처별 분리 — 입고 작업대와 재고 선반에서 각각 박스를 끝낼 수 있게 (2026-10-15)
+            const bs=t.bySource||{}, hasBoth=(bs['입고']>0)&&(bs['재고']>0);
+            top+=`<div class="vs-opt">
+                <span class="lbl">출처</span>
+                <div class="vs-seg">
+                    <button type="button" class="${vsSplit?'on':''}" onclick="setVsSplit(true)">입고·재고 나눠 담기</button>
+                    <button type="button" class="${vsSplit?'':'on'}" onclick="setVsSplit(false)">같이 담기</button>
+                </div>
+                <span class="hint">${hasBoth
+                    ? (vsSplit?`입고분 ${bs['입고']}개를 먼저 담고 박스를 마감한 뒤 재고분 ${bs['재고']}개는 새 박스부터 담습니다. 한 박스는 한 곳에서 끝납니다.`:`입고분 ${bs['입고']}개 · 재고분 ${bs['재고']}개를 구분 없이 수량 많은 순으로 담습니다.`)
+                    : (bs['입고']>0?`전부 입고분(${bs['입고']}개)이라 나눌 것이 없습니다.`:bs['재고']>0?`전부 재고분(${bs['재고']}개)이라 나눌 것이 없습니다.`:'배정 출처 정보가 없어 구분 없이 담습니다.')}</span>
+            </div>`;
             top+=`<div class="vs-stats">
                 <div class="vs-stat"><div class="k">대상 상품</div><div class="v">${t.qty.toLocaleString()}<small>개</small><small class="gap">${t.skus}종</small></div></div>
                 <div class="vs-stat"><div class="k">총 부피 · 무게</div><div class="v">${fmtL(t.L)}<small>L</small><small class="gap">${fmtKg(t.kg)} kg</small></div></div>
@@ -956,7 +981,7 @@
                 html+=`<div class="vs-box${b.isNew?'':' old'}">
                     <div class="vs-box-h">
                         <span class="vs-box-no"><small>박스</small>${b.boxNo}</span>
-                        <div class="vs-tags">${sizeTags}<span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span></div>
+                        <div class="vs-tags">${sizeTags}<span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span>${b.source?`<span class="vs-tag ${({'입고':'src-inb','재고':'src-stk','혼합':'src-mix'})[b.source]||''}" title="이 박스에 담는 분량의 출처">${esc(b.source)}${b.isNew?'':' 추가'}</span>`:''}</div>
                         <div class="vs-prog">
                             <div class="lab"><span>${pctLabel}</span><span>${fmtL(b.usedL)}/${fmtL(b.cap)} L · ${fmtKg(b.usedKg)} kg</span></div>
                             <div class="vs-bar"><i class="after" style="width:${p1}%"></i><i style="width:${p0}%"></i></div>
