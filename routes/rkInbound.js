@@ -283,6 +283,8 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
   try {
     const code = String(req.query.shipmentCode || '').trim();
     const orderNumber = String(req.query.orderNumber || '').trim();
+    // boxNo: 박스 라벨("발주번호-박스번호")을 스캔한 경우 — 그 박스에 가상으로 담긴 상품 카드만, 칩도 그 박스만 (2026-10-15)
+    const boxNo = req.query.boxNo != null && String(req.query.boxNo).trim() !== '' ? parseInt(req.query.boxNo, 10) : null;
     if (!code || !orderNumber) return res.status(400).json({ error: '출고코드와 발주번호가 필요합니다.' });
     const ids = await shipmentIdsFromQuery({ shipmentCode: code });
     if (!ids.length) return res.status(404).json({ error: `출고코드 ${code} 를 찾을 수 없습니다.` });
@@ -300,17 +302,24 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
     const img = {};
     for (const r of imgRows) { const u = String(r.img || '').trim(); if (r.barcode && u && !img[r.barcode]) img[r.barcode] = u; }
     const boxById = new Map(boxes.map(b => [b.id, b]));
+    // 칩에는 **가상으로 담긴 분량만** 보여준다 — 실제 스캔으로 이미 담은 분량(virtual_qty 0)은 찾을 대상이 아니다.
+    //   (같은 바코드가 다른 입고코드로 먼저 실제 포장된 박스가 카드에 같이 붙던 문제, 2026-10-15)
     const boxesByBc = {};
     if (boxes.length) {
       const bItems = await S.pageAll(() => sb.from('rk_ship_box_items').select('box_id, barcode, qty, virtual_qty').eq('order_number', orderNumber).order('id', { ascending: true }));
       for (const it of bItems) {
-        const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0;
-        if (!b || !it.barcode || qty <= 0) continue;
-        (boxesByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, qty, virtualQty: parseInt(it.virtual_qty, 10) || 0 });
+        const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0; const vq = parseInt(it.virtual_qty, 10) || 0;
+        if (!b || !it.barcode || qty <= 0 || vq <= 0) continue;
+        if (boxNo != null && b.box_no !== boxNo) continue;   // 박스 라벨로 들어왔으면 그 박스만
+        (boxesByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, qty, virtualQty: vq });
       }
       for (const l of Object.values(boxesByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
     }
-    res.json({ rows: rows.map(r => ({ ...r, img: img[r.바코드] || null, boxes: boxesByBc[r.바코드] || [] })) });
+    const boxExists = boxNo == null || boxes.some(b => b.box_no === boxNo);
+    // 박스 라벨로 들어왔으면 그 박스에 가상으로 담긴 바코드의 행만 (배정 행은 입고코드·BR 박스 단위라 여러 행이 같은 바코드일 수 있다)
+    const out = (boxNo == null ? rows : rows.filter(r => (boxesByBc[r.바코드] || []).length > 0))
+      .map(r => ({ ...r, img: img[r.바코드] || null, boxes: boxesByBc[r.바코드] || [] }));
+    res.json({ rows: out, boxNo, boxExists });
   } catch (e) {
     console.error('[rk] inbound/mobile-list:', e);
     res.status(500).json({ error: '출고리스트 조회 실패: ' + e.message });

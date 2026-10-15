@@ -10,7 +10,7 @@
     <style>
         /* ============================================================
            모바일 입고 — 폰(390px) 전용. 종이 [인쇄] 대신 출고리스트를 카드 1장씩 넘기며 [스캔](찾음) / [없음]
-           1화면 이름 + 연/월/출고코드 휠  →  2화면 발주서 입력·카메라·목록  →  3화면 카드 스와이프 (한 화면에 딱 맞춤)
+           1화면 이름 + 연/월/입고코드 휠  →  2화면 발주서 입력·카메라·목록  →  3화면 카드 스와이프 (한 화면에 딱 맞춤)
            디자인: 클로드 디자인 시안(2026-10-15) — 따뜻한 회백 바탕 · 코랄 주색 · 검정 칩 · 파란 바코드
            사이트 헤더는 폭이 안 맞아 넣지 않는다 (홈 링크만)
            ============================================================ */
@@ -201,7 +201,7 @@
         </defs>
     </svg>
 
-    <!-- ───── 1화면: 이름 + 연/월/출고코드 ───── -->
+    <!-- ───── 1화면: 이름 + 연/월/입고코드 ───── -->
     <section class="screen on" id="s1">
         <div class="top" style="padding:0 16px;gap:10px">
             <a href="/" class="ico" title="홈" aria-label="홈" style="width:36px;height:36px"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"/></svg></a>
@@ -210,21 +210,21 @@
         </div>
         <div class="setup">
             <div class="hero">
-                <h1>오늘 찾을<br>출고코드를 고르세요</h1>
-                <p>이름과 출고코드는 이 폰에 기억됩니다.</p>
+                <h1>오늘 찾을<br>입고코드를 고르세요</h1>
+                <p>이름과 입고코드는 이 폰에 기억됩니다.</p>
             </div>
             <div class="field">
                 <label for="worker">본인 이름</label>
                 <input id="worker" type="text" autocomplete="off" placeholder="예) 영희" maxlength="20" enterkeyhint="done">
             </div>
             <div class="field">
-                <div class="labrow"><span class="lab">입고정리 · 연도 / 월 / 출고코드</span><span>위아래로 돌려 선택</span></div>
+                <div class="labrow"><span class="lab">입고정리 · 연도 / 월 / 입고코드</span><span>위아래로 돌려 선택</span></div>
                 <div class="wheels">
                     <div class="wheel" id="wYear"></div>
                     <div class="wheel" id="wMonth"></div>
                     <div class="wheel code" id="wCode"></div>
                 </div>
-                <div class="hintcard" id="codeHint"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-box"/></svg><span>출고코드를 선택하세요.</span></div>
+                <div class="hintcard" id="codeHint"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-box"/></svg><span>입고코드를 선택하세요.</span></div>
             </div>
         </div>
         <div class="setup-foot">
@@ -342,12 +342,12 @@
         function refillCodes(instant){
             const cs=codes(sel.y,sel.m);
             const byCode=new Map(shipments.map(s=>[s.shipmentCode,s]));
-            fillWheel($('wCode'), cs.map(v=>({v,t:v})), '출고코드 없음');
+            fillWheel($('wCode'), cs.map(v=>({v,t:v})), '입고코드 없음');
             const c=cs.includes(sel.code)?sel.code:cs[0]||'';
             wheelSet($('wCode'), Math.max(0,cs.indexOf(c)), instant); sel.code=c;
             const s=byCode.get(c);
             const d=s?shipDate(s):null;
-            $('codeHint').innerHTML=ICON('i-box',18,2)+(s?`<b>${esc(c)}</b><span>아이템 ${s.itemCount}건 · ${d.getMonth()+1}월 ${d.getDate()}일 입고</span>`:'<span>출고코드를 선택하세요.</span>');
+            $('codeHint').innerHTML=ICON('i-box',18,2)+(s?`<b>${esc(c)}</b><span>아이템 ${s.itemCount}건 · ${d.getMonth()+1}월 ${d.getDate()}일 입고</span>`:'<span>입고코드를 선택하세요.</span>');
             $('nextBtn').disabled=!c;
         }
         bindWheel($('wYear'), v=>{ if(v===sel.y) return; sel.y=v; sel.m=''; sel.code=''; refillMonths(); refillCodes(); });
@@ -360,14 +360,14 @@
                 const res=await fetch('/api/inbound/shipments'); shipments=await res.json();
                 if(!Array.isArray(shipments)) throw new Error('목록 형식 오류');
                 setupWheels();
-            }catch(e){ toast('출고코드 목록을 불러오지 못했습니다: '+e.message); }
+            }catch(e){ toast('입고코드 목록을 불러오지 못했습니다: '+e.message); }
         }
         function goPick(){
             if(!worker()){ toast('본인 이름을 입력하세요.'); $('worker').focus(); return; }
-            if(!sel.code){ toast('출고코드를 선택하세요.'); return; }
+            if(!sel.code){ toast('입고코드를 선택하세요.'); return; }
             try{ localStorage.setItem(LS.worker,worker()); localStorage.setItem(LS.sel,JSON.stringify(sel)); }catch(_){}
             active.code=sel.code;
-            $('pickTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">출고코드 ${esc(active.code)}</b><small>${esc(worker())}</small>`;
+            $('pickTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">입고코드 ${esc(active.code)}</b><small>${esc(worker())}</small>`;
             show('s2'); loadOrders();
         }
 
@@ -384,7 +384,7 @@
         function renderOrders(){
             const left=orders.filter(o=>!isDoneOrder(o)).length;
             $('olistSub').innerHTML=`발주서 ${orders.length}건 · <b>남음 ${left}</b>`;
-            if(!orders.length){ $('olist').innerHTML='<div class="empty">이 출고코드에는 출고리스트(배정)가 없습니다.<br>PC 입고정리에서 [출고준비]를 먼저 하세요.</div>'; return; }
+            if(!orders.length){ $('olist').innerHTML='<div class="empty">이 입고코드에는 출고리스트(배정)가 없습니다.<br>PC 입고정리에서 [출고준비]를 먼저 하세요.</div>'; return; }
             $('olist').innerHTML=orders.map(o=>{
                 const done=isDoneOrder(o), n=o.found+o.missing;
                 const rowCls=done?(o.missing?'miss':'done'):'';
@@ -396,8 +396,11 @@
                     <div class="meta">${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}</div></div>${pill}</div>`;
             }).join('');
         }
-        // "144287071-1" (박스 라벨) / "144287071" → 발주번호
-        function parseOrderNo(raw){ const m=String(raw||'').replace(/\s+/g,'').match(/^(\d{5,})(?:-\d+)?$/); return m?m[1]:null; }
+        // "144287071-1" (박스 라벨) → 발주번호 + 박스번호 / "144287071" → 발주번호만
+        //   박스번호가 있으면 그 박스에 가상으로 담긴 상품 카드만 본다 (2026-10-15 — 박스 번호를 존중, 이미 찾은 분량은 찾을 필요 없음)
+        function parseOrderCode(raw){ const m=String(raw||'').replace(/\s+/g,'').match(/^(\d{5,})(?:-(\d+))?$/); return m?{no:m[1], boxNo:m[2]!=null?Number(m[2]):null}:null; }
+        function parseOrderNo(raw){ const p=parseOrderCode(raw); return p?p.no:null; }
+        let curBox=null;   // 박스 라벨로 들어온 경우의 박스번호 (발주번호만이면 null = 전체)
         $('orderInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); startOrder($('orderInput').value); } });
         function startNextOrder(){
             const o=orders.find(x=>!isDoneOrder(x));
@@ -405,11 +408,11 @@
             startOrder(o.orderNumber);
         }
         async function startOrder(raw){
-            const no=parseOrderNo(raw);
-            if(!no){ playWarn(); toast('발주번호 형식이 아닙니다: '+String(raw||'').trim()); return; }
+            const p=parseOrderCode(raw);
+            if(!p){ playWarn(); toast('발주번호 형식이 아닙니다: '+String(raw||'').trim()); return; }
             $('orderInput').value='';
-            curOrder=no;
-            $('deckTitle').innerHTML=`<b>${esc(no)}</b><small></small>`;
+            curOrder=p.no; curBox=p.boxNo;
+            $('deckTitle').innerHTML=`<b>${esc(p.no)}${curBox!=null?` · 📦${curBox}`:''}</b><small></small>`;
             $('deck').innerHTML='<div class="cardw"><div class="card"><div class="empty">불러오는 중…</div></div></div>';
             show('s3');
             await reloadDeck(true);
@@ -419,12 +422,17 @@
         // ════════ 3화면: 카드 덱 ════════
         async function reloadDeck(first){
             try{
-                const res=await fetch(`/api/inbound/mobile-list?shipmentCode=${encodeURIComponent(active.code)}&orderNumber=${encodeURIComponent(curOrder)}`);
+                const res=await fetch(`/api/inbound/mobile-list?shipmentCode=${encodeURIComponent(active.code)}&orderNumber=${encodeURIComponent(curOrder)}${curBox!=null?`&boxNo=${curBox}`:''}`);
                 const d=await res.json(); if(!res.ok) throw new Error(d.error||'조회 실패');
                 rows=d.rows||[];
-                if(!rows.length){ playWarn(); toast(`출고코드 ${active.code} 에 발주서 ${curOrder} 배정이 없습니다.`); backToPick(); return; }
+                if(!rows.length){
+                    playWarn();
+                    if(curBox!=null) toast(d.boxExists===false?`발주서 ${curOrder} 에 📦${curBox} 박스가 없습니다.`:`📦${curBox} 에 가상으로 담긴 입고코드 ${active.code} 상품이 없습니다. (이미 찾았거나 다른 입고코드)`);
+                    else toast(`입고코드 ${active.code} 에 발주서 ${curOrder} 배정이 없습니다.`);
+                    backToPick(); return;
+                }
                 const h=rows[0];
-                $('deckTitle').innerHTML=`<b>${esc(curOrder)}</b><small>${esc(h.센터)||''} · ${esc(md(h.출고예정일))||''}</small>`;
+                $('deckTitle').innerHTML=`<b>${esc(curOrder)}${curBox!=null?` · 📦${curBox}`:''}</b><small>${esc(h.센터)||''} · ${esc(md(h.출고예정일))||''}</small>`;
                 renderDeck();
                 // 처음 열면 첫 미처리 카드로, 새로고침이면 현재 자리 유지
                 const target=first?Math.max(0,rows.findIndex(r=>!r.모바일)):Math.min(idx,rows.length);
@@ -432,12 +440,13 @@
                 if(first) playOk();
             }catch(e){ playWarn(); toast(e.message); }
         }
-        // 꺼내는 곳(박스명, 검정) → 담는 곳(출고스캔 박스 번호 · 크기, 오른쪽). 박스가 없으면 "직접 스캔"(박스를 스캔으로 나누는 발주서)
+        // 꺼내는 곳(박스명, 검정) → 담는 곳(출고스캔 박스 번호 · 크기, 오른쪽). 서버가 가상으로 담긴 박스만 준다(이미 실제로 담은 분량은 제외).
+        //   개수는 그 박스에 "가상으로 담을" 개수. 박스가 여럿이거나 출고개수와 다르면 ×n 으로 표시. 박스가 없으면 "직접 스캔"
         function boxRow(r){
             const src=`<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
             const list=(r.boxes||[]);
             const dst=list.length
-                ? list.map(b=>`<span class="chip" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.virtualQty>0?`가상 ${b.virtualQty} / `:''}${b.qty}개">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.qty}</small>`:''}</span>`).join('')
+                ? list.map(b=>`<span class="chip" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개)">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${(list.length>1||Number(b.virtualQty)!==Number(r.출고개수))?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
                 : `<span class="chip none">${ICON('i-box',18,2)}박스 미정 · 직접 스캔</span>`;
             return `<div class="boxrow">${src}<span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
         }
