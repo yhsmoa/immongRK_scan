@@ -898,7 +898,12 @@
             if(!p.hasLabel) note='부착문서를 올려주세요.';
             else if(!p.hasManifest) note='동봉문서를 올리면 정리됩니다.';
             else if(!ok) note='짝이 맞지 않는 장이 있어 다운로드를 켜지 않았습니다. 빠진 쪽 파일을 추가하거나 잘못 올린 파일을 빼주세요.';
-            else note='정리 완료 — 아래 버튼으로 내려받으세요. 두 파일은 같은 순서이며 N번째 장이 서로 같은 박스입니다.';
+            else{
+                note='정리 완료 — 아래 버튼으로 내려받으세요. 두 파일은 같은 순서이며 N번째 장이 서로 같은 박스입니다.';
+                // 순서저장이 안 된 발주서도 출력은 된다 — 맨 뒤에 묶이고 도장에 (순서X) 가 붙는다는 것을 분명히
+                if(p.noSeqPages) note+=`<br><span style="color:#b45309">⚠ 순서 없는 발주서 ${p.noSeq.length}건(${p.noSeqPages}장)은 순서 있는 것 뒤에 발주서별로 묶이고, 도장에 <b>(순서X)</b> 가 붙어 출력됩니다.</span>`;
+                if(p.notFound.length) note+=`<br><span style="color:#b45309">⚠ 우리 박스를 못 찾은 ${p.notFound.length}장은 맨 뒤에 붙고 도장에 <b>(못찾음)</b> 이 찍힙니다.</span>`;
+            }
             sum.innerHTML=parts.join(' · ')+'<br>'+note;
 
             const chip=(cls,txt,title)=>`<span class="ds-chip ${cls}" title="${esc(title||'')}">${esc(txt)}</span>`;
@@ -911,12 +916,12 @@
             for(const x of p.mismatch) c+=chip('red',`발주번호 불일치: 문서 ${x.order} ↔ 운송장 ${x.box.orderNo}-${x.box.boxNo}`,'운송장번호로 찾은 박스의 발주번호가 문서와 다릅니다');
             for(const x of p.notFound) c+=chip('yellow',`못 찾음: ${pg(x)}${x.invoice?' · 운송장 '+x.invoice:''}`,'운송장번호로도 수량으로도 우리 박스를 못 찾았습니다 — CJ 운송장 엑셀을 올려보세요. 맨 뒤에 붙고 도장에 ? 가 찍힙니다');
             for(const x of p.ambiguous) c+=chip('yellow',`수량 추정: ${x.box.orderNo}-${x.box.boxNo}`,'같은 발주서에 수량이 같은 박스가 있어 박스번호가 바뀌었을 수 있습니다 (운송장 저장분이 없음)');
-            for(const o of p.noSeqOrders) c+=chip('gray',`순서 없음: ${o}`,'순서저장이 안 된 발주서 — 뒤에 발주서별로 묶입니다');
+            for(const x of (p.noSeq||[])) c+=chip('gray',`(순서X) 출력: ${x.order} · ${x.pages}장`,'순서저장이 안 된 발주서 — 출력은 되지만 순서 있는 것 뒤에 묶이고 도장에 (순서X) 가 붙습니다');
             chips.innerHTML=c;
 
             if(p.sequence.length){
                 seqEl.innerHTML=`<div class="ds-seq"><table><thead><tr><th>순</th><th>도장</th><th>발주번호-박스</th><th>크기</th><th>쉽먼트 바코드</th><th>찾은 방법</th></tr></thead><tbody>${
-                    p.sequence.map(s=>`<tr class="${s.boxNo==null?'nobox':''} ${s.orderSeq==null?'noseq':''}"><td class="pos">${s.pos}</td><td>${esc(s.stamp.pos)} 📋 ${esc(s.stamp.mid)} 📦 ${esc(s.stamp.box)}</td><td>${s.boxNo!=null?esc(s.order+'-'+s.boxNo):esc((s.order||'?')+'-?')}</td><td>${esc(s.size||'')}</td><td>${esc(s.pbl||'')}</td><td>${{invoice:'운송장(저장)',cj:'CJ 엑셀','cj-only':'CJ 엑셀(박스 없음)',qty:'수량 추정'}[s.method]||'-'}</td></tr>`).join('')
+                    p.sequence.map(s=>`<tr class="${s.boxNo==null?'nobox':''} ${s.orderSeq==null?'noseq':''}"><td class="pos">${s.pos}</td><td>${/^\d+$/.test(s.stamp.pos)?`<b>${s.stamp.pos}</b>`:`<span style="color:#b45309;font-weight:700">${esc(s.stamp.pos)}</span>`} 📋 ${esc(s.stamp.mid)} 📦 ${esc(s.stamp.box)}</td><td>${s.boxNo!=null?esc(s.order+'-'+s.boxNo):esc((s.order||'?')+'-?')}</td><td>${esc(s.size||'')}</td><td>${esc(s.pbl||'')}</td><td>${{invoice:'운송장(저장)',cj:'CJ 엑셀','cj-only':'CJ 엑셀(박스 없음)',qty:'수량 추정'}[s.method]||'-'}</td></tr>`).join('')
                 }</tbody></table></div>`;
             } else seqEl.innerHTML='';
         }

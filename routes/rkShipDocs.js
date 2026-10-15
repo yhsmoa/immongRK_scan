@@ -256,9 +256,11 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
   return { sorted, manifestByPbl, unpairedLabel, unpairedManifest, dupLabel };
 }
 
+// 도장 문구 — 순서가 있으면 정렬 순번, 순서저장이 안 된 발주서는 "(순서X)", 우리 박스를 못 찾은 장은 "(못찾음)"
+//   순서를 못 저장했어도 작업은 멈출 수 없으니 출력은 막지 않고 표시만 다르게 한다 (2026-10-15 사용자 요청)
 function stampTextOf(p) {
-  if (!p.box) return { pos: '?', mid: `${p.order || '?'}-?`, box: '?' };
-  return { pos: p.seq == null ? '-' : String(p.pos), mid: `${p.box.orderNo}-${p.box.boxNo}`, box: `${p.box.boxNo}번` };
+  if (!p.box) return { pos: '(못찾음)', mid: `${p.order || '?'}-?`, box: '?' };
+  return { pos: p.orderSeq == null ? '(순서X)' : String(p.pos), mid: `${p.box.orderNo}-${p.box.boxNo}`, box: `${p.box.boxNo}번` };
 }
 
 // ── 공통: 업로드 → 파싱 → 매칭 ──
@@ -283,7 +285,11 @@ function planSummary(plan) {
   const fileInfo = (f) => ({ name: f.name, kind: f.kind, pages: f.pages.length, error: f.error || null });
   const pageInfo = (p) => ({ pbl: p.pbl, center: p.center, boxIdx: p.boxIdx, boxTotal: p.boxTotal, invoice: p.invoice, order: p.order || (p.box && p.box.orderNo) || null, qty: p.qty });
   const notFound = sorted.filter((p) => !p.box);
-  const noSeqOrders = [...new Set(sorted.filter((p) => p.box && p.orderSeq == null).map((p) => p.box.orderNo))];
+  // 순서 없는 발주서 — 발주번호별 장수 (모달 경고 "순서X 출력: 발주번호 (N장)")
+  const noSeqCount = new Map();
+  for (const p of sorted) if (p.box && p.orderSeq == null) noSeqCount.set(p.box.orderNo, (noSeqCount.get(p.box.orderNo) || 0) + 1);
+  const noSeqOrders = [...noSeqCount.keys()];
+  const noSeqPages = [...noSeqCount.values()].reduce((a, b) => a + b, 0);
   const ambiguous = sorted.filter((p) => p.ambiguous);
   const mismatch = sorted.filter((p) => p.orderMismatch);
   const fileErrors = [...labelFiles, ...manifestFiles].filter((f) => f.error);
@@ -302,6 +308,8 @@ function planSummary(plan) {
     ambiguous: ambiguous.map((p) => ({ ...pageInfo(p), box: p.box })),
     mismatch: mismatch.map((p) => ({ ...pageInfo(p), box: p.box })),
     noSeqOrders,
+    noSeq: noSeqOrders.map((o) => ({ order: o, pages: noSeqCount.get(o) })),
+    noSeqPages,
     matched: sorted.filter((p) => p.box).length,
     withSeq: sorted.filter((p) => p.box && p.orderSeq != null).length,
     methods: { invoice: sorted.filter((p) => p.method === 'invoice').length, cj: sorted.filter((p) => p.method === 'cj' || p.method === 'cj-only').length, qty: sorted.filter((p) => p.method === 'qty').length },
@@ -360,7 +368,8 @@ async function buildPdf(kind, plan, req) {
     const { width } = copied.getSize();
     const st = stampTextOf(page);
     // "12  📋 144199497-4  📦 4번" — 오른쪽 아래, 오른쪽 여백 14pt · 아래 10pt
-    const segs = [[st.pos + '  ', kr, 15], ['📋', em, 10], [' ' + st.mid + '  ', kr, 10], ['📦', em, 10], [' ' + st.box, kr, 10]];
+    const posSize = /^\d+$/.test(st.pos) ? 15 : 10;   // 순번은 크게, "(순서X)"/"(못찾음)" 은 본문 크기
+    const segs = [[st.pos + '  ', kr, posSize], ['📋', em, 10], [' ' + st.mid + '  ', kr, 10], ['📦', em, 10], [' ' + st.box, kr, 10]];
     const w = segs.reduce((n, [t, f, s]) => n + f.widthOfTextAtSize(t, s), 0);
     const x0 = width - 14 - w, y = 10;
     copied.drawRectangle({ x: x0 - 4, y: y - 3, width: w + 8, height: 19, color: rgb(1, 1, 1) });   // 밑에 뭐가 있어도 읽히게 흰 바탕
