@@ -420,8 +420,9 @@ const boxConfirmed = (box, virtualSum) => virtualSum > 0 && (parseInt(box.virtua
 // 진행중 발주서의 박스 + 아이템을 한 번에 (박스별 가상 합 + 준비완료 판정 포함)
 //   boxOk(box) = 박스 라벨 가상확정 OR 박스 안 가상 상품이 전부 모바일 입고로 찾아짐 (S.virtualReadiness 통합 규칙)
 //   keyOk      = "발주번호|바코드" 단위로 가상 합이 모바일 찾음 합으로 다 채워진 상품
-async function activeBoxesAndItems() {
-  const active = await S.listActiveOrderNumbers('rk_orders');
+//   orderNumbers 를 주면 진행중 여부와 상관없이 그 발주서들만 (입고정리 박스 열 — 쉽먼트 접수로 처리완료된 발주서도 박스를 보여야 한다, 2026-10-15)
+async function activeBoxesAndItems(orderNumbers) {
+  const active = Array.isArray(orderNumbers) ? [...new Set(orderNumbers.map((x) => String(x || '').trim()).filter(Boolean))] : await S.listActiveOrderNumbers('rk_orders');
   if (!active.length) { const r = S.virtualReadiness([], new Map()); return { boxes: [], items: [], ...r }; }
   const [boxes, items, found] = await Promise.all([
     S.chunked(active, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
@@ -434,10 +435,13 @@ async function activeBoxesAndItems() {
 }
 
 // 박스 맵 — 발주번호+바코드별로 "어느 박스에 몇 개(그중 가상 몇 개, 확정 여부)" (입고정리·재고준비의 박스 열용)
-// 응답: { "발주번호|바코드": [ { boxNo, boxSize, qty, virtualQty, confirmed }, … ] }  — 진행중 발주서만, 박스번호 순
+// 응답: { "발주번호|바코드": [ { boxNo, boxSize, qty, virtualQty, confirmed }, … ] }  — 박스번호 순
+//   기본은 진행중 발주서만. ?orders=발주번호,발주번호… 를 주면 처리완료(DONE)여도 그 발주서들의 박스를 준다
+//   (입고정리: 가상스캔 → 쉽먼트 접수 → 처리완료가 된 발주서의 박스 열이 비던 문제, 2026-10-15)
 router.get('/api/ship-scan/box-map', async (req, res) => {
   try {
-    const { boxes, items, boxOk } = await activeBoxesAndItems();
+    const orders = req.query.orders != null ? String(req.query.orders).split(',') : null;
+    const { boxes, items, boxOk } = await activeBoxesAndItems(orders);
     const boxById = new Map(boxes.map((b) => [b.id, b]));
     const map = {};
     for (const it of items) {

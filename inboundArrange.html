@@ -400,16 +400,17 @@
             // 출고코드를 선택하지 않으면 아무것도 표시하지 않음
             if(!code){ shippingRows=[]; stockRows=[]; prepared=false; render(); return; }
             try{
-                const [res,bmRes]=await Promise.all([
-                    fetch('/api/inbound/arranged'+(code?('?shipmentCode='+encodeURIComponent(code)):'')),
-                    fetch('/api/ship-scan/box-map').catch(()=>null),
-                ]);
+                const res=await fetch('/api/inbound/arranged'+(code?('?shipmentCode='+encodeURIComponent(code)):''));
                 const data=await res.json();
                 if(my!==arrangeReq) return; // 더 최신 요청이 있으면 무시 (레이스 방지)
                 if(!res.ok) throw new Error(data.error||'조회 실패');
                 shippingRows=data.shipping||[];
                 stockRows=data.stock||[];
                 prepared=shippingRows.length>0;
+                // 박스 열 — 이 입고코드에 있는 발주서들의 박스를 처리완료 여부와 상관없이 (쉽먼트 접수로 처리완료된 발주서의 가상 박스도 보여야 한다, 2026-10-15)
+                const nos=[...new Set(shippingRows.map(r=>r.출고번호).filter(Boolean))];
+                const bmRes=nos.length?await fetch('/api/ship-scan/box-map?orders='+encodeURIComponent(nos.join(','))).catch(()=>null):null;
+                if(my!==arrangeReq) return;
                 boxMap=(bmRes&&bmRes.ok)?await bmRes.json():{};   // 실패해도 박스 열만 비는 것으로
                 render();
             }catch(e){ if(my===arrangeReq) toast('조회 실패: '+e.message); }
