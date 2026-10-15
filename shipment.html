@@ -103,6 +103,8 @@
         .ds-dl{height:44px;border-radius:10px;border:1px solid #e2e8f0;background:#fff;color:#1e293b;font-weight:600;font-size:14px;cursor:pointer;font-family:inherit;transition:background .12s,color .12s;}
         .ds-dl:disabled{opacity:.45;cursor:not-allowed;}
         .ds-dl:not(:disabled){background:var(--primary);color:#fff;border-color:transparent;}
+        .ds-dl-all{width:100%;margin-top:12px;}
+        .ds-dl-sub{font-weight:500;font-size:12px;opacity:.75;margin-left:8px;}
         .ds-cj{margin-top:16px;padding:12px 16px;min-height:0;}
         .ds-cj .t{font-size:13px;}
         .ds-sum{font-size:12.5px;color:#64748b;margin:14px 0 8px;line-height:1.6;}
@@ -333,6 +335,8 @@
                         <button class="ds-dl" id="dsDlManifest" disabled onclick="downloadDocSort('manifest')">동봉문서 pdf</button>
                     </div>
                 </div>
+                <!-- 전체문서: 박스마다 [부착문서 1장 → 그 박스의 동봉문서 장들] 순으로 한 파일 (동봉문서가 여러 장인 박스도 그대로 따라감) -->
+                <button class="ds-dl ds-dl-all" id="dsDlAll" disabled onclick="downloadDocSort('all')">전체문서 pdf <span class="ds-dl-sub">부착 → 동봉, 박스 단위로 묶음</span></button>
                 <!-- 운송장번호가 박스에 저장되기 전(2026-10-15 이전) 쉽먼트는 CJ 운송장 엑셀로 운송장번호 → 발주번호-박스 를 보충한다 -->
                 <div class="drop ds-cj" id="dsDropCj">
                     <div class="t">📊 CJ 운송장 엑셀 (선택)</div>
@@ -828,7 +832,8 @@
         // ============================================================
         const dsFiles={label:[], manifest:[], cj:[]};
         let dsPlan=null, dsReq=0;
-        const DS_LABEL={label:'부착문서', manifest:'동봉문서', cj:'CJ 엑셀'};
+        const DS_LABEL={label:'부착문서', manifest:'동봉문서', all:'전체문서', cj:'CJ 엑셀'};
+        const DS_DL_ID={label:'dsDlLabel', manifest:'dsDlManifest', all:'dsDlAll'};
         function openDocSort(){ document.getElementById('dsBack').classList.add('show'); renderDocSort(); }
         function closeDocSort(){ document.getElementById('dsBack').classList.remove('show'); }
         function resetDocSort(){ dsFiles.label=[]; dsFiles.manifest=[]; dsFiles.cj=[]; dsPlan=null; dsReq++; renderDocSort(); }
@@ -880,8 +885,9 @@
                 arrow.textContent=busy&&has?'⏳':'⬇';
                 arrow.classList.toggle('busy', !!busy&&has);
                 arrow.classList.toggle('done', ok);
-                document.getElementById(kind==='label'?'dsDlLabel':'dsDlManifest').disabled=!ok;
+                document.getElementById(DS_DL_ID[kind]).disabled=!ok;
             }
+            document.getElementById('dsDlAll').disabled=!ok;
             const sum=document.getElementById('dsSum'), chips=document.getElementById('dsChips'), seqEl=document.getElementById('dsSeq');
             document.getElementById('dsSub').textContent=p&&p.hasLabel?`박스 ${p.label.pages}장`:'';
             if(!p){
@@ -889,7 +895,7 @@
                 chips.innerHTML=''; seqEl.innerHTML=''; return;
             }
             const parts=[];
-            parts.push(`부착문서 <b>${p.label.pages}</b>장 · 동봉문서 <b>${p.manifest.pages}</b>장`);
+            parts.push(`부착문서 <b>${p.label.pages}</b>장 · 동봉문서 <b>${p.manifest.pages}</b>장${p.manifest.boxes&&p.manifest.boxes!==p.manifest.pages?` (박스 ${p.manifest.boxes}개 — 여러 장인 박스 있음)`:''}`);
             if(p.hasLabel&&p.hasManifest) parts.push(`짝 맞음 <b>${p.pairs}</b>`);
             if(p.hasLabel) parts.push(`박스 찾음 <b>${p.matched}</b> (운송장 ${p.methods.invoice} · CJ엑셀 ${p.methods.cj} · 수량추정 ${p.methods.qty})`);
             if(p.hasLabel) parts.push(`순서 있음 <b>${p.withSeq}</b> · 순서 없음 <b>${p.matched-p.withSeq}</b> · 못 찾음 <b>${p.notFound.length}</b>`);
@@ -920,13 +926,13 @@
             chips.innerHTML=c;
 
             if(p.sequence.length){
-                seqEl.innerHTML=`<div class="ds-seq"><table><thead><tr><th>순</th><th>도장</th><th>발주번호-박스</th><th>크기</th><th>쉽먼트 바코드</th><th>찾은 방법</th></tr></thead><tbody>${
-                    p.sequence.map(s=>`<tr class="${s.boxNo==null?'nobox':''} ${s.orderSeq==null?'noseq':''}"><td class="pos">${s.pos}</td><td>${/^\d+$/.test(s.stamp.pos)?`<b>${s.stamp.pos}</b>`:`<span style="color:#b45309;font-weight:700">${esc(s.stamp.pos)}</span>`} 📋 ${esc(s.stamp.mid)} 📦 ${esc(s.stamp.box)}</td><td>${s.boxNo!=null?esc(s.order+'-'+s.boxNo):esc((s.order||'?')+'-?')}</td><td>${esc(s.size||'')}</td><td>${esc(s.pbl||'')}</td><td>${{invoice:'운송장(저장)',cj:'CJ 엑셀','cj-only':'CJ 엑셀(박스 없음)',qty:'수량 추정'}[s.method]||'-'}</td></tr>`).join('')
+                seqEl.innerHTML=`<div class="ds-seq"><table><thead><tr><th>순</th><th>도장</th><th>발주번호-박스</th><th>크기</th><th>쉽먼트 바코드</th><th>동봉</th><th>찾은 방법</th></tr></thead><tbody>${
+                    p.sequence.map(s=>`<tr class="${s.boxNo==null?'nobox':''} ${s.orderSeq==null?'noseq':''}"><td class="pos">${s.pos}</td><td>${/^\d+$/.test(s.stamp.pos)?`<b>${s.stamp.pos}</b>`:`<span style="color:#b45309;font-weight:700">${esc(s.stamp.pos)}</span>`} 📋 ${esc(s.stamp.mid)} 📦 ${esc(s.stamp.box)}</td><td>${s.boxNo!=null?esc(s.order+'-'+s.boxNo):esc((s.order||'?')+'-?')}</td><td>${esc(s.size||'')}</td><td>${esc(s.pbl||'')}</td><td>${s.manifestPages>1?`<b>${s.manifestPages}장</b>`:(s.manifestPages===1?'1장':'<span style="color:#b91c1c">없음</span>')}</td><td>${{invoice:'운송장(저장)',cj:'CJ 엑셀','cj-only':'CJ 엑셀(박스 없음)',qty:'수량 추정'}[s.method]||'-'}</td></tr>`).join('')
                 }</tbody></table></div>`;
             } else seqEl.innerHTML='';
         }
         async function downloadDocSort(kind){
-            const btn=document.getElementById(kind==='label'?'dsDlLabel':'dsDlManifest'); btn.disabled=true;
+            const btn=document.getElementById(DS_DL_ID[kind]); btn.disabled=true;
             try{
                 const fd=dsForm(); fd.append('kind',kind);
                 const res=await fetch('/api/shipment/doc-sort/build',{method:'POST',body:fd});

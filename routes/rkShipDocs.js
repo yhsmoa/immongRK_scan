@@ -85,7 +85,8 @@ function parsePage(text) {
   else if (q2) qty = parseInt(q2[3], 10);
   const shipmentNo = (t.match(/쉽먼트번호[^\n]*\n\s*(\d{6,10})/) || [])[1] || null;
   // 동봉문서의 상품 바코드 목록 (수량 추정이 애매할 때 우리 박스 아이템 구성과 대조) — 상품명이 여러 줄로 감겨도 바코드만 모은다
-  const barcodes = kind === 'manifest' ? [...new Set((t.match(/\bR\d{9,12}\b/g) || []))] : [];
+  //   (종류와 무관하게 모은다 — 머리말 없는 이어지는 장은 parse 시점에 종류를 모르기 때문)
+  const barcodes = [...new Set((t.match(/\bR\d{9,12}\b/g) || []))];
   return { kind, pbl, center, boxIdx, boxTotal, invoice, order, qty, shipmentNo, barcodes };
 }
 
@@ -97,6 +98,16 @@ async function parseFiles(files, formKind) {
     try { texts = await pageTexts(f.buffer); }
     catch (e) { out.push({ fileIdx: i, name: f.originalname, kind: null, error: 'PDF 를 읽지 못했습니다: ' + e.message, pages: [] }); continue; }
     const pages = texts.map((tx, pageIdx) => ({ fileIdx: i, pageIdx, ...parsePage(tx) }));
+    // 동봉문서는 상품이 많으면 같은 박스가 여러 장으로 이어진다 (부착문서는 박스당 1장).
+    //   머리말(PBL)이 반복되면 같은 PBL 이 연달아 나오고, 머리말이 없는 장은 바로 앞 장의 박스로 본다. 둘 다 cont=true.
+    let prev = null;
+    for (const p of pages) {
+      if (prev && prev.kind === 'manifest') {
+        if (!p.pbl) { p.pbl = prev.pbl; p.kind = 'manifest'; p.invoice = p.invoice || prev.invoice; p.cont = true; }
+        else if (p.pbl === prev.pbl) p.cont = true;
+      }
+      prev = p;
+    }
     const kinds = new Set(pages.map((p) => p.kind).filter(Boolean));
     const kind = kinds.size === 1 ? [...kinds][0] : null;
     out.push({ fileIdx: i, name: f.originalname, kind, formKind, pages,
@@ -184,8 +195,13 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
   const firstSeen = new Map();   // 발주번호 → 부착문서에서 처음 나온 순번 (순서 없는 발주서 묶음용)
   labelPages.forEach((p, i) => { if (p.order && !firstSeen.has(p.order)) firstSeen.set(p.order, i); });
   // 동봉문서 (PBL → 장) — 수량 추정이 애매할 때 그 박스의 바코드 구성으로 가린다
+  //   PBL → 장 목록 (파일 순서 그대로). 한 박스가 여러 장이면 그 순서대로 같이 움직인다.
   const manifestByPbl = new Map();
-  for (const m of manifestPages) if (m.pbl && !manifestByPbl.has(m.pbl)) manifestByPbl.set(m.pbl, m);
+  for (const m of manifestPages) {
+    if (!m.pbl) continue;
+    if (!manifestByPbl.has(m.pbl)) manifestByPbl.set(m.pbl, []);
+    manifestByPbl.get(m.pbl).push(m);
+  }
 
   // 수량 추정은 확정 열쇠(운송장)가 있는 장을 먼저 배정한 뒤에 돌린다 — 운송장으로 잡힌 박스가 추정 후보에서 빠지도록
   const pending = [];
@@ -207,9 +223,10 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
     if (!(p.order && p.qty != null)) continue;
     let cands = (boxesByOrder.get(p.order) || []).filter((x) => !used.has(x.id) && (ours.qtyByBox.get(x.id) || 0) === p.qty);
     if (cands.length > 1) {
-      const m = p.pbl ? manifestByPbl.get(p.pbl) : null;
-      if (m && m.barcodes && m.barcodes.length) {
-        const set = new Set(m.barcodes);
+      const ms = p.pbl ? (manifestByPbl.get(p.pbl) || []) : [];
+      const bcs = [...new Set(ms.flatMap((m) => m.barcodes || []))];   // 여러 장이면 전부 합쳐서 그 박스의 상품 구성
+      if (bcs.length) {
+        const set = new Set(bcs);
         const byItems = cands.filter((x) => sameSet(ours.barcodesByBox.get(x.id), set));
         if (byItems.length >= 1) cands = byItems;
       }
@@ -253,7 +270,12 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
   // 동봉문서는 PBL 로 부착문서 순서를 따른다
   const labelPbls = new Set(labelPages.map((p) => p.pbl).filter(Boolean));
   const unpairedLabel = labelPages.filter((p) => !p.pbl || !manifestByPbl.has(p.pbl));
-  const unpairedManifest = manifestPages.filter((m) => !m.pbl || !labelPbls.has(m.pbl));
+  const seenU = new Set();   // 같은 박스의 여러 장은 한 번만 보고한다
+  const unpairedManifest = manifestPages.filter((m) => {
+    if (m.pbl && labelPbls.has(m.pbl)) return false;
+    if (m.pbl) { if (seenU.has(m.pbl)) return false; seenU.add(m.pbl); }
+    return true;
+  });
   const dupLabel = labelPages.filter((p, i) => p.pbl && labelPages.findIndex((x) => x.pbl === p.pbl) !== i);
 
   // 표시용 순번 (정렬된 자리, 1부터) — 도장의 첫 숫자. 순서 없음/못 찾음은 '-' / '?'
@@ -303,7 +325,7 @@ function planSummary(plan) {
   return {
     ok, hasLabel, hasManifest,
     label: { files: labelFiles.map(fileInfo), pages: labelPages.length },
-    manifest: { files: manifestFiles.map(fileInfo), pages: manifestPages.length },
+    manifest: { files: manifestFiles.map(fileInfo), pages: manifestPages.length, boxes: plan.manifestByPbl.size },   // 장수 ≠ 박스 수 (한 박스가 여러 장일 수 있음)
     cj: { files: (plan.cjFilesCount != null ? plan.cjFilesCount : 0), rows: cj.rows },
     pairs: labelPages.length - unpairedLabel.length,
     unpairedLabel: unpairedLabel.map(pageInfo),
@@ -319,7 +341,8 @@ function planSummary(plan) {
     withSeq: sorted.filter((p) => p.box && p.orderSeq != null).length,
     methods: { invoice: sorted.filter((p) => p.method === 'invoice').length, cj: sorted.filter((p) => p.method === 'cj' || p.method === 'cj-only').length, qty: sorted.filter((p) => p.method === 'qty').length },
     sequence: sorted.map((p) => ({ pos: p.pos, pbl: p.pbl, order: p.box ? p.box.orderNo : p.order, boxNo: p.box ? p.box.boxNo : null, size: p.box ? p.box.size : null,
-      seq: p.seq, orderSeq: p.orderSeq, method: p.method, stamp: stampTextOf(p) })),
+      seq: p.seq, orderSeq: p.orderSeq, method: p.method, stamp: stampTextOf(p),
+      manifestPages: p.pbl ? (plan.manifestByPbl.get(p.pbl) || []).length : 0 })),
     fileErrors: fileErrors.map((f) => ({ name: f.name, error: f.error })),
   };
 }
@@ -354,11 +377,16 @@ async function buildPdf(kind, plan, req) {
     srcDocs.set(fileKey, doc);
     return doc;
   };
-  // 출력 순서의 장 목록: 부착문서는 sorted 그대로, 동봉문서는 PBL 로 대응되는 장
+  // 출력 순서의 장 목록
+  //   label    : 부착문서만, sorted 순서
+  //   manifest : 동봉문서만 — 박스마다 PBL 로 대응되는 장(여러 장이면 그 순서대로)
+  //   all      : 박스마다 [부착문서 1장 → 그 박스의 동봉문서 장들] 을 붙여 한 파일로 (박스 단위로 집어 포장하기 좋게)
+  //   동봉문서가 여러 장인 박스는 도장 끝에 " 1/3" 처럼 몇 장째인지 붙인다.
   const seq = [];
   for (const p of sorted) {
-    if (kind === 'label') seq.push({ page: p, src: p });
-    else { const m = p.pbl ? manifestByPbl.get(p.pbl) : null; if (m) seq.push({ page: p, src: m }); }
+    const ms = p.pbl ? (manifestByPbl.get(p.pbl) || []) : [];
+    if (kind === 'label' || kind === 'all') seq.push({ page: p, src: p, sub: '' });
+    if (kind === 'manifest' || kind === 'all') ms.forEach((m, i) => seq.push({ page: p, src: m, sub: ms.length > 1 ? ` ${i + 1}/${ms.length}` : '' }));
   }
   const out = await PDFDocument.create();
   out.registerFontkit(fontkit);
@@ -366,7 +394,7 @@ async function buildPdf(kind, plan, req) {
   const kr = await out.embedFont(fb.kr, { subset: false });     // 이미 잘라 둔 글꼴 — 런타임 subset 은 글리프가 깨진다
   const em = await out.embedFont(fb.emoji, { subset: false });
 
-  for (const { page, src } of seq) {
+  for (const { page, src, sub } of seq) {
     const doc = await openSrc(src.fileKey);
     const [copied] = await out.copyPages(doc, [src.pageIdx]);
     out.addPage(copied);
@@ -374,7 +402,7 @@ async function buildPdf(kind, plan, req) {
     const st = stampTextOf(page);
     // "12  📋 144199497-4  📦 4번" — 오른쪽 아래, 오른쪽 여백 14pt · 아래 10pt
     const posSize = /^\d+$/.test(st.pos) ? 15 : 10;   // 순번은 크게, "(순서X)"/"(못찾음)" 은 본문 크기
-    const segs = [[st.pos + '  ', kr, posSize], ['📋', em, 10], [' ' + st.mid + '  ', kr, 10], ['📦', em, 10], [' ' + st.box, kr, 10]];
+    const segs = [[st.pos + '  ', kr, posSize], ['📋', em, 10], [' ' + st.mid + '  ', kr, 10], ['📦', em, 10], [' ' + st.box + (sub || ''), kr, 10]];
     const w = segs.reduce((n, [t, f, s]) => n + f.widthOfTextAtSize(t, s), 0);
     const x0 = width - 14 - w, y = 10;
     copied.drawRectangle({ x: x0 - 4, y: y - 3, width: w + 8, height: 19, color: rgb(1, 1, 1) });   // 밑에 뭐가 있어도 읽히게 흰 바탕
@@ -386,15 +414,15 @@ async function buildPdf(kind, plan, req) {
 
 router.post('/api/shipment/doc-sort/build', upload.fields(FIELDS), async (req, res) => {
   try {
-    const kind = req.body.kind === 'manifest' ? 'manifest' : 'label';
+    const kind = ['label', 'manifest', 'all'].includes(req.body.kind) ? req.body.kind : 'label';
     const plan = await buildPlan(req);
     if (!plan.labelPages.length) return res.status(400).json({ error: '부착문서가 없습니다.' });
-    if (kind === 'manifest' && !plan.manifestPages.length) return res.status(400).json({ error: '동봉문서가 없습니다.' });
+    if (kind !== 'label' && !plan.manifestPages.length) return res.status(400).json({ error: '동봉문서가 없습니다.' });
     const { bytes, pages } = await buildPdf(kind, plan, req);
     if (!pages) return res.status(400).json({ error: '정리할 장이 없습니다.' });
     const d = new Date(Date.now() + 9 * 3600 * 1000);
     const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
-    const name = `${kind === 'label' ? '부착문서' : '동봉문서'}_순서정리_${ymd}_${pages}장.pdf`;
+    const name = `${{ label: '부착문서', manifest: '동봉문서', all: '전체문서' }[kind]}_순서정리_${ymd}_${pages}장.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(name)}`);
     res.send(Buffer.from(bytes));
