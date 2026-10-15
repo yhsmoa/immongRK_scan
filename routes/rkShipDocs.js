@@ -19,7 +19,9 @@
  *   POST /api/shipment/doc-sort/plan   fields label[] · manifest[] · cj[]        → 매칭 결과(JSON)
  *   POST /api/shipment/doc-sort/build  같은 fields + kind=label|manifest         → 정리된 PDF
  *
- * 도장: 각 장 오른쪽 아래 "순서  📋 발주번호-박스번호  📦 N번". 글꼴은 fonts/ (나눔고딕 · Noto Emoji, 둘 다 OFL).
+ * 도장: 각 장 오른쪽 아래 "순서  📋 발주번호-박스번호  📦 N번  실제|가상|일부가상" — 기본 크기의 3.5배(장 너비에 맞춰 줄임, 좁으면 두 줄).
+ *   실제/가상 = 그 박스가 출고스캔으로 실제 찍은 박스인지 [가상스캔]으로 잡은 박스인지 (rk_ship_box_items.virtual_qty 합 기준).
+ *   글꼴은 fonts/ (나눔고딕 · Noto Emoji, 둘 다 OFL).
  *   PDF 안에서 컬러 이모지는 안 되므로 흑백 윤곽(인쇄는 어차피 흑백).
  */
 const express = require('express');
@@ -35,10 +37,10 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 40 } });
 const FIELDS = [{ name: 'label', maxCount: 20 }, { name: 'manifest', maxCount: 20 }, { name: 'cj', maxCount: 10 }];
 
-// 도장 글꼴 — 나눔고딕·Noto Emoji 를 도장에 쓰는 글자(숫자·괄호·"순서번못찾음박스발주"·📋📦)만 남겨 pyftsubset 으로 미리 잘라 둔 파일.
+// 도장 글꼴 — 나눔고딕·Noto Emoji 를 도장에 쓰는 글자(숫자·괄호·"순서번못찾음박스발주가상실제일부혼합확정"·📋📦)만 남겨 pyftsubset 으로 미리 잘라 둔 파일.
 //   pdf-lib 의 런타임 subset(embedFont subset:true)은 이 글꼴들에서 글리프가 깨져 뷰어에 "X"·숫자 일부만 보였다 (2026-10-15).
 //   그래서 미리 자른 작은 글꼴을 subset 없이 통째로 넣는다. 도장 문구에 새 글자를 추가하면 fonts/ 의 subset 을 다시 만들어야 한다:
-//   pyftsubset NanumGothic-Regular.ttf --output-file=StampKR.ttf --text="<글자들>" --unicodes="U+0020-007E" --no-hinting
+//   pip install fonttools  →  pyftsubset NanumGothic-Regular.ttf --output-file=StampKR.ttf --text="순서번못찾음박스발주가상실제일부혼합확정" --unicodes="U+0020-007E" --no-hinting
 //   pyftsubset NotoEmoji-Regular.ttf --output-file=StampEmoji.ttf --unicodes="U+1F4CB,U+1F4E6" --no-hinting
 const FONT_DIR = path.join(__dirname, '..', 'fonts');
 const FONT_KR = path.join(FONT_DIR, 'StampKR.ttf');
@@ -145,18 +147,20 @@ async function loadOurBoxes(orderNos) {
   if (!orderNos.length) return { boxes: [], qtyByBox: new Map(), orderSeq: new Map(), boxSeq: new Map() };
   const [boxes, items, seqRows] = await Promise.all([
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
-      .select('id, order_number, box_no, box_size, invoice_no').in('order_number', nos).order('id', { ascending: true }))),
+      .select('id, order_number, box_no, box_size, invoice_no, is_virtual').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
-      .select('box_id, barcode, qty').in('order_number', nos).order('id', { ascending: true }))),
+      .select('box_id, barcode, qty, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_seq')
       .select('order_number, box_no, seq').in('order_number', nos).order('id', { ascending: true }))),
   ]);
   const qtyByBox = new Map();          // box_id → 수량 합
+  const virtQtyByBox = new Map();      // box_id → 가상스캔 수량 합 (rk_ship_box_items.virtual_qty) — 도장의 실제/가상 표시용
   const barcodesByBox = new Map();     // box_id → Set(바코드)
   for (const it of items) {
     const q = parseInt(it.qty, 10) || 0;
     if (q <= 0) continue;
     qtyByBox.set(it.box_id, (qtyByBox.get(it.box_id) || 0) + q);
+    virtQtyByBox.set(it.box_id, (virtQtyByBox.get(it.box_id) || 0) + Math.min(q, Math.max(0, parseInt(it.virtual_qty, 10) || 0)));
     if (!barcodesByBox.has(it.box_id)) barcodesByBox.set(it.box_id, new Set());
     if (it.barcode) barcodesByBox.get(it.box_id).add(String(it.barcode).trim());
   }
@@ -166,7 +170,15 @@ async function loadOurBoxes(orderNos) {
     if (cur == null || r.seq < cur) orderSeq.set(r.order_number, r.seq);
     if (r.box_no != null) boxSeq.set(`${r.order_number}|${r.box_no}`, r.seq);
   }
-  return { boxes, qtyByBox, barcodesByBox, orderSeq, boxSeq };
+  return { boxes, qtyByBox, virtQtyByBox, barcodesByBox, orderSeq, boxSeq };
+}
+
+// 박스의 스캔 종류 — 'virtual' 전부 가상스캔 · 'mixed' 실제 스캔 + 가상 섞임 · 'real' 전부 실제 스캔 (출고스캔 목록의 👾/🔀 배지와 같은 기준)
+//   가상확정(모바일로 다 찾음)이 돼도 가상스캔으로 잡은 박스라는 사실은 그대로라 '가상' 으로 표시한다.
+function boxVirtKind(b, ours) {
+  const q = ours.qtyByBox.get(b.id) || 0, v = ours.virtQtyByBox.get(b.id) || 0;
+  if (v <= 0) return b.is_virtual ? 'virtual' : 'real';
+  return v >= q ? 'virtual' : 'mixed';
 }
 
 /** 두 바코드 집합이 같은지 */
@@ -213,9 +225,9 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
       const m = cjMap.get(p.invoice);
       b = (boxesByOrder.get(m.orderNo) || []).find((x) => x.box_no === m.boxNo) || null;
       if (b) p.method = 'cj';
-      else { p.box = { orderNo: m.orderNo, boxNo: m.boxNo, size: null }; p.method = 'cj-only'; }   // 엑셀엔 있는데 DB 박스가 없음 — 번호는 믿고 쓴다
+      else { p.box = { orderNo: m.orderNo, boxNo: m.boxNo, size: null, virt: null }; p.method = 'cj-only'; }   // 엑셀엔 있는데 DB 박스가 없음 — 번호는 믿고 쓴다
     }
-    if (b) { used.add(b.id); p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null }; }
+    if (b) { used.add(b.id); p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null, virt: boxVirtKind(b, ours) }; }
     else if (!p.box) pending.push(p);
   }
   // 운송장으로 못 찾은 장: 발주번호 + 수량 → 여러 후보면 동봉문서 바코드 구성으로 가린다 → 그래도 여럿이면 첫 후보(ambiguous 표시)
@@ -235,7 +247,7 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
     const b = cands[0];
     used.add(b.id);
     p.method = 'qty'; p.ambiguous = cands.length > 1;
-    p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null };
+    p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null, virt: boxVirtKind(b, ours) };
   }
   for (const p of labelPages) {
     if (p.box) {
@@ -285,9 +297,42 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
 
 // 도장 문구 — 순서가 있으면 정렬 순번, 순서저장이 안 된 발주서는 "(순서X)", 우리 박스를 못 찾은 장은 "(못찾음)"
 //   순서를 못 저장했어도 작업은 멈출 수 없으니 출력은 막지 않고 표시만 다르게 한다 (2026-10-15 사용자 요청)
+//   virt: 박스가 실제 스캔인지 가상스캔인지 — '실제' · '가상' · '일부가상' (DB 박스를 못 찾은 장은 빈 문자열) (2026-10-15 추가)
+const VIRT_LABEL = { real: '실제', virtual: '가상', mixed: '일부가상' };
 function stampTextOf(p) {
-  if (!p.box) return { pos: '(못찾음)', mid: `${p.order || '?'}-?`, box: '?' };
-  return { pos: p.orderSeq == null ? '(순서X)' : String(p.pos), mid: `${p.box.orderNo}-${p.box.boxNo}`, box: `${p.box.boxNo}번` };
+  if (!p.box) return { pos: '(못찾음)', mid: `${p.order || '?'}-?`, box: '?', virt: '' };
+  return { pos: p.orderSeq == null ? '(순서X)' : String(p.pos), mid: `${p.box.orderNo}-${p.box.boxNo}`, box: `${p.box.boxNo}번`, virt: VIRT_LABEL[p.box.virt] || '' };
+}
+
+// 도장 그리기 — 오른쪽 아래. 기본 크기(순번 15 · 본문 10)의 STAMP_SCALE 배로 찍되, 장 너비에 안 들어가면 들어가는 만큼만 키운다.
+//   "12  📋 144199497-4  📦 4번  가상" — 순번은 크게, "(순서X)"/"(못찾음)" 은 본문 크기. 밑에 뭐가 있어도 읽히게 흰 바탕.
+//   한 줄로는 STAMP_TWO_LINE_BELOW 배도 안 되는 좁은 장(라벨 크기)은 두 줄("순번 📋 발주-박스" / "📦 N번 가상")로 쌓아 더 키운다.
+//   2026-10-15: 글자를 3.5배로 키우고(현장에서 멀리서도 보이게) 실제/가상 표시를 붙였다.
+const STAMP_SCALE = 3.5;
+const STAMP_TWO_LINE_BELOW = 2.5;
+function drawStamp(page, st, sub, kr, em) {
+  const { width } = page.getSize();
+  const posSize = /^\d+$/.test(st.pos) ? 15 : 10;
+  const line1 = [[st.pos + '  ', kr, posSize], ['📋', em, 10], [' ' + st.mid, kr, 10]];
+  const line2 = [['📦', em, 10], [' ' + st.box + (sub || ''), kr, 10]];
+  if (st.virt) line2.push(['  ' + st.virt, kr, 10]);
+  const widthOf = (segs, sc) => segs.reduce((n, [t, f, s]) => n + f.widthOfTextAtSize(t, s * sc), 0);
+  const fit = (w1) => Math.max(1, Math.min(STAMP_SCALE, (width - 28) / w1));   // 좌우 여백 14pt 씩은 남긴다
+  const one = [...line1, [['  ', kr, 10]][0], ...line2];
+  let lines = [one], scale = fit(widthOf(one, 1));
+  if (scale < STAMP_TWO_LINE_BELOW) {
+    const two = fit(Math.max(widthOf(line1, 1), widthOf(line2, 1)));
+    if (two > scale) { lines = [line1, line2]; scale = two; }
+  }
+  const lineH = 19 * scale, h = lineH * lines.length, y0 = 10 * scale;
+  const w = Math.max(...lines.map((l) => widthOf(l, scale)));
+  page.drawRectangle({ x: width - 14 - w - 4 * scale, y: y0 - 3 * scale, width: w + 8 * scale, height: h, color: rgb(1, 1, 1) });
+  lines.forEach((segs, i) => {   // 첫 줄이 위, 오른쪽 정렬
+    const lw = widthOf(segs, scale), y = y0 + lineH * (lines.length - 1 - i);
+    let x = width - 14 - lw;
+    for (const [t, f, s] of segs) { page.drawText(t, { x, y, size: s * scale, font: f, color: rgb(0, 0, 0) }); x += f.widthOfTextAtSize(t, s * scale); }
+  });
+  return { scale, lines: lines.length, width: w, height: h };
 }
 
 // ── 공통: 업로드 → 파싱 → 매칭 ──
@@ -398,16 +443,7 @@ async function buildPdf(kind, plan, req) {
     const doc = await openSrc(src.fileKey);
     const [copied] = await out.copyPages(doc, [src.pageIdx]);
     out.addPage(copied);
-    const { width } = copied.getSize();
-    const st = stampTextOf(page);
-    // "12  📋 144199497-4  📦 4번" — 오른쪽 아래, 오른쪽 여백 14pt · 아래 10pt
-    const posSize = /^\d+$/.test(st.pos) ? 15 : 10;   // 순번은 크게, "(순서X)"/"(못찾음)" 은 본문 크기
-    const segs = [[st.pos + '  ', kr, posSize], ['📋', em, 10], [' ' + st.mid + '  ', kr, 10], ['📦', em, 10], [' ' + st.box + (sub || ''), kr, 10]];
-    const w = segs.reduce((n, [t, f, s]) => n + f.widthOfTextAtSize(t, s), 0);
-    const x0 = width - 14 - w, y = 10;
-    copied.drawRectangle({ x: x0 - 4, y: y - 3, width: w + 8, height: 19, color: rgb(1, 1, 1) });   // 밑에 뭐가 있어도 읽히게 흰 바탕
-    let x = x0;
-    for (const [t, f, s] of segs) { copied.drawText(t, { x, y, size: s, font: f, color: rgb(0, 0, 0) }); x += f.widthOfTextAtSize(t, s); }
+    drawStamp(copied, stampTextOf(page), sub, kr, em);
   }
   return { bytes: await out.save(), pages: seq.length };
 }
@@ -433,3 +469,5 @@ router.post('/api/shipment/doc-sort/build', upload.fields(FIELDS), async (req, r
 });
 
 module.exports = router;
+module.exports.drawStamp = drawStamp;   // 도장 렌더 확인 스크립트용
+module.exports.fontBytes = fontBytes;
