@@ -149,7 +149,7 @@
         .vs-tag.sz-xl{background:#efe3d8;color:#7a4b1d;}   /* 대2 = 갈색 */
         .vs-tag.from{text-decoration:line-through;opacity:.55;}
         .vs-opt .hint b.need{color:#dc2626;}                /* 아직 안 고른 옵션 */
-        .vs-opt .hint{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}   /* 설명은 한 줄, 넘치면 말줄임 */
+        .vs-opt .hint{flex:1;min-width:160px;}   /* 버튼 옆 남은 폭을 차지 — 문구가 짧아 보통 한 줄, 좁으면 줄바꿈(잘리지 않게) */
         .vs-seg button:disabled{opacity:.4;cursor:not-allowed;}
         .vs-seg button small{font-weight:500;opacity:.75;margin-left:3px;}   /* 입고코드 칩의 개수 */
         .vs-pick{padding:44px 20px;text-align:center;color:#6b7280;font-size:14.5px;}
@@ -970,7 +970,7 @@
                 const codes=vsCodeList();
                 top+=`<div class="vs-opt">
                     <span class="lbl">입고코드</span>
-                    ${codes.length?`<div class="vs-seg">${codes.map(([c,q])=>`<button type="button" class="${vsCodes.has(c)?'on':''}" onclick="toggleVsCode(${JSON.stringify(c)})">${esc(c)} <small>${q}개</small></button>`).join('')}</div>`:''}
+                    ${codes.length?`<div class="vs-seg">${codes.map(([c,q])=>`<button type="button" class="${vsCodes.has(c)?'on':''}" onclick="toggleVsCode('${esc(c)}')">${esc(c)} <small>${q}개</small></button>`).join('')}</div>`:''}
                     <span class="hint">${!codes.length?'입고 배정 없음'+(vsTarget==='all'?' · 재고분만':'')
                         :vsCodes.size===0?'<b class="need">선택하세요</b> (여러 개 가능)'
                         :`${[...vsCodes].join(', ')} 입고분만${codes.length>vsCodes.size?' · 나머지 코드 제외':''}`}</span>
