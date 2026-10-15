@@ -123,9 +123,12 @@ router.post('/api/label/items', async (req, res) => {
 //   출고스캔 전(박스 없음) 발주서는 제외하지 않고 박스 1/1 · 크기 없음으로 1장 만든다 (noBox 에 발주번호를 돌려줘 호스트가 안내).
 //   bx_order_box 는 CJ 운송장 접수 엑셀의 발주번호 열("144287071 - 1")과 같은 형식 — 운송장과 박스 라벨을 맞춰 볼 수 있게.
 //   라벨 서비스로는 labelType:'box' 로 보낸다 (성인/키즈 구분 없음).
+//   po_arrival_mmdd = 입고예정일 MMDD(20261016 → 1016), bx_order_box_date = "144288244-1 (1016)" — 라벨에 날짜까지 한 줄로 (2026-10-15 요청).
 //   skipPrinted(기본 true, 2026-10-15): "이미 뽑힌 라벨" 로 보는 박스는 뺀다 — 실제 스캔 박스(가상 0, 옛 흐름은 스캔 후 라벨) 와
 //   가상확정된 박스(라벨 확정 또는 모바일 입고로 다 찾음 = 라벨을 이미 붙이고 찾은 것). 아직 미확정인 가상 박스만 남는다.
 //   모달의 체크박스를 풀면 skipPrinted:false 로 전부 만든다.
+const mmdd = (ymd) => { const m = String(ymd || '').match(/^\d{4}(\d{2})(\d{2})$/); return m ? m[1] + m[2] : ''; };
+const orderBoxDate = (no, boxNo, ymd) => { const d = mmdd(ymd); return `${no}-${boxNo}${d ? ` (${d})` : ''}`; };
 router.post('/api/label/order-boxes', async (req, res) => {
   try {
     const orderNumbers = [...new Set((Array.isArray(req.body.orderNumbers) ? req.body.orderNumbers : [])
@@ -199,10 +202,12 @@ router.post('/api/label/order-boxes', async (req, res) => {
             po_order_number: no,
             po_center: S.str(h.logistics_center),
             po_arrival_date: S.dateToYmd(h.arrival_date),
+            po_arrival_mmdd: mmdd(S.dateToYmd(h.arrival_date)),
             po_order_qty: h.order_qty == null ? '' : h.order_qty,
             po_scan_qty: 0,
             po_box_count: 0,
             bx_order_box: `${no} - 1`,
+            bx_order_box_date: orderBoxDate(no, 1, S.dateToYmd(h.arrival_date)),
             bx_no: '1',
             bx_size: '',
             bx_seq: '1/1',
@@ -222,10 +227,12 @@ router.post('/api/label/order-boxes', async (req, res) => {
             po_order_number: no,
             po_center: S.str(h.logistics_center),
             po_arrival_date: S.dateToYmd(h.arrival_date),
+            po_arrival_mmdd: mmdd(S.dateToYmd(h.arrival_date)),
             po_order_qty: h.order_qty == null ? '' : h.order_qty,
             po_scan_qty: scanQty,
             po_box_count: full.length,
             bx_order_box: `${no} - ${b.box_no}`,
+            bx_order_box_date: orderBoxDate(no, b.box_no, S.dateToYmd(h.arrival_date)),
             bx_no: String(b.box_no),
             bx_size: S.str(b.box_size),
             bx_seq: `${i + 1}/${full.length}`,
