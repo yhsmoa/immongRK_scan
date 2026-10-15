@@ -68,6 +68,7 @@
         .vbox.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
         .vbox.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
         .vbox.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}   /* 가상확정 — 상품 다 찾아옴 */
+        .vbox.done{filter:grayscale(1);opacity:.55;}                                       /* 발주서 처리완료(쉽먼트 접수 뒤) — 색을 빼서 끝난 건임을 보인다 */
         .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
         .table-scroll::-webkit-scrollbar{width:10px;height:10px;}
         .table-scroll::-webkit-scrollbar-thumb{background:#d7dee8;border-radius:8px;border:2px solid #fff;}
@@ -420,7 +421,7 @@
             const list=boxMap[`${r.출고번호}|${r.바코드}`]||[];
             const html=list.filter(b=>b.virtualQty>0).map(b=>{
                 const st=b.confirmed?'virtual-ok':(b.virtualQty>=b.qty?'virtual-all':'virtual-part');   // ✅ 가상확정(다 찾아옴) · 👾 전부 가상 · 🔀 섞임
-                return `<span class="vbox ${st}" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}">📦${b.boxNo} ${st==='virtual-ok'?'✅':st==='virtual-all'?'👾':'🔀'}</span>`;
+                return `<span class="vbox ${st}${b.done?' done':''}" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.done?'발주서 처리완료 · ':''}${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}">📦${b.boxNo} ${st==='virtual-ok'?'✅':st==='virtual-all'?'👾':'🔀'}</span>`;
             }).join('');
             return html||'';
         }

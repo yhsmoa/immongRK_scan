@@ -354,4 +354,18 @@ test('기본값: 무게 25 kg 미만으로 나눈다 · maxKg null 이면 부피
   assert.ok(!q.boxes[0].warnings.some((w) => w.includes('무게')));
 });
 
+test('이미 담긴 분량의 출처: 실제 스캔은 재고부터, 가상스캔은 입고부터 뺀다', () => {
+  // 입고(1011) 1 + 재고 8, 확정 9. 실제로 8개를 담아 둔 상태(박스1, virtualQty 0) → 재고 8이 담긴 것 → 입고 1이 남는다
+  const p = { barcode: 'A', productName: 'A', orderQty: 9, allocQty: 9, allocInbound: 1, allocStock: 8, allocInboundByCode: { '1011': 1 }, scannedQty: 8, size: SIZE10, location: '' };
+  const realBox = { boxItems: [{ boxNo: 1, barcode: 'A', qty: 8, virtualQty: 0 }], savedBoxes: [{ boxNo: 1, boxSize: '대2' }] };
+  const real = run([p], realBox, { sourceFilter: '입고', inboundCodes: ['1011'], topUpExisting: false });
+  assert.deepStrictEqual(real.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:1']);
+  // 같은 8개가 가상스캔이었다면 입고 1 + 재고 7 이 담긴 것 → 입고는 남은 게 없고 재고 1이 남는다
+  const virtBox = { boxItems: [{ boxNo: 1, barcode: 'A', qty: 8, virtualQty: 8 }], savedBoxes: [{ boxNo: 1, boxSize: '대2' }] };
+  assert.ok(!run([p], virtBox, { sourceFilter: '입고', inboundCodes: ['1011'], topUpExisting: false }).ok);
+  assert.deepStrictEqual(run([p], virtBox, { sourceFilter: '재고', topUpExisting: false }).boxes.map((b) => `${b.source}:${b.addQty}`), ['재고:1']);
+  // 박스 정보 없이 scannedQty 만 주면(옛 테스트들) 가상 분량처럼 입고부터 뺀다
+  assert.ok(!run([p], {}, { sourceFilter: '입고', inboundCodes: ['1011'] }).ok);
+});
+
 console.log(`\n${n} tests passed`);

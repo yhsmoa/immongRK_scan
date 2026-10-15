@@ -435,13 +435,20 @@ async function activeBoxesAndItems(orderNumbers) {
 }
 
 // 박스 맵 — 발주번호+바코드별로 "어느 박스에 몇 개(그중 가상 몇 개, 확정 여부)" (입고정리·재고준비의 박스 열용)
-// 응답: { "발주번호|바코드": [ { boxNo, boxSize, qty, virtualQty, confirmed }, … ] }  — 박스번호 순
+// 응답: { "발주번호|바코드": [ { boxNo, boxSize, qty, virtualQty, confirmed, done }, … ] }  — 박스번호 순
 //   기본은 진행중 발주서만. ?orders=발주번호,발주번호… 를 주면 처리완료(DONE)여도 그 발주서들의 박스를 준다
 //   (입고정리: 가상스캔 → 쉽먼트 접수 → 처리완료가 된 발주서의 박스 열이 비던 문제, 2026-10-15)
 router.get('/api/ship-scan/box-map', async (req, res) => {
   try {
     const orders = req.query.orders != null ? String(req.query.orders).split(',') : null;
     const { boxes, items, boxOk } = await activeBoxesAndItems(orders);
+    // 처리완료 발주서 표시 (orders 로 조회했을 때만 섞여 들어온다) — 화면은 회색 칩으로
+    const doneSet = new Set();
+    if (orders) {
+      const nos = [...new Set(orders.map((x) => String(x || '').trim()).filter(Boolean))];
+      const hs = await S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_orders').select('order_number, status').in('order_number', part)));
+      for (const h of hs) if (S.isDoneOrder({ 상태: h.status })) doneSet.add(String(h.order_number));
+    }
     const boxById = new Map(boxes.map((b) => [b.id, b]));
     const map = {};
     for (const it of items) {
@@ -451,7 +458,8 @@ router.get('/api/ship-scan/box-map', async (req, res) => {
       if (qty <= 0) continue;
       const k = `${it.order_number}|${it.barcode}`;
       (map[k] ||= []).push({ boxNo: box.box_no, boxSize: box.box_size, qty, virtualQty: parseInt(it.virtual_qty, 10) || 0,
-        confirmed: boxOk(box) });   // 박스 라벨 가상확정 또는 모바일 입고로 다 찾음
+        confirmed: boxOk(box),      // 박스 라벨 가상확정 또는 모바일 입고로 다 찾음
+        done: doneSet.has(String(it.order_number)) });   // 발주서 처리완료
     }
     for (const list of Object.values(map)) list.sort((a, b) => a.boxNo - b.boxNo);
     res.json(map);

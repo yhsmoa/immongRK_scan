@@ -95,6 +95,15 @@
     const boxItems = Array.isArray(input.boxItems) ? input.boxItems : [];
     const savedBoxes = Array.isArray(input.savedBoxes) ? input.savedBoxes : [];
 
+    // 이미 담긴 개수를 실제 스캔분/가상스캔분으로 나눠 둔다 (출처 귀속이 다르다 — 아래 주석)
+    const scannedVirtualByBc = new Map(), scannedRealByBc = new Map();
+    for (const it of boxItems) {
+      const k = String(it.barcode || '').trim(); if (!k) continue;
+      const q = Math.max(0, parseInt(it.qty, 10) || 0), v = Math.min(q, Math.max(0, parseInt(it.virtualQty, 10) || 0));
+      scannedVirtualByBc.set(k, (scannedVirtualByBc.get(k) || 0) + v);
+      scannedRealByBc.set(k, (scannedRealByBc.get(k) || 0) + (q - v));
+    }
+
     // ── 1. 바코드별 단위·목표 ──
     const unitByBc = new Map();
     const items = [];       // 담을 것 [{barcode, productName, location, qty, unitL, unitKg, flag}]
@@ -134,11 +143,19 @@
         const capQ = {};
         for (const c of codes) { capQ[c] = Math.min(byCode[c], left); left -= capQ[c]; }
         const stkT = Math.min(stk, left);
-        let s = scanned;
+        // 이미 담긴 개수를 출처에서 뺀다 (2026-10-15 수정):
+        //   · 가상스캔으로 담긴 분량(virtualQty) → 입고 오래된 코드부터, 그다음 재고 (가상스캔은 입고분을 먼저 담으므로)
+        //   · 실제 스캔으로 담긴 분량 → 재고부터, 그다음 입고 (출고스캔은 재고 선반에서 먼저 하는 흐름. 재고 8개를 실제로 담은 뒤 입고 1개가
+        //     들어온 발주서에서, 실제 8개를 입고분으로 치는 바람에 입고 1개가 '재고' 로 밀려 입고 가상스캔에서 빠지던 문제)
+        //   · 어느 쪽인지 모르는 분량(boxItems 없이 scannedQty 만 준 경우)은 가상 분량처럼 다룬다
+        const sv = scannedVirtualByBc.get(bc) || 0, sr = scannedRealByBc.get(bc) || 0;
+        let sVirt = Math.min(scanned, sv + Math.max(0, scanned - sv - sr)), sReal = Math.max(0, scanned - sVirt);
         const remByCode = {};
-        for (const c of codes) { remByCode[c] = Math.max(0, capQ[c] - s); s = Math.max(0, s - capQ[c]); }
-        const remStk = Math.max(0, stkT - s);
-        if (scanned > 0 && codes.length > 1) attributedScan = true;
+        for (const c of codes) { const t = Math.min(capQ[c], sVirt); remByCode[c] = capQ[c] - t; sVirt -= t; }
+        let remStk = Math.max(0, stkT - sVirt);
+        { const t = Math.min(remStk, sReal); remStk -= t; sReal -= t; }
+        for (const c of codes) { const t = Math.min(remByCode[c], sReal); remByCode[c] -= t; sReal -= t; }
+        if (sv > 0 && codes.length > 1) attributedScan = true;
         // 입고코드 선택: 고른 코드의 남은 입고분만 담고, 다른 코드 분량은 '다른 입고코드' 로 제외 (코드 정보 없는 '*' 도 다른 코드 취급)
         const sel = Array.isArray(cfg.inboundCodes) && cfg.inboundCodes.length ? new Set(cfg.inboundCodes.map(String)) : null;
         let remInb = 0, remOther = 0;
@@ -300,7 +317,7 @@
     if (untouchedExisting.length) warnings.push(`남은 용량이 없어 그대로 둔 기존 박스: ${untouchedExisting.map((b) => `📦${b.boxNo}`).join(', ')}`);
     if (items.some((i) => i.capped)) warnings.push(`배정량이 확정수량보다 큰 상품 ${items.filter((i) => i.capped).length}종은 확정수량까지만 담았습니다.`);
     if (excluded.some((e) => e.reason === '배정 없음')) warnings.push(`출고예정 배정이 없는 상품 ${excluded.filter((e) => e.reason === '배정 없음').length}종은 제외했습니다.`);
-    if (attributedScan) warnings.push('이미 담긴 개수는 오래된 입고코드부터 담은 것으로 보고 뺐습니다 (입고코드 순서대로 돌리는 것을 전제).');
+    if (attributedScan) warnings.push('가상으로 이미 담긴 개수는 오래된 입고코드부터 담은 것으로 보고 뺐습니다 (입고코드 순서대로 돌리는 것을 전제). 실제 스캔분은 재고부터 뺍니다.');
     if (excluded.some((e) => e.reason === '다른 입고코드')) {
       const oth = excluded.filter((e) => e.reason === '다른 입고코드');
       warnings.push(`고른 입고코드가 아닌 입고분 ${oth.reduce((s, e) => s + (e.qty || 0), 0)}개(${oth.length}종)는 담지 않았습니다 — 그 입고코드로 다시 돌리세요.`);
