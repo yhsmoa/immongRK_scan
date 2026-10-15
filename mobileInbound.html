@@ -267,11 +267,11 @@
         </div>
     </section>
 
-    <!-- 카메라 바코드 스캔 (BarcodeDetector 지원 브라우저만 — 안드로이드 크롬) -->
+    <!-- 카메라 바코드 스캔 — 안드로이드 크롬은 내장 BarcodeDetector, 아이폰(사파리·크롬 등 WebKit)은 ZXing 라이브러리로 인식 -->
     <div class="cam-back" id="camBack">
         <video id="camVideo" playsinline muted autoplay></video>
         <div class="guide"></div>
-        <div class="cam-top"><span>발주서 바코드를 맞춰 주세요</span><button onclick="closeCam()">닫기</button></div>
+        <div class="cam-top"><span id="camHint">발주서 바코드를 맞춰 주세요</span><button onclick="closeCam()">닫기</button></div>
     </div>
 
     <div id="toast"></div>
@@ -536,20 +536,60 @@
         }
         async function clearMark(i){ await save(i,null); }
 
-        // ════════ 카메라 바코드 (BarcodeDetector) ════════
-        let camStream=null, camTimer=null;
-        async function openCam(){
-            if(!('BarcodeDetector' in window)){ toast('이 브라우저는 카메라 바코드 인식을 지원하지 않습니다.\n발주번호를 직접 입력하세요.'); return; }
-            try{
-                camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
-                const v=$('camVideo'); v.srcObject=camStream; $('camBack').classList.add('show'); await v.play();
-                const det=new BarcodeDetector({formats:['code_128','code_39','ean_13','qr_code','itf']});
-                camTimer=setInterval(async()=>{
-                    try{ const codes=await det.detect(v); for(const c of codes){ const no=parseOrderNo(c.rawValue); if(no){ closeCam(); playOk(); startOrder(no); return; } } }catch(_){}
-                },300);
-            }catch(e){ stopCam(); toast('카메라를 열 수 없습니다: '+e.message); }
+        // ════════ 카메라 바코드 ════════
+        //   안드로이드 크롬: 내장 BarcodeDetector (빠름). 아이폰(사파리·크롬 모두 WebKit)은 이 API 가 없어 ZXing 라이브러리를 그때 내려받아 쓴다 (2026-10-15).
+        //   둘 다 HTTPS + 카메라 권한 필요. 인식한 값은 발주번호 또는 박스 라벨(발주번호-박스번호)이라 startOrder 에 그대로 넘긴다.
+        let camStream=null, camTimer=null, zxReader=null, zxLoading=null;
+        const CAM_FORMATS=['code_128','code_39','ean_13','qr_code','itf'];
+        function loadZXing(){
+            if(window.ZXing) return Promise.resolve();
+            if(zxLoading) return zxLoading;
+            zxLoading=new Promise((resolve,reject)=>{
+                const sc=document.createElement('script');
+                sc.src='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+                sc.onload=()=>resolve(); sc.onerror=()=>{ zxLoading=null; reject(new Error('바코드 인식 모듈을 내려받지 못했습니다 (인터넷 확인)')); };
+                document.head.appendChild(sc);
+            });
+            return zxLoading;
         }
-        function stopCam(){ clearInterval(camTimer); camTimer=null; if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; } $('camBack').classList.remove('show'); }
+        function onCamCode(raw){
+            if(!parseOrderCode(raw)) return false;          // 발주번호 형식이 아니면 계속 찾는다
+            closeCam(); playOk(); startOrder(raw); return true;
+        }
+        async function openCam(){
+            const v=$('camVideo');
+            try{
+                if('BarcodeDetector' in window){
+                    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+                    v.srcObject=camStream; $('camBack').classList.add('show'); $('camHint').textContent='발주서 바코드를 맞춰 주세요'; await v.play();
+                    const det=new BarcodeDetector({formats:CAM_FORMATS});
+                    camTimer=setInterval(async()=>{
+                        try{ const codes=await det.detect(v); for(const c of codes){ if(onCamCode(c.rawValue)) return; } }catch(_){}
+                    },300);
+                    return;
+                }
+                // 아이폰 등: ZXing
+                $('camBack').classList.add('show'); $('camHint').textContent='인식 모듈 준비 중…';
+                await loadZXing();
+                const Z=window.ZXing;
+                const hints=new Map();
+                hints.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.CODE_128,Z.BarcodeFormat.CODE_39,Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.QR_CODE,Z.BarcodeFormat.ITF]);
+                hints.set(Z.DecodeHintType.TRY_HARDER,true);
+                zxReader=new Z.BrowserMultiFormatReader(hints, 250);
+                $('camHint').textContent='발주서 바코드를 맞춰 주세요';
+                await zxReader.decodeFromConstraints({video:{facingMode:{ideal:'environment'}},audio:false}, v, (result,err)=>{
+                    if(result && zxReader) onCamCode(result.getText());
+                    // err 는 "이 프레임엔 바코드 없음" 이 대부분 — 무시하고 계속
+                });
+            }catch(e){ stopCam(); toast('카메라를 열 수 없습니다: '+(e&&e.message||e)); }
+        }
+        function stopCam(){
+            clearInterval(camTimer); camTimer=null;
+            if(zxReader){ try{ zxReader.reset(); }catch(_){} zxReader=null; }
+            if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+            const v=$('camVideo'); if(v&&v.srcObject){ try{ v.srcObject.getTracks().forEach(t=>t.stop()); }catch(_){} v.srcObject=null; }
+            $('camBack').classList.remove('show');
+        }
         function closeCam(){ stopCam(); }
 
         // ── 효과음 (가상확정·출고스캔과 같은 방식) ──
