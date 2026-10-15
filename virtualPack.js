@@ -37,6 +37,7 @@
     upgradeLastBox: true,                             // 마지막 기존 박스(극소/중)에 남은 상품이 다 안 들어가면 크기를 올린다 (극소→중→대2). 확정 시 DB box_size 도 바뀜
     splitBySource: true,                              // true = 입고분/재고분을 다른 박스에 담는다 (products 에 allocInbound/allocStock 이 있을 때만 효과)
     sourceOrder: ['입고', '재고'],                     // 담는 순서 — 앞 출처가 기존 마지막 박스를 채운다
+    sourceFilter: null,                               // null = 전체 · '입고' | '재고' = 그 출처 배정분만 담는다 (모달의 대상 선택)
   };
 
   const EPS = 1e-9;
@@ -113,12 +114,22 @@
       // 출처별 분리: 배정량을 입고분/재고분으로 나눈다. 확정수량이 배정보다 작으면 재고분부터 줄이고,
       // 이미 스캔한 개수는 입고분부터 뺀다 (입고분을 먼저 담는 순서와 맞춤).
       const inb = Math.max(0, parseInt(p.allocInbound, 10) || 0), stk = Math.max(0, parseInt(p.allocStock, 10) || 0);
-      if (cfg.splitBySource && (inb > 0 || stk > 0)) {
+      const filter = cfg.sourceFilter || null;
+      if ((cfg.splitBySource || filter) && (inb > 0 || stk > 0)) {
         const inbT = Math.min(inb, target);
         const remInb = Math.max(0, inbT - scanned);
         const remStk = remain - remInb;
-        if (remInb > 0) items.push(Object.assign({}, base, { qty: remInb, source: '입고' }));
-        if (remStk > 0) items.push(Object.assign({}, base, { qty: remStk, source: '재고' }));
+        if (filter) {
+          // 대상 선택(입고만/재고만): 그 출처 분량만 담고 나머지는 제외로 기록
+          const q = filter === '입고' ? remInb : filter === '재고' ? remStk : remain;
+          if (q > 0) items.push(Object.assign({}, base, { qty: q, source: filter }));
+          else excluded.push({ barcode: bc, productName: p.productName || '', reason: `${filter} 배정 없음` });
+        } else {
+          if (remInb > 0) items.push(Object.assign({}, base, { qty: remInb, source: '입고' }));
+          if (remStk > 0) items.push(Object.assign({}, base, { qty: remStk, source: '재고' }));
+        }
+      } else if (filter) {
+        excluded.push({ barcode: bc, productName: p.productName || '', reason: '출처 정보 없음' });
       } else {
         items.push(Object.assign({}, base, { qty: remain, source: null }));
       }
@@ -132,7 +143,7 @@
 
     const assumptions = {
       overfill: cfg.overfill, maxKg: cfg.maxKg, defaultUnitL: cfg.defaultUnitL, assumedCount, topUpExisting: !!cfg.topUpExisting,
-      splitBySource: !!cfg.splitBySource, splitActive,
+      splitBySource: !!cfg.splitBySource, splitActive, sourceFilter: cfg.sourceFilter || null,
       cap: Object.fromEntries(cfg.newSizes.map((s) => [s, capL(s, cfg)])),
     };
     const bySource = {};
@@ -142,7 +153,9 @@
       newBoxes: 0, topUpBoxes: 0, bySource };
     const warnings = [];
     if (!items.length) {
-      return { ok: false, reason: products.length ? '담을 상품이 없습니다. (출고예정 배정이 없거나 이미 모두 스캔됨)' : '발주서 상품이 없습니다.',
+      return { ok: false, reason: !products.length ? '발주서 상품이 없습니다.'
+          : cfg.sourceFilter ? `${cfg.sourceFilter} 배정분이 없습니다. (그 출처의 출고예정 배정이 없거나 이미 모두 스캔됨)`
+          : '담을 상품이 없습니다. (출고예정 배정이 없거나 이미 모두 스캔됨)',
         assumptions, boxes: [], excluded, totals, warnings };
     }
 

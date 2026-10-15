@@ -148,6 +148,10 @@
         .vs-tag.sz-m{background:#fdebd3;color:#b45309;}    /* 중 = 주황 */
         .vs-tag.sz-xl{background:#efe3d8;color:#7a4b1d;}   /* 대2 = 갈색 */
         .vs-tag.from{text-decoration:line-through;opacity:.55;}
+        .vs-opt .hint b.need{color:#dc2626;}                /* 아직 안 고른 옵션 */
+        .vs-seg button:disabled{opacity:.4;cursor:not-allowed;}
+        .vs-pick{padding:44px 20px;text-align:center;color:#6b7280;font-size:14.5px;}
+        .vs-pick b{color:#1f2937;}
         .vs-tag.src-inb{background:#dbeafe;color:#1d4ed8;}  /* 입고분 = 파랑 */
         .vs-tag.src-stk{background:#dcfce7;color:#15803d;}  /* 재고분 = 초록 */
         .vs-tag.src-mix{background:#f1f5f9;color:#475569;}  /* 기존 박스에 더해 섞임 */
@@ -897,67 +901,77 @@
         let vsPlan=null;
         const fmtL=v=>(Math.round(v*10)/10).toLocaleString();
         const fmtKg=v=>(Math.round(v*10)/10).toLocaleString();
-        // 옵션: 기존 박스 채우기(true) / 새 박스만(false) — 브라우저에 기억 (기본 = 채우기)
-        const VS_OPT_KEY='shipScan.vsTopUp';
-        let vsTopUp=true;
-        try{ const v=localStorage.getItem(VS_OPT_KEY); if(v==='0') vsTopUp=false; }catch(e){}
-        function setVsTopUp(on){
-            vsTopUp=!!on;
-            try{ localStorage.setItem(VS_OPT_KEY, vsTopUp?'1':'0'); }catch(e){}
-            if(document.getElementById('vsBack').classList.contains('show')) buildVirtualPlan(); // 열려 있으면 다시 계산
-        }
-        // 옵션: 출처별 분리(true, 입고분·재고분을 다른 박스에) / 같이 담기(false) — 브라우저에 기억 (기본 = 분리)
-        const VS_SPLIT_KEY='shipScan.vsSplit';
-        let vsSplit=true;
-        try{ const v=localStorage.getItem(VS_SPLIT_KEY); if(v==='0') vsSplit=false; }catch(e){}
-        function setVsSplit(on){
-            vsSplit=!!on;
-            try{ localStorage.setItem(VS_SPLIT_KEY, vsSplit?'1':'0'); }catch(e){}
-            if(document.getElementById('vsBack').classList.contains('show')) buildVirtualPlan();
-        }
+        // 옵션 두 가지 — 열 때마다 비워 두고 이용자가 직접 고르게 한다 (기본값이 있으면 놓치고 확정할 수 있어서, 2026-10-15). 브라우저에 기억하지 않는다.
+        //   vsTopUp : null(미선택) | true(기존 박스 채우기) | false(새 박스만). 기존 박스가 없으면 고를 것이 없어 자동 통과
+        //   vsTarget: null(미선택) | 'all'(전체: 입고분 먼저, 재고분은 새 박스부터) | '입고' | '재고'(그 배정분만)
+        let vsTopUp=null, vsTarget=null;
+        function setVsTopUp(on){ vsTopUp=!!on; buildVirtualPlan(); }
+        function setVsTarget(t){ vsTarget=t; buildVirtualPlan(); }
+        function vsReady(){ return vsTarget!=null && (vsTopUp!=null || boxNosAll().length===0); }
         function buildVirtualPlan(){
-            vsPlan=VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap }, { topUpExisting: vsTopUp, splitBySource: vsSplit });
+            if(!vsReady()){ vsPlan=null; renderVirtualModal(null); return null; }   // 둘 다 고르기 전에는 계산하지 않는다
+            vsPlan=VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap },
+                { topUpExisting: vsTopUp===true, splitBySource: vsTarget==='all', sourceFilter: vsTarget==='all'?null:vsTarget });
             renderVirtualModal(vsPlan);
             return vsPlan;
         }
         function openVirtualScan(){
             if(!currentOrder){ toast('먼저 발주서를 조회하세요.'); return; }
             if(typeof VirtualPack==='undefined'){ toast('가상스캔 모듈을 불러오지 못했습니다. 새로고침 후 다시 시도하세요.'); return; }
-            const plan=buildVirtualPlan();
-            if(!plan.ok && !plan.boxes.length){ toast(plan.reason||'가상스캔 대상이 없습니다.'); vsPlan=null; return; }
+            vsTopUp=null; vsTarget=null; vsPlan=null;   // 매번 다시 고른다
+            renderVirtualModal(null);
             document.getElementById('vsBack').classList.add('show');
         }
         function closeVirtual(){ document.getElementById('vsBack').classList.remove('show'); vsPlan=null; }
         document.getElementById('vsBack').addEventListener('click',e=>{ if(e.target.id==='vsBack' && !document.getElementById('vsConfirmBtn').dataset.busy) closeVirtual(); });
         function renderVirtualModal(plan){
-            const a=plan.assumptions, t=plan.totals;
             document.getElementById('vsSub').textContent=`${currentOrder} · ${document.getElementById('odCenter').textContent||''}`;
-            const capTxt=Object.entries(a.cap).map(([s,c])=>`${s} ${fmtL(c)} L`).join(' · ');
             const existNos=boxNosAll(), existCnt=existNos.length, lastNo=existCnt?existNos[existNos.length-1]:null;
-            const boxCnt=plan.boxes.filter(b=>b.items.length).length;
-            // ── 상단(고정): 옵션 · 3칸 요약 · 가정 문구 ──
+            const needTopUp=existCnt>0;   // 기존 박스가 없으면 고를 것이 없다
+            // ── 상단(고정): 옵션 2개(미선택이면 빨간 안내) · 3칸 요약 · 가정 문구 ──
             let top=`<div class="vs-opt">
                 <span class="lbl">기존 박스</span>
                 <div class="vs-seg">
-                    <button type="button" class="${vsTopUp?'on':''}" onclick="setVsTopUp(true)">기존 박스 채우기</button>
-                    <button type="button" class="${vsTopUp?'':'on'}" onclick="setVsTopUp(false)">새 박스만</button>
+                    <button type="button" class="${vsTopUp===true?'on':''}" ${needTopUp?'':'disabled'} onclick="setVsTopUp(true)">기존 박스 채우기</button>
+                    <button type="button" class="${vsTopUp===false?'on':''}" ${needTopUp?'':'disabled'} onclick="setVsTopUp(false)">새 박스만</button>
                 </div>
-                <span class="hint">${existCnt?`이 발주서에 박스 ${existCnt}개가 있습니다. ${vsTopUp?(existCnt>1?`마지막 박스(📦${lastNo})만 남은 용량부터 채우고, 앞 박스는 마감으로 봅니다.`:`📦${lastNo}의 남은 용량부터 채웁니다.`):'그대로 두고 새 박스에만 담습니다.'}`:'아직 박스가 없어 어느 쪽이든 새 박스에 담습니다.'}</span>
+                <span class="hint">${!needTopUp?'아직 박스가 없어 새 박스에 담습니다 (고를 것 없음).'
+                    :vsTopUp==null?`<b class="need">선택하세요</b> — 이 발주서에 박스 ${existCnt}개(📦${existNos.join(', 📦')})가 있습니다.`
+                    :vsTopUp?(existCnt>1?`마지막 박스(📦${lastNo})만 남은 용량부터 채우고, 앞 박스는 마감으로 봅니다.`:`📦${lastNo}의 남은 용량부터 채웁니다.`)
+                    :'기존 박스는 그대로 두고 새 박스에만 담습니다.'}</span>
             </div>`;
-            // 출처별 분리 — 입고 작업대와 재고 선반에서 각각 박스를 끝낼 수 있게 (2026-10-15)
-            const bs=t.bySource||{}, hasBoth=(bs['입고']>0)&&(bs['재고']>0);
+            // 대상 — 전체(입고분 먼저, 재고분은 새 박스부터) / 입고만 / 재고만 (입고 작업대와 재고 선반에서 따로 돌릴 수 있게, 2026-10-15)
             top+=`<div class="vs-opt">
-                <span class="lbl">출처</span>
+                <span class="lbl">대상</span>
                 <div class="vs-seg">
-                    <button type="button" class="${vsSplit?'on':''}" onclick="setVsSplit(true)">입고·재고 나눠 담기</button>
-                    <button type="button" class="${vsSplit?'':'on'}" onclick="setVsSplit(false)">같이 담기</button>
+                    <button type="button" class="${vsTarget==='all'?'on':''}" onclick="setVsTarget('all')">전체</button>
+                    <button type="button" class="${vsTarget==='입고'?'on':''}" onclick="setVsTarget('입고')">입고</button>
+                    <button type="button" class="${vsTarget==='재고'?'on':''}" onclick="setVsTarget('재고')">재고</button>
                 </div>
-                <span class="hint">${hasBoth
-                    ? (vsSplit?`입고분 ${bs['입고']}개를 먼저 담고 박스를 마감한 뒤 재고분 ${bs['재고']}개는 새 박스부터 담습니다. 한 박스는 한 곳에서 끝납니다.`:`입고분 ${bs['입고']}개 · 재고분 ${bs['재고']}개를 구분 없이 수량 많은 순으로 담습니다.`)
-                    : (bs['입고']>0?`전부 입고분(${bs['입고']}개)이라 나눌 것이 없습니다.`:bs['재고']>0?`전부 재고분(${bs['재고']}개)이라 나눌 것이 없습니다.`:'배정 출처 정보가 없어 구분 없이 담습니다.')}</span>
+                <span class="hint">${vsTarget==null?'<b class="need">선택하세요</b> — 전체는 입고분을 먼저 담고 재고분은 새 박스부터, 입고/재고는 그 배정분만 담습니다.'
+                    :vsTarget==='all'?'배정 전체를 담습니다. 입고분을 먼저 담고 박스를 마감한 뒤 재고분은 새 박스부터 담아 한 박스는 한 곳에서 끝납니다.'
+                    :`${vsTarget} 배정분만 담습니다. 다른 출처 분량은 제외되고 나중에 따로 돌릴 수 있습니다.`}</span>
             </div>`;
+            const btn=document.getElementById('vsConfirmBtn'), note=document.getElementById('vsNote');
+            if(!plan){
+                top+=`<div class="vs-stats">
+                    <div class="vs-stat"><div class="k">대상 상품</div><div class="v">—</div></div>
+                    <div class="vs-stat"><div class="k">총 부피 · 무게</div><div class="v">—</div></div>
+                    <div class="vs-stat"><div class="k">필요 박스</div><div class="v">—</div></div>
+                </div>`;
+                document.getElementById('vsTop').innerHTML=top;
+                document.getElementById('vsBody').innerHTML=`<div class="vs-pick">위에서 <b>${needTopUp?'기존 박스 · 대상':'대상'}</b>을 고르면 예상 박스를 계산합니다.</div>`;
+                note.className='vs-note'; note.textContent='아직 계산 전입니다. 선택을 마치면 확정할 수 있습니다.';
+                btn.disabled=true; btn.textContent='확정 · 스캔 반영 + 저장'; delete btn.dataset.busy;
+                return;
+            }
+            const a=plan.assumptions, t=plan.totals;
+            const capTxt=Object.entries(a.cap).map(([s,c])=>`${s} ${fmtL(c)} L`).join(' · ');
+            const boxCnt=plan.boxes.filter(b=>b.items.length).length;
+            const bs=t.bySource||{};
+            const srcTxt=Object.keys(bs).length>1?Object.entries(bs).map(([k,v])=>`${k} ${v}`).join(' · '):'';
             top+=`<div class="vs-stats">
-                <div class="vs-stat"><div class="k">대상 상품</div><div class="v">${t.qty.toLocaleString()}<small>개</small><small class="gap">${t.skus}종</small></div></div>
+                <div class="vs-stat"><div class="k">대상 상품${a.sourceFilter?` (${a.sourceFilter}만)`:''}</div><div class="v">${t.qty.toLocaleString()}<small>개</small><small class="gap">${t.skus}종${srcTxt?` · ${srcTxt}`:''}</small></div></div>
                 <div class="vs-stat"><div class="k">총 부피 · 무게</div><div class="v">${fmtL(t.L)}<small>L</small><small class="gap">${fmtKg(t.kg)} kg</small></div></div>
                 <div class="vs-stat"><div class="k">필요 박스</div><div class="v hi">${boxCnt}<small>개</small><small class="gap">기존 ${t.topUpBoxes} · 신규 ${t.newBoxes}${t.upgradedBoxes?` · 크기 UP ${t.upgradedBoxes}`:''}</small></div></div>
             </div>`;
@@ -1002,13 +1016,12 @@
             if(plan.warnings.length) html+=`<div class="vs-warn soft">${plan.warnings.map(w=>'• '+esc(w)).join('<br>')}</div>`;
             if(plan.excluded.length){
                 const done=plan.excluded.filter(e=>e.reason==='이미 완료').length, none=plan.excluded.filter(e=>e.reason==='배정 없음');
-                html+=`<div class="vs-ex">제외: 이미 스캔 완료 ${done}종${none.length?` · 배정 없음 ${none.length}종 (${none.slice(0,6).map(e=>esc(e.barcode)).join(', ')}${none.length>6?' …':''})`:''}</div>`;
+                const other=plan.excluded.filter(e=>e.reason!=='이미 완료'&&e.reason!=='배정 없음');   // 대상(입고/재고)에 없는 상품 등
+                html+=`<div class="vs-ex">제외: 이미 스캔 완료 ${done}종${none.length?` · 배정 없음 ${none.length}종 (${none.slice(0,6).map(e=>esc(e.barcode)).join(', ')}${none.length>6?' …':''})`:''}${other.length?` · ${esc(other[0].reason)} ${other.length}종`:''}</div>`;
             }
             document.getElementById('vsBody').innerHTML=html;
-            const note=document.getElementById('vsNote');
             note.className='vs-note';
             note.textContent=dirty?`미저장 변경 ${records.length}건이 있습니다 — 확정 시 함께 저장됩니다.`:'확정하면 위 내용대로 박스/스캔을 반영하고 바로 저장합니다.';
-            const btn=document.getElementById('vsConfirmBtn');
             btn.disabled=!plan.ok || !plan.boxes.some(b=>b.items.length);
             btn.textContent='확정 · 스캔 반영 + 저장';
             delete btn.dataset.busy;

@@ -249,6 +249,21 @@ test('출처 분리: 스캔한 개수는 입고분부터 빼고, 확정이 배�
   assert.deepStrictEqual(p2.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:4', '재고:1']);
 });
 
+test('대상 선택(sourceFilter): 입고만 / 재고만 담고 나머지는 제외로 기록', () => {
+  const pi = run([prodS('A', 5, 5), prodS('B', 0, 3)], {}, { sourceFilter: '입고' });
+  assert.deepStrictEqual(pi.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:5']);
+  assert.ok(pi.excluded.some((e) => e.barcode === 'B' && e.reason === '입고 배정 없음'));
+  assert.strictEqual(pi.assumptions.sourceFilter, '입고');
+  const ps = run([prodS('A', 5, 5), prodS('B', 0, 3)], {}, { sourceFilter: '재고' });
+  assert.deepStrictEqual(ps.boxes.map((b) => `${b.source}:${b.addQty}`), ['재고:8']);
+  const none = run([prodS('A', 5, 0)], {}, { sourceFilter: '재고' });
+  assert.strictEqual(none.ok, false);
+  assert.ok(none.reason.includes('재고 배정분이 없습니다'));
+  const legacy = run([prod('A', 5)], {}, { sourceFilter: '입고' });   // 출처 정보 없는 상품은 담지 않는다
+  assert.strictEqual(legacy.ok, false);
+  assert.ok(legacy.excluded.some((e) => e.reason === '출처 정보 없음'));
+});
+
 test('출처 분리: 출처 정보가 없는 상품은 예전과 같다', () => {
   const p = run([prod('A', 5), prod('B', 3)]);
   assert.deepStrictEqual(shape(p), '1:중:8');
