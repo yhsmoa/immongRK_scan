@@ -83,33 +83,35 @@
         .empty{padding:36px 12px;text-align:center;color:var(--muted);font-size:14px;}
 
         /* 3화면 — 카드 덱 */
+        #s3.on{height:100dvh;overflow:hidden;}
         .deck-wrap{flex:1;display:flex;flex-direction:column;min-height:0;}
         .deck{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;}
         .deck::-webkit-scrollbar{display:none;}
-        .cardw{flex:0 0 100%;width:100%;scroll-snap-align:center;scroll-snap-stop:always;padding:10px 12px 8px;overflow-y:auto;display:flex;flex-direction:column;}
-        .card{background:#fff;border:1.5px solid var(--line);border-radius:18px;padding:14px 14px 16px;display:flex;flex-direction:column;gap:10px;flex:1;position:relative;}
+        .cardw{flex:0 0 100%;width:100%;height:100%;scroll-snap-align:center;scroll-snap-stop:always;padding:8px 12px 4px;overflow:hidden;display:flex;flex-direction:column;}
+        .card{background:#fff;border:1.5px solid var(--line);border-radius:18px;padding:12px 14px 12px;display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;position:relative;overflow:hidden;}
         .card.found{border-color:#9FE1CB;background:#F2FBF7;}
         .card.missing{border-color:#fecaca;background:#FFF5F5;}
         .meta{display:flex;flex-wrap:wrap;gap:4px 6px;font-size:12.5px;font-weight:700;color:#475569;align-items:center;}
         .meta .batch{background:#eef2ff;color:var(--primary);border-radius:6px;padding:1px 7px;}
         .meta .ord{color:var(--ink);font-size:14px;font-variant-numeric:tabular-nums;}
         .meta .sep{color:#cbd5e1;}
-        .boxname{font-size:22px;font-weight:900;color:var(--ink);letter-spacing:-.01em;line-height:1.15;}
+        .boxname{font-size:21px;font-weight:900;color:var(--ink);letter-spacing:-.01em;line-height:1.15;flex:none;}
         .boxname small{font-size:12px;font-weight:700;color:var(--muted);margin-left:6px;}
-        .thumb{width:100%;aspect-ratio:1/1;max-height:38dvh;border-radius:14px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#b4bac6;font-size:14px;font-weight:600;}
+        .thumb{width:100%;flex:1 1 0;min-height:90px;border-radius:14px;background:#f1f5f9;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#b4bac6;font-size:14px;font-weight:600;}
         .thumb img{width:100%;height:100%;object-fit:contain;background:#fff;}
-        .pname{font-size:16px;font-weight:700;color:var(--ink);line-height:1.35;word-break:break-word;}
+        .pname{font-size:15.5px;font-weight:700;color:var(--ink);line-height:1.3;word-break:break-word;flex:none;}
+        .pname .nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
         .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;}
         .bc{display:inline-block;background:var(--blue);color:#fff;border-radius:8px;padding:3px 10px;font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.03em;margin-top:2px;}
         .boxes{display:flex;flex-wrap:wrap;gap:6px;}
         .vbox{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:800;border-radius:8px;padding:3px 9px;background:#f1f5f9;color:#475569;}
         .vbox.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;padding:2px 8px;}
         .vbox.virtual-all{background:#534AB7;color:#EEEDFE;}
-        .qty{display:flex;align-items:baseline;justify-content:center;gap:8px;margin-top:auto;padding-top:4px;}
+        .qty{display:flex;align-items:baseline;justify-content:center;gap:8px;flex:none;padding-top:2px;}
         .qty .k{font-size:14px;font-weight:700;color:#64748b;}
-        .qty .v{font-size:56px;font-weight:900;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
+        .qty .v{font-size:48px;font-weight:900;color:var(--ink);line-height:1;font-variant-numeric:tabular-nums;}
         .qty .u{font-size:18px;font-weight:800;color:#64748b;}
-        .band{display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:12px;padding:10px 12px;font-size:15px;font-weight:800;}
+        .band{display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:12px;padding:8px 12px;font-size:14px;font-weight:800;flex:none;}
         .band.found{background:#E1F5EE;color:var(--ok-dark);}
         .band.missing{background:#fee2e2;color:var(--bad);}
         .band small{font-weight:600;font-size:12px;opacity:.8;margin-left:6px;}
@@ -121,14 +123,14 @@
         .card.end .btn{width:auto;min-width:200px;}
 
         /* 하단 고정 버튼 */
-        .bottom{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(251,250,249,.95);backdrop-filter:blur(10px);border-top:1px solid #eeece9;}
-        .bottom .act{flex:1;height:64px;border-radius:16px;font-size:21px;font-weight:900;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
+        .bottom{flex:none;display:flex;gap:10px;padding:6px 12px calc(8px + env(safe-area-inset-bottom));background:var(--bg);}
+        .bottom .act{flex:1;height:60px;border-radius:16px;font-size:21px;font-weight:900;border:0;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;}
         .bottom .none{background:#fff;color:var(--bad);border:2px solid #fecaca;}
         .bottom .none:active{background:#fee2e2;}
         .bottom .scan{background:var(--ok);color:#fff;flex:1.5;}
         .bottom .scan:active{background:var(--ok-dark);}
         .bottom .act:disabled{opacity:.4;}
-        .dots{font-size:12.5px;font-weight:700;color:var(--muted);text-align:center;padding:2px 0 4px;font-variant-numeric:tabular-nums;}
+        .dots{font-size:12px;font-weight:700;color:var(--muted);text-align:center;padding:0 0 2px;font-variant-numeric:tabular-nums;flex:none;}
 
         /* 카메라 */
         .cam-back{position:fixed;inset:0;background:#000;display:none;flex-direction:column;z-index:50;}
@@ -374,7 +376,7 @@
                 <div class="meta"><span class="batch">${r.회차}회차</span><span>${esc(r.출고코드)}</span><span class="sep">·</span><span class="ord">${esc(r.출고번호)}</span><span class="sep">·</span><span>${esc(r.센터)||'-'}</span><span class="sep">·</span><span>${esc(r.출고예정일)||'-'}</span></div>
                 <div class="boxname">${esc(r.박스명)||'-'}<small>${esc(r.중국번호)||''}</small></div>
                 <div class="thumb">${r.img?`<img src="${esc(r.img)}" alt="" loading="lazy" onerror="this.parentNode.textContent='이미지 없음'">`:'상품 이미지 없음'}</div>
-                <div class="pname">${modelBadge(r.상품명)}<br><span class="bc">${esc(r.바코드)||'-'}</span></div>
+                <div class="pname"><div class="nm">${modelBadge(r.상품명)}</div><span class="bc">${esc(r.바코드)||'-'}</span></div>
                 ${boxes?`<div class="boxes">${boxes}</div>`:''}
                 <div class="qty"><span class="k">출고개수</span><span class="v">${esc(r.출고개수)}</span><span class="u">개</span></div>
                 ${st?`<div class="band ${st}"><span>${st==='found'?'✅ 찾음':'❌ 없음'}<small>${esc(r.모바일처리자)||''} ${fmtAt(r.모바일시각)}</small></span><button onclick="clearMark(${i})">취소</button></div>`:''}
