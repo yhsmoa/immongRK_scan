@@ -156,11 +156,41 @@ router.get('/api/shipment/orders', async (req, res) => {
   }
 });
 
+// ── 운송장번호 → 박스 저장 (rk_ship_boxes.invoice_no) ──
+//   invoiceNumbers = { 발주번호: { 박스번호: '600785078033' } } (송장번호 입력 모달 형식, 한 박스에 둘 이상이면 ", " 로 이어진 문자열)
+//   박스 행은 (order_number, box_no) 로 하나뿐이라 그 행만 갱신한다. 없는 박스는 건너뛴다.
+async function saveBoxInvoices(invoiceNumbers) {
+  const updates = [];
+  for (const [orderNo, boxes] of Object.entries(invoiceNumbers || {})) {
+    for (const [boxNo, inv] of Object.entries(boxes || {})) {
+      const v = String(inv == null ? '' : inv).trim();
+      const n = parseInt(boxNo, 10);
+      if (!v || !Number.isFinite(n)) continue;
+      updates.push({ orderNo: String(orderNo).trim(), boxNo: n, inv: v });
+    }
+  }
+  if (!updates.length) return 0;
+  // 박스 수십 개 규모라 순차 갱신으로 충분 (한 쉽먼트 저장당 1회)
+  let saved = 0;
+  for (const u of updates) {
+    const { error } = await S.supabase.from('rk_ship_boxes')
+      .update({ invoice_no: u.inv }).eq('order_number', u.orderNo).eq('box_no', u.boxNo);
+    if (error) throw error;
+    saved++;
+  }
+  return saved;
+}
+
 // ── 쉽먼트 내보내기 ──
 router.post('/api/shipment/export', async (req, res) => {
   try {
     const { orderNumbers, invoiceNumbers } = req.body;
     const orders = await shipScanOrders(orderNumbers);
+
+    // 운송장번호를 박스에 남긴다 (rk_ship_boxes.invoice_no, 2026-10-15) — [순서정리] 가 쿠팡 PDF 의 운송장번호로 우리 박스를 찾는 열쇠.
+    //   엑셀 생성과 무관하게 먼저 저장하고, 실패해도 내보내기는 계속한다 (기록 저장 실패가 쉽먼트 저장을 막지 않게).
+    try { await saveBoxInvoices(invoiceNumbers); }
+    catch (e) { console.error('[rk] shipment/export 운송장번호 저장 실패(무시):', e.message); }
 
     const workbook = await XlsxPopulate.fromBlankAsync();
     const mainSheet = workbook.sheet(0);

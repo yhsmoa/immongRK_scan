@@ -1,0 +1,393 @@
+/**
+ * 쉽먼트 [순서정리] — 쿠팡 부착문서(Label)·동봉문서(Manifest) PDF 를 출고 순서대로 다시 묶고, 장마다 우리 박스 표시를 찍는다.
+ *
+ * 쿠팡이 발송 완료 후 만들어 주는 두 PDF 는 박스 1개 = 1장인데 순서가 쿠팡 기준이라 발주서별로도 묶여 있지 않다.
+ * 우리는 발주서 단위(발주번호-박스번호)로 박스를 싸고 [순서저장] 으로 출고 순서를 스캔해 두므로, 그 순서대로 재배열한다.
+ *
+ * 매칭 열쇠 (2026-10-15 사용자와 정리):
+ *   1) 부착문서 ↔ 동봉문서 : 쉽먼트 바코드(PBL…). 두 문서 모두 장마다 찍혀 있고 박스마다 하나뿐이다.
+ *   2) 부착문서 ↔ 우리 박스 : CJ 운송장번호. 우리가 CJ 에 "발주번호 - 박스번호" 로 접수해 받은 번호라 확정값이다.
+ *        a. rk_ship_boxes.invoice_no ([송장번호 입력] 때 저장) → 없으면
+ *        b. 같이 올린 CJ 운송장 엑셀 (H열 운송장번호 · Z열 "발주번호 - 박스번호") → 없으면
+ *        c. 부착문서의 발주번호 + 상품수량 으로 추정 (같은 발주서에 수량이 같은 박스가 있으면 바뀔 수 있음 → ambiguous 표시)
+ *   동봉문서에는 발주번호가 없다. PBL 로 부착문서와 짝지은 뒤 부착문서의 결과를 따른다.
+ *
+ * 순서: rk_ship_seq (발주서 순서 = 그 발주서 행들의 최소 seq, 박스 순서 = (발주번호, 박스번호) 행의 seq).
+ *   순서 없는 발주서는 뒤에, 부착문서에 처음 나온 순서대로 발주서별로 묶고 박스번호 순. 박스를 못 찾은 장은 맨 뒤.
+ *
+ * API (multipart, 서버는 파일을 보관하지 않는다 — 다운로드 때 같은 파일을 다시 받는다)
+ *   POST /api/shipment/doc-sort/plan   fields label[] · manifest[] · cj[]        → 매칭 결과(JSON)
+ *   POST /api/shipment/doc-sort/build  같은 fields + kind=label|manifest         → 정리된 PDF
+ *
+ * 도장: 각 장 오른쪽 아래 "순서  📋 발주번호-박스번호  📦 N번". 글꼴은 fonts/ (나눔고딕 · Noto Emoji, 둘 다 OFL).
+ *   PDF 안에서 컬러 이모지는 안 되므로 흑백 윤곽(인쇄는 어차피 흑백).
+ */
+const express = require('express');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+const XLSX = require('xlsx');
+const { PDFDocument, rgb } = require('pdf-lib');
+const fontkit = require('@pdf-lib/fontkit');
+const S = require('./rkShared');
+
+const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 40 } });
+const FIELDS = [{ name: 'label', maxCount: 20 }, { name: 'manifest', maxCount: 20 }, { name: 'cj', maxCount: 10 }];
+
+const FONT_DIR = path.join(__dirname, '..', 'fonts');
+const FONT_KR = path.join(FONT_DIR, 'NanumGothic-Regular.ttf');
+const FONT_EMOJI = path.join(FONT_DIR, 'NotoEmoji-Regular.ttf');
+
+// ── PDF 텍스트 추출 (pdfjs-dist, ESM 이라 동적 import — 한 번만) ──
+let pdfjsPromise = null;
+function pdfjs() {
+  if (!pdfjsPromise) pdfjsPromise = import('pdfjs-dist/legacy/build/pdf.mjs');
+  return pdfjsPromise;
+}
+async function pageTexts(buffer) {
+  const lib = await pdfjs();
+  const doc = await lib.getDocument({ data: new Uint8Array(buffer), useSystemFonts: true, disableFontFace: true, verbosity: 0 }).promise;
+  const out = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const tc = await page.getTextContent();
+    out.push(tc.items.map((it) => it.str + (it.hasEOL ? '\n' : ' ')).join(''));
+  }
+  await doc.destroy();
+  return out;
+}
+
+// ── 한 장의 텍스트 → 필드 ──
+//   부착문서: "동탄1 박스 21-7 / 쉽먼트 바코드 PBL0110585751 / CJ 대한통운 600785078033 40 2026-10-12 / 발주 바코드 144199497"
+//   동봉문서: 같은 머리말 + 쉽먼트번호 + 운송장번호, 발주번호는 없다.
+function parsePage(text) {
+  const t = text.replace(/ /g, ' ');
+  const kind = /부착문서/.test(t) ? 'label' : /동봉문서/.test(t) ? 'manifest' : null;
+  const pbl = (t.match(/\b(PBL\d{6,})\b/) || [])[1] || null;
+  const head = t.match(/(\S+)\s+박스\s*(\d+)\s*-\s*(\d+)/);
+  const center = head ? head[1] : null;
+  const boxIdx = head ? parseInt(head[3], 10) : null;      // 쿠팡 기준 박스 순번 (우리 박스번호 아님)
+  const boxTotal = head ? parseInt(head[2], 10) : null;
+  const cj = t.match(/CJ\s*대한통운\s*\n?\s*(\d{10,14})/);
+  const invoice = cj ? cj[1] : ((t.match(/\b(\d{12})\b/) || [])[1] || null);
+  const order = (t.match(/발주\s*바코드\s*\n?\s*(\d{8,10})/) || [])[1] || null;
+  // 상품수량: "운송장번호 수량 날짜" 줄 (부착문서) / "쉽먼트번호 날짜 총수량" 줄 (동봉문서)
+  let qty = null;
+  const q1 = t.match(/(\d{10,14})\s+(\d+)\s+(\d{4}-\d{2}-\d{2})/);
+  const q2 = t.match(/(\d{6,10})\s+(\d{4}-\d{2}-\d{2})\s+(\d+)/);
+  if (q1) qty = parseInt(q1[2], 10);
+  else if (q2) qty = parseInt(q2[3], 10);
+  const shipmentNo = (t.match(/쉽먼트번호[^\n]*\n\s*(\d{6,10})/) || [])[1] || null;
+  // 동봉문서의 상품 바코드 목록 (수량 추정이 애매할 때 우리 박스 아이템 구성과 대조) — 상품명이 여러 줄로 감겨도 바코드만 모은다
+  const barcodes = kind === 'manifest' ? [...new Set((t.match(/\bR\d{9,12}\b/g) || []))] : [];
+  return { kind, pbl, center, boxIdx, boxTotal, invoice, order, qty, shipmentNo, barcodes };
+}
+
+async function parseFiles(files, formKind) {
+  const out = [];   // [{ fileIdx, name, kind, pages:[{ pageIdx, ...fields }] }]
+  for (let i = 0; i < (files || []).length; i++) {
+    const f = files[i];
+    let texts;
+    try { texts = await pageTexts(f.buffer); }
+    catch (e) { out.push({ fileIdx: i, name: f.originalname, kind: null, error: 'PDF 를 읽지 못했습니다: ' + e.message, pages: [] }); continue; }
+    const pages = texts.map((tx, pageIdx) => ({ fileIdx: i, pageIdx, ...parsePage(tx) }));
+    const kinds = new Set(pages.map((p) => p.kind).filter(Boolean));
+    const kind = kinds.size === 1 ? [...kinds][0] : null;
+    out.push({ fileIdx: i, name: f.originalname, kind, formKind, pages,
+      error: kind == null ? '부착문서/동봉문서 형식이 아닙니다.' : kind !== formKind ? `이 파일은 ${kind === 'label' ? '부착문서' : '동봉문서'}입니다 — 다른 칸에 올려주세요.` : null });
+  }
+  return out;
+}
+
+// ── CJ 운송장 엑셀 → 운송장번호 → { orderNo, boxNo } (송장번호 입력 모달과 같은 열: H=7 운송장, Z=25 "발주번호 - 박스") ──
+function parseCjFiles(files) {
+  const map = new Map();
+  let rows = 0;
+  for (const f of files || []) {
+    let wb;
+    try { wb = XLSX.read(f.buffer, { type: 'buffer' }); } catch (_) { continue; }
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    for (let i = 1; i < data.length; i++) {
+      const r = data[i] || [];
+      const inv = r[7], ob = r[25];
+      if (!inv || !ob) continue;
+      const parts = String(ob).split(' - ');
+      if (parts.length !== 2) continue;
+      const boxNo = parseInt(parts[1], 10);
+      if (!Number.isFinite(boxNo)) continue;
+      map.set(String(inv).trim(), { orderNo: parts[0].trim(), boxNo });
+      rows++;
+    }
+  }
+  return { map, rows };
+}
+
+// ── 우리 쪽 데이터: 발주서들의 박스(운송장번호 포함)·박스 수량·출고 순서 ──
+async function loadOurBoxes(orderNos) {
+  if (!orderNos.length) return { boxes: [], qtyByBox: new Map(), orderSeq: new Map(), boxSeq: new Map() };
+  const [boxes, items, seqRows] = await Promise.all([
+    S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
+      .select('id, order_number, box_no, box_size, invoice_no').in('order_number', nos).order('id', { ascending: true }))),
+    S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
+      .select('box_id, barcode, qty').in('order_number', nos).order('id', { ascending: true }))),
+    S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_seq')
+      .select('order_number, box_no, seq').in('order_number', nos).order('id', { ascending: true }))),
+  ]);
+  const qtyByBox = new Map();          // box_id → 수량 합
+  const barcodesByBox = new Map();     // box_id → Set(바코드)
+  for (const it of items) {
+    const q = parseInt(it.qty, 10) || 0;
+    if (q <= 0) continue;
+    qtyByBox.set(it.box_id, (qtyByBox.get(it.box_id) || 0) + q);
+    if (!barcodesByBox.has(it.box_id)) barcodesByBox.set(it.box_id, new Set());
+    if (it.barcode) barcodesByBox.get(it.box_id).add(String(it.barcode).trim());
+  }
+  const orderSeq = new Map(), boxSeq = new Map();
+  for (const r of seqRows) {
+    const cur = orderSeq.get(r.order_number);
+    if (cur == null || r.seq < cur) orderSeq.set(r.order_number, r.seq);
+    if (r.box_no != null) boxSeq.set(`${r.order_number}|${r.box_no}`, r.seq);
+  }
+  return { boxes, qtyByBox, barcodesByBox, orderSeq, boxSeq };
+}
+
+/** 두 바코드 집합이 같은지 */
+function sameSet(a, b) {
+  if (!a || !b || a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+// ── 매칭 + 정렬 ──
+//   labelPages 의 각 장에 { box:{orderNo, boxNo, size}, method, seq } 를 붙이고 정렬 순서를 돌려준다.
+function matchAndSort(labelPages, manifestPages, cjMap, ours) {
+  const invoiceToBox = new Map();   // 운송장번호 → 박스 (DB 저장분)
+  const boxesByOrder = new Map();
+  for (const b of ours.boxes) {
+    const k = String(b.order_number);
+    if (!boxesByOrder.has(k)) boxesByOrder.set(k, []);
+    boxesByOrder.get(k).push(b);
+    for (const inv of String(b.invoice_no || '').split(',').map((s) => s.trim()).filter(Boolean)) {
+      if (!invoiceToBox.has(inv)) invoiceToBox.set(inv, b);
+    }
+  }
+  for (const list of boxesByOrder.values()) list.sort((a, b) => (a.box_no - b.box_no) || (a.id - b.id));
+
+  const used = new Set();   // 이미 배정된 박스 id (수량 추정에서 중복 배정 방지)
+  const firstSeen = new Map();   // 발주번호 → 부착문서에서 처음 나온 순번 (순서 없는 발주서 묶음용)
+  labelPages.forEach((p, i) => { if (p.order && !firstSeen.has(p.order)) firstSeen.set(p.order, i); });
+  // 동봉문서 (PBL → 장) — 수량 추정이 애매할 때 그 박스의 바코드 구성으로 가린다
+  const manifestByPbl = new Map();
+  for (const m of manifestPages) if (m.pbl && !manifestByPbl.has(m.pbl)) manifestByPbl.set(m.pbl, m);
+
+  // 수량 추정은 확정 열쇠(운송장)가 있는 장을 먼저 배정한 뒤에 돌린다 — 운송장으로 잡힌 박스가 추정 후보에서 빠지도록
+  const pending = [];
+  for (const p of labelPages) {
+    p.box = null; p.method = null; p.ambiguous = false;
+    let b = p.invoice ? invoiceToBox.get(p.invoice) : null;
+    if (b) { p.method = 'invoice'; }
+    else if (p.invoice && cjMap.has(p.invoice)) {
+      const m = cjMap.get(p.invoice);
+      b = (boxesByOrder.get(m.orderNo) || []).find((x) => x.box_no === m.boxNo) || null;
+      if (b) p.method = 'cj';
+      else { p.box = { orderNo: m.orderNo, boxNo: m.boxNo, size: null }; p.method = 'cj-only'; }   // 엑셀엔 있는데 DB 박스가 없음 — 번호는 믿고 쓴다
+    }
+    if (b) { used.add(b.id); p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null }; }
+    else if (!p.box) pending.push(p);
+  }
+  // 운송장으로 못 찾은 장: 발주번호 + 수량 → 여러 후보면 동봉문서 바코드 구성으로 가린다 → 그래도 여럿이면 첫 후보(ambiguous 표시)
+  for (const p of pending) {
+    if (!(p.order && p.qty != null)) continue;
+    let cands = (boxesByOrder.get(p.order) || []).filter((x) => !used.has(x.id) && (ours.qtyByBox.get(x.id) || 0) === p.qty);
+    if (cands.length > 1) {
+      const m = p.pbl ? manifestByPbl.get(p.pbl) : null;
+      if (m && m.barcodes && m.barcodes.length) {
+        const set = new Set(m.barcodes);
+        const byItems = cands.filter((x) => sameSet(ours.barcodesByBox.get(x.id), set));
+        if (byItems.length >= 1) cands = byItems;
+      }
+    }
+    if (!cands.length) continue;
+    const b = cands[0];
+    used.add(b.id);
+    p.method = 'qty'; p.ambiguous = cands.length > 1;
+    p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null };
+  }
+  for (const p of labelPages) {
+    if (p.box) {
+      const bs = ours.boxSeq.get(`${p.box.orderNo}|${p.box.boxNo}`);
+      const os = ours.orderSeq.get(p.box.orderNo);
+      p.seq = bs != null ? bs : (os != null ? os : null);
+      p.orderSeq = os != null ? os : null;
+    } else { p.seq = null; p.orderSeq = null; }
+    // 발주번호 대조 — 운송장으로 찾은 박스의 발주번호와 부착문서에 찍힌 발주번호가 다르면 표시
+    p.orderMismatch = !!(p.box && p.order && p.box.orderNo !== p.order);
+  }
+
+  const INF = Number.POSITIVE_INFINITY;
+  const sorted = labelPages.slice().sort((a, b) => {
+    const ak = a.box ? 0 : 1, bk = b.box ? 0 : 1;                 // 박스 못 찾은 장은 맨 뒤
+    if (ak !== bk) return ak - bk;
+    if (!a.box) return a.fileIdx - b.fileIdx || a.pageIdx - b.pageIdx;
+    const ao = a.orderSeq == null ? INF : a.orderSeq, bo = b.orderSeq == null ? INF : b.orderSeq;
+    if (ao !== bo) return ao - bo;                                   // 발주서 순서
+    if (ao === INF) {                                                // 둘 다 순서 없음 → 부착문서 첫 등장 순으로 발주서 묶음
+      const af = firstSeen.get(a.box.orderNo) ?? INF, bf = firstSeen.get(b.box.orderNo) ?? INF;
+      if (af !== bf) return af - bf;
+      if (a.box.orderNo !== b.box.orderNo) return a.box.orderNo < b.box.orderNo ? -1 : 1;
+      return a.box.boxNo - b.box.boxNo;
+    }
+    if (a.box.orderNo !== b.box.orderNo) return a.box.orderNo < b.box.orderNo ? -1 : 1;
+    const as = a.seq == null ? INF : a.seq, bs = b.seq == null ? INF : b.seq;   // 같은 발주서: 박스 순서 → 박스번호
+    if (as !== bs) return as - bs;
+    return a.box.boxNo - b.box.boxNo;
+  });
+
+  // 동봉문서는 PBL 로 부착문서 순서를 따른다
+  const labelPbls = new Set(labelPages.map((p) => p.pbl).filter(Boolean));
+  const unpairedLabel = labelPages.filter((p) => !p.pbl || !manifestByPbl.has(p.pbl));
+  const unpairedManifest = manifestPages.filter((m) => !m.pbl || !labelPbls.has(m.pbl));
+  const dupLabel = labelPages.filter((p, i) => p.pbl && labelPages.findIndex((x) => x.pbl === p.pbl) !== i);
+
+  // 표시용 순번 (정렬된 자리, 1부터) — 도장의 첫 숫자. 순서 없음/못 찾음은 '-' / '?'
+  sorted.forEach((p, i) => { p.pos = i + 1; });
+  return { sorted, manifestByPbl, unpairedLabel, unpairedManifest, dupLabel };
+}
+
+function stampTextOf(p) {
+  if (!p.box) return { pos: '?', mid: `${p.order || '?'}-?`, box: '?' };
+  return { pos: p.seq == null ? '-' : String(p.pos), mid: `${p.box.orderNo}-${p.box.boxNo}`, box: `${p.box.boxNo}번` };
+}
+
+// ── 공통: 업로드 → 파싱 → 매칭 ──
+async function buildPlan(req) {
+  const files = req.files || {};
+  const [labelFiles, manifestFiles] = await Promise.all([parseFiles(files.label, 'label'), parseFiles(files.manifest, 'manifest')]);
+  const cj = parseCjFiles(files.cj);
+  // 칸을 바꿔 올려도 내용으로 종류를 정한다 (오류 표시는 남긴다)
+  const allFiles = [...labelFiles, ...manifestFiles];
+  const labelPages = allFiles.filter((f) => f.kind === 'label').flatMap((f) => f.pages.map((p) => ({ ...p, fileKey: `${f.formKind}:${f.fileIdx}` })));
+  const manifestPages = allFiles.filter((f) => f.kind === 'manifest').flatMap((f) => f.pages.map((p) => ({ ...p, fileKey: `${f.formKind}:${f.fileIdx}` })));
+
+  const orderNos = [...new Set(labelPages.map((p) => p.order).filter(Boolean))];
+  for (const v of cj.map.values()) if (!orderNos.includes(v.orderNo)) orderNos.push(v.orderNo);
+  const ours = await loadOurBoxes(orderNos);
+  const m = matchAndSort(labelPages, manifestPages, cj.map, ours);
+  return { labelFiles, manifestFiles, cj, labelPages, manifestPages, ours, ...m };
+}
+
+function planSummary(plan) {
+  const { labelFiles, manifestFiles, cj, labelPages, manifestPages, sorted, unpairedLabel, unpairedManifest, dupLabel } = plan;
+  const fileInfo = (f) => ({ name: f.name, kind: f.kind, pages: f.pages.length, error: f.error || null });
+  const pageInfo = (p) => ({ pbl: p.pbl, center: p.center, boxIdx: p.boxIdx, boxTotal: p.boxTotal, invoice: p.invoice, order: p.order || (p.box && p.box.orderNo) || null, qty: p.qty });
+  const notFound = sorted.filter((p) => !p.box);
+  const noSeqOrders = [...new Set(sorted.filter((p) => p.box && p.orderSeq == null).map((p) => p.box.orderNo))];
+  const ambiguous = sorted.filter((p) => p.ambiguous);
+  const mismatch = sorted.filter((p) => p.orderMismatch);
+  const fileErrors = [...labelFiles, ...manifestFiles].filter((f) => f.error);
+  const hasLabel = labelPages.length > 0, hasManifest = manifestPages.length > 0;
+  const ok = hasLabel && hasManifest && !unpairedLabel.length && !unpairedManifest.length && !dupLabel.length && !fileErrors.length;
+  return {
+    ok, hasLabel, hasManifest,
+    label: { files: labelFiles.map(fileInfo), pages: labelPages.length },
+    manifest: { files: manifestFiles.map(fileInfo), pages: manifestPages.length },
+    cj: { files: (plan.cjFilesCount != null ? plan.cjFilesCount : 0), rows: cj.rows },
+    pairs: labelPages.length - unpairedLabel.length,
+    unpairedLabel: unpairedLabel.map(pageInfo),
+    unpairedManifest: unpairedManifest.map(pageInfo),
+    dupLabel: dupLabel.map(pageInfo),
+    notFound: notFound.map(pageInfo),
+    ambiguous: ambiguous.map((p) => ({ ...pageInfo(p), box: p.box })),
+    mismatch: mismatch.map((p) => ({ ...pageInfo(p), box: p.box })),
+    noSeqOrders,
+    matched: sorted.filter((p) => p.box).length,
+    withSeq: sorted.filter((p) => p.box && p.orderSeq != null).length,
+    methods: { invoice: sorted.filter((p) => p.method === 'invoice').length, cj: sorted.filter((p) => p.method === 'cj' || p.method === 'cj-only').length, qty: sorted.filter((p) => p.method === 'qty').length },
+    sequence: sorted.map((p) => ({ pos: p.pos, pbl: p.pbl, order: p.box ? p.box.orderNo : p.order, boxNo: p.box ? p.box.boxNo : null, size: p.box ? p.box.size : null,
+      seq: p.seq, orderSeq: p.orderSeq, method: p.method, stamp: stampTextOf(p) })),
+    fileErrors: fileErrors.map((f) => ({ name: f.name, error: f.error })),
+  };
+}
+
+router.post('/api/shipment/doc-sort/plan', upload.fields(FIELDS), async (req, res) => {
+  try {
+    const plan = await buildPlan(req);
+    plan.cjFilesCount = ((req.files || {}).cj || []).length;
+    res.json(planSummary(plan));
+  } catch (e) {
+    console.error('[rk] doc-sort/plan:', e);
+    res.status(500).json({ error: '문서를 분석하지 못했습니다: ' + e.message });
+  }
+});
+
+// ── 정리된 PDF 만들기 ──
+let fontCache = null;
+function fontBytes() {
+  if (!fontCache) fontCache = { kr: fs.readFileSync(FONT_KR), emoji: fs.readFileSync(FONT_EMOJI) };
+  return fontCache;
+}
+async function buildPdf(kind, plan, req) {
+  const { sorted, manifestByPbl } = plan;
+  const files = req.files || {};
+  // 원본 문서 열기 (fileKey → PDFDocument)
+  const srcDocs = new Map();
+  const openSrc = async (fileKey) => {
+    if (srcDocs.has(fileKey)) return srcDocs.get(fileKey);
+    const [formKind, idx] = fileKey.split(':');
+    const f = (files[formKind] || [])[Number(idx)];
+    const doc = await PDFDocument.load(f.buffer);
+    srcDocs.set(fileKey, doc);
+    return doc;
+  };
+  // 출력 순서의 장 목록: 부착문서는 sorted 그대로, 동봉문서는 PBL 로 대응되는 장
+  const seq = [];
+  for (const p of sorted) {
+    if (kind === 'label') seq.push({ page: p, src: p });
+    else { const m = p.pbl ? manifestByPbl.get(p.pbl) : null; if (m) seq.push({ page: p, src: m }); }
+  }
+  const out = await PDFDocument.create();
+  out.registerFontkit(fontkit);
+  const fb = fontBytes();
+  const kr = await out.embedFont(fb.kr, { subset: true });
+  const em = await out.embedFont(fb.emoji, { subset: true });
+
+  for (const { page, src } of seq) {
+    const doc = await openSrc(src.fileKey);
+    const [copied] = await out.copyPages(doc, [src.pageIdx]);
+    out.addPage(copied);
+    const { width } = copied.getSize();
+    const st = stampTextOf(page);
+    // "12  📋 144199497-4  📦 4번" — 오른쪽 아래, 오른쪽 여백 14pt · 아래 10pt
+    const segs = [[st.pos + '  ', kr, 15], ['📋', em, 10], [' ' + st.mid + '  ', kr, 10], ['📦', em, 10], [' ' + st.box, kr, 10]];
+    const w = segs.reduce((n, [t, f, s]) => n + f.widthOfTextAtSize(t, s), 0);
+    const x0 = width - 14 - w, y = 10;
+    copied.drawRectangle({ x: x0 - 4, y: y - 3, width: w + 8, height: 19, color: rgb(1, 1, 1) });   // 밑에 뭐가 있어도 읽히게 흰 바탕
+    let x = x0;
+    for (const [t, f, s] of segs) { copied.drawText(t, { x, y, size: s, font: f, color: rgb(0, 0, 0) }); x += f.widthOfTextAtSize(t, s); }
+  }
+  return { bytes: await out.save(), pages: seq.length };
+}
+
+router.post('/api/shipment/doc-sort/build', upload.fields(FIELDS), async (req, res) => {
+  try {
+    const kind = req.body.kind === 'manifest' ? 'manifest' : 'label';
+    const plan = await buildPlan(req);
+    if (!plan.labelPages.length) return res.status(400).json({ error: '부착문서가 없습니다.' });
+    if (kind === 'manifest' && !plan.manifestPages.length) return res.status(400).json({ error: '동봉문서가 없습니다.' });
+    const { bytes, pages } = await buildPdf(kind, plan, req);
+    if (!pages) return res.status(400).json({ error: '정리할 장이 없습니다.' });
+    const d = new Date(Date.now() + 9 * 3600 * 1000);
+    const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+    const name = `${kind === 'label' ? '부착문서' : '동봉문서'}_순서정리_${ymd}_${pages}장.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(name)}`);
+    res.send(Buffer.from(bytes));
+  } catch (e) {
+    console.error('[rk] doc-sort/build:', e);
+    res.status(500).json({ error: 'PDF 를 만들지 못했습니다: ' + e.message });
+  }
+});
+
+module.exports = router;
