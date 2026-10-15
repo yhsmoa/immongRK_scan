@@ -35,9 +35,14 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 40 } });
 const FIELDS = [{ name: 'label', maxCount: 20 }, { name: 'manifest', maxCount: 20 }, { name: 'cj', maxCount: 10 }];
 
+// 도장 글꼴 — 나눔고딕·Noto Emoji 를 도장에 쓰는 글자(숫자·괄호·"순서번못찾음박스발주"·📋📦)만 남겨 pyftsubset 으로 미리 잘라 둔 파일.
+//   pdf-lib 의 런타임 subset(embedFont subset:true)은 이 글꼴들에서 글리프가 깨져 뷰어에 "X"·숫자 일부만 보였다 (2026-10-15).
+//   그래서 미리 자른 작은 글꼴을 subset 없이 통째로 넣는다. 도장 문구에 새 글자를 추가하면 fonts/ 의 subset 을 다시 만들어야 한다:
+//   pyftsubset NanumGothic-Regular.ttf --output-file=StampKR.ttf --text="<글자들>" --unicodes="U+0020-007E" --no-hinting
+//   pyftsubset NotoEmoji-Regular.ttf --output-file=StampEmoji.ttf --unicodes="U+1F4CB,U+1F4E6" --no-hinting
 const FONT_DIR = path.join(__dirname, '..', 'fonts');
-const FONT_KR = path.join(FONT_DIR, 'NanumGothic-Regular.ttf');
-const FONT_EMOJI = path.join(FONT_DIR, 'NotoEmoji-Regular.ttf');
+const FONT_KR = path.join(FONT_DIR, 'StampKR.ttf');
+const FONT_EMOJI = path.join(FONT_DIR, 'StampEmoji.ttf');
 
 // ── PDF 텍스트 추출 (pdfjs-dist, ESM 이라 동적 import — 한 번만) ──
 let pdfjsPromise = null;
@@ -358,8 +363,8 @@ async function buildPdf(kind, plan, req) {
   const out = await PDFDocument.create();
   out.registerFontkit(fontkit);
   const fb = fontBytes();
-  const kr = await out.embedFont(fb.kr, { subset: true });
-  const em = await out.embedFont(fb.emoji, { subset: true });
+  const kr = await out.embedFont(fb.kr, { subset: false });     // 이미 잘라 둔 글꼴 — 런타임 subset 은 글리프가 깨진다
+  const em = await out.embedFont(fb.emoji, { subset: false });
 
   for (const { page, src } of seq) {
     const doc = await openSrc(src.fileKey);
