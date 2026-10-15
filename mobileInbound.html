@@ -93,6 +93,7 @@
         .orow.done .no,.orow.miss .no{color:var(--ink2);}
         .orow .meta{font-size:12.5px;color:var(--muted);font-weight:500;}
         .orow .no .dash{margin:0 1px;color:var(--ink2);}
+        .orow .meta .qw{margin-left:8px;padding:1px 7px;border-radius:7px;background:var(--fill);color:var(--ink2);font-weight:700;}
         .orow .no .bx{display:inline-block;margin-left:7px;padding:2px 9px;border-radius:999px;background:#EEEDFE;color:#3C3489;font-size:13.5px;font-weight:800;vertical-align:middle;letter-spacing:0;}
         .orow .no .bx.none{background:var(--fill);color:var(--muted);}
         .orow .prog{font-size:14px;font-weight:800;padding:6px 12px;border-radius:999px;background:var(--fill);color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;}
@@ -400,7 +401,7 @@
                 const bx=o.boxNo!=null?`<span class="bx">📦 ${esc(o.boxSize||'')}</span>`:'<span class="bx none">박스 미정</span>';
                 return `<div class="orow ${rowCls}" onclick="startOrder('${esc(orderKey(o))}')">
                     <div class="body"><div class="no">${esc(o.orderNumber)}${o.boxNo!=null?`<span class="dash">-</span>${o.boxNo}`:''}${bx}</div>
-                    <div class="meta">${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}</div></div>${pill}</div>`;
+                    <div class="meta">${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}<span class="qw">${o.qty}개 · ${o.kg}kg</span></div></div>${pill}</div>`;
             }).join('');
         }
         // "144287071-1" (박스 라벨) → 발주번호 + 박스번호 / "144287071" → 발주번호만(전체) / "144287071-0" → 박스 미정(가상 박스에 안 잡힌 행만)

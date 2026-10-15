@@ -292,7 +292,7 @@ function assignVirtualBoxes(rows, virtualByBc) {
 //   박스 라벨(발주번호-박스번호)을 박스 단위로 뽑아 박스 단위로 찾으므로 목록도 박스 단위로. 한 발주서에 가상 박스가 여럿이면 줄이 여럿.
 //   가상 박스에 안 잡힌 행(출고스캔 전·실제 스캔분)은 그 발주서의 "박스 미정"(boxNo null) 줄로 따로.
 //   진행(total/found/missing)은 그 박스 몫의 카드 수 — 한 행이 두 박스에 걸치면 둘 다에 센다 (mobile-list 가 두 박스 모두에서 그 카드를 보여주는 것과 같다)
-// 응답: [{ orderNumber, boxNo(null=미정), boxSize, center, shippingDate, batch, total, found, missing }] — 기본 정렬 › 박스번호 순(미정은 그 발주서 끝)
+// 응답: [{ orderNumber, boxNo(null=미정), boxSize, center, shippingDate, batch, total, found, missing, qty(담을 개수), kg(무게, coupang_items.weight 합) }] — 기본 정렬 › 박스번호 순(미정은 그 발주서 끝)
 router.get('/api/inbound/mobile-orders', async (req, res) => {
   try {
     const code = String(req.query.shipmentCode || '').trim();
@@ -307,6 +307,12 @@ router.get('/api/inbound/mobile-orders', async (req, res) => {
     const byOrder = new Map();   // 발주번호 → 행들 (정렬 순서 유지 = 첫 등장 순)
     for (const r of rows) { const no = String(r.출고번호 || ''); if (!no) continue; if (!byOrder.has(no)) byOrder.set(no, []); byOrder.get(no).push(r); }
     const vb = await loadVirtualBoxes([...byOrder.keys()]);
+    // 무게 — coupang_items.weight(g). 없으면 200 g 으로 본다 (가상스캔 계산기의 기본값과 같다)
+    const gByBc = new Map();
+    const bcs = [...new Set(rows.map(r => r.바코드).filter(Boolean))];
+    for (const part of (await S.chunked(bcs, 200, async (p) => { const { data, error } = await sb.from('coupang_items').select('barcode, weight').in('barcode', p); if (error) throw error; return data || []; })))
+      if (part.barcode && !gByBc.has(part.barcode) && parseInt(part.weight, 10) > 0) gByBc.set(part.barcode, parseInt(part.weight, 10));
+    const kgOf = (bc, qty) => (gByBc.get(bc) || 200) * qty / 1000;
     const list = [];
     for (const [no, ors] of byOrder) {
       const assigned = assignVirtualBoxes(ors, (vb[no] || {}).virtualByBc);
@@ -317,16 +323,19 @@ router.get('/api/inbound/mobile-orders', async (req, res) => {
           if (!byBox.has(k)) {
             const bx = assigned[i].find(b => b.boxNo === k);
             byBox.set(k, { orderNumber: no, boxNo: k || null, boxSize: bx ? bx.boxSize || null : null,
-              center: r.센터 || '', shippingDate: r.출고예정일 || '', batch: r.회차 || 1, total: 0, found: 0, missing: 0 });
+              center: r.센터 || '', shippingDate: r.출고예정일 || '', batch: r.회차 || 1, total: 0, found: 0, missing: 0, qty: 0, kg: 0 });
           }
           const o = byBox.get(k);
+          // 개수·무게 = 이 박스에 담을 분량 (카드의 출고개수와 같은 값: 박스 몫, 미정은 행의 출고개수)
+          const q = k ? (assigned[i].find(b => b.boxNo === k) || {}).virtualQty || 0 : (parseInt(r.출고개수, 10) || 0);
+          o.qty += q; o.kg += kgOf(r.바코드, q);
           o.total++;
           if (r.모바일 === 'found') o.found++;
           else if (r.모바일 === 'missing') o.missing++;
           o.batch = Math.min(o.batch, r.회차 || 1);
         }
       });
-      for (const k of [...byBox.keys()].sort((a, b) => ((a === 0) - (b === 0)) || (a - b))) list.push(byBox.get(k));
+      for (const k of [...byBox.keys()].sort((a, b) => ((a === 0) - (b === 0)) || (a - b))) { const o = byBox.get(k); o.kg = Math.round(o.kg * 10) / 10; list.push(o); }
     }
     res.json(list);
   } catch (e) {
