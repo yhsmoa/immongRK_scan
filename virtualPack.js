@@ -18,6 +18,10 @@
  *  · 출처별 분리(splitBySource, 2026-10-15): 배정량을 입고분/재고분으로 나눠 **입고분을 먼저, 재고분을 그다음** 담고
  *    출처가 바뀌는 자리에서 박스를 마감해 새 박스부터 시작한다 → 한 박스는 한 작업대(입고 작업대 / 재고 선반)에서 끝난다.
  *    기존 마지막 박스 채우기는 먼저 담는 출처(입고)만 한다. 그 대신 출처당 마지막 박스가 덜 찰 수 있다 (박스가 하나 더 나올 수 있음).
+ *  · 입고코드별 기록(2026-10-15 저녁): 담는 항목마다 출처 코드(code = 입고코드 | '재고' | null)를 붙이고, 박스 항목·applyPlan 결과의
+ *    virtualCodes({코드: 개수})로 남긴다 → DB rk_ship_box_items.virtual_codes. 입고코드를 여럿 골라 '전체' 로 돌리면 한 박스에
+ *    여러 입고코드가 섞일 수 있는데(코드가 바뀌어도 박스는 마감하지 않는다), 그래도 박스 안에 어느 코드가 몇 개인지는 남는다.
+ *    이미 담긴 가상 분량도 virtualCodes 가 있으면 그 코드에서 정확히 빼고, 코드 기록이 없는 분량만 "오래된 입고코드부터" 가정으로 뺀다.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -71,6 +75,39 @@
     return { L, kg, flag };
   }
 
+  const STOCK_KEY = '재고';   // virtualCodes 에서 재고분을 가리키는 키 (입고코드와 섞이지 않는 값)
+
+  // virtualCodes 정리 — {코드: 개수} 에서 0 이하·숫자 아님 제거. 빈 객체면 null
+  function normCodes(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    const out = {};
+    for (const k of Object.keys(obj)) { const q = parseInt(obj[k], 10); if (Number.isFinite(q) && q > 0) out[String(k)] = q; }
+    return Object.keys(out).length ? out : null;
+  }
+  const sumCodes = (obj) => Object.values(obj || {}).reduce((s, q) => s + (parseInt(q, 10) || 0), 0);
+  // virtualCodes 에 더하기 (code 가 null 이면 출처 미기록이라 더하지 않는다)
+  function addCode(obj, code, q) {
+    if (code == null || !(q > 0)) return normCodes(obj);
+    const out = Object.assign({}, obj || {});
+    out[String(code)] = (parseInt(out[String(code)], 10) || 0) + q;
+    return out;
+  }
+  // 합이 max 를 넘지 않게 깎는다 — 재고 → 최신 입고코드 순 (개수 편집으로 줄일 때. 화면·서버 같은 규칙)
+  function trimCodes(obj, max) {
+    const out = normCodes(obj);
+    if (!out) return null;
+    let over = sumCodes(out) - Math.max(0, parseInt(max, 10) || 0);
+    if (over <= 0) return out;
+    const order = [STOCK_KEY, ...Object.keys(out).filter((k) => k !== STOCK_KEY).sort((a, b) => String(b).localeCompare(String(a), 'ko', { numeric: true }))];
+    for (const k of order) {
+      if (over <= 0) break;
+      if (!(out[k] > 0)) continue;
+      const t = Math.min(out[k], over); out[k] -= t; over -= t;
+      if (out[k] <= 0) delete out[k];
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
   function sizeOfExisting(no, savedBoxes, boxSizeMap) {
     const saved = (savedBoxes || []).find((b) => Number(b.boxNo) === no);
     if (saved && saved.boxSize) return String(saved.boxSize);
@@ -84,7 +121,7 @@
   /**
    * @param {object} input
    *   products : [{barcode, productName, orderQty(확정), allocQty(출고예정 배정), scannedQty, size:{w,l,h,g}|null, location}]
-   *   boxItems : [{boxNo, barcode, qty}]            — 저장분 + 세션분 (현재 화면 상태)
+   *   boxItems : [{boxNo, barcode, qty, virtualQty?, virtualCodes?}] — 저장분 + 세션분 (현재 화면 상태). virtualCodes = {입고코드|'재고': 개수}
    *   savedBoxes: [{boxNo, boxSize}]
    *   boxSizeMap: Map|object boxNo → size            — 세션에서 정한 크기
    * @param {object} overrides CONFIG 덮어쓰기 (테스트·튜닝용)
@@ -96,12 +133,15 @@
     const savedBoxes = Array.isArray(input.savedBoxes) ? input.savedBoxes : [];
 
     // 이미 담긴 개수를 실제 스캔분/가상스캔분으로 나눠 둔다 (출처 귀속이 다르다 — 아래 주석)
-    const scannedVirtualByBc = new Map(), scannedRealByBc = new Map();
+    //   가상 분량 중 virtualCodes 로 출처(입고코드·재고)가 기록된 개수는 따로 모은다 → 그 코드에서 정확히 뺀다
+    const scannedVirtualByBc = new Map(), scannedRealByBc = new Map(), scannedCodesByBc = new Map();
     for (const it of boxItems) {
       const k = String(it.barcode || '').trim(); if (!k) continue;
       const q = Math.max(0, parseInt(it.qty, 10) || 0), v = Math.min(q, Math.max(0, parseInt(it.virtualQty, 10) || 0));
       scannedVirtualByBc.set(k, (scannedVirtualByBc.get(k) || 0) + v);
       scannedRealByBc.set(k, (scannedRealByBc.get(k) || 0) + (q - v));
+      const codes = trimCodes(it.virtualCodes, v);
+      if (codes) { const acc = scannedCodesByBc.get(k) || {}; for (const c of Object.keys(codes)) acc[c] = (acc[c] || 0) + codes[c]; scannedCodesByBc.set(k, acc); }
     }
 
     // ── 1. 바코드별 단위·목표 ──
@@ -151,34 +191,53 @@
         const sv = scannedVirtualByBc.get(bc) || 0, sr = scannedRealByBc.get(bc) || 0;
         let sVirt = Math.min(scanned, sv + Math.max(0, scanned - sv - sr)), sReal = Math.max(0, scanned - sVirt);
         const remByCode = {};
-        for (const c of codes) { const t = Math.min(capQ[c], sVirt); remByCode[c] = capQ[c] - t; sVirt -= t; }
-        let remStk = Math.max(0, stkT - sVirt);
+        for (const c of codes) remByCode[c] = capQ[c];
+        let remStk = stkT;
+        // 출처가 기록된 가상 분량(virtualCodes)은 그 코드·재고에서 정확히 뺀다. 기록에 있지만 지금 배정에 없는 코드 분량은 미기록처럼 다룬다
+        const known = scannedCodesByBc.get(bc) || {};
+        let knownUsed = 0;
+        for (const c of Object.keys(known)) {
+          if (c === STOCK_KEY) { const t = Math.min(remStk, known[c]); remStk -= t; knownUsed += t; }
+          else if (remByCode[c] != null) { const t = Math.min(remByCode[c], known[c]); remByCode[c] -= t; knownUsed += t; }
+        }
+        sVirt = Math.max(0, sVirt - knownUsed);
+        // 출처 미기록 가상 분량 → 입고 오래된 코드부터, 그다음 재고 (예전 저장분)
+        for (const c of codes) { const t = Math.min(remByCode[c], sVirt); remByCode[c] -= t; sVirt -= t; }
+        { const t = Math.min(remStk, sVirt); remStk -= t; sVirt -= t; }
         { const t = Math.min(remStk, sReal); remStk -= t; sReal -= t; }
         for (const c of codes) { const t = Math.min(remByCode[c], sReal); remByCode[c] -= t; sReal -= t; }
-        if (sv > 0 && codes.length > 1) attributedScan = true;
+        if (sv - knownUsed > 0 && codes.length > 1) attributedScan = true;
         // 입고코드 선택: 고른 코드의 남은 입고분만 담고, 다른 코드 분량은 '다른 입고코드' 로 제외 (코드 정보 없는 '*' 도 다른 코드 취급)
         const sel = Array.isArray(cfg.inboundCodes) && cfg.inboundCodes.length ? new Set(cfg.inboundCodes.map(String)) : null;
         let remInb = 0, remOther = 0;
-        for (const c of codes) { if (!sel || sel.has(String(c))) remInb += remByCode[c]; else remOther += remByCode[c]; }
+        const inbByCode = [];   // 담을 입고분을 코드별로 (코드 오래된 순) — 항목마다 code 를 붙여 박스 행에 기록한다
+        for (const c of codes) {
+          if (!sel || sel.has(String(c))) { remInb += remByCode[c]; if (remByCode[c] > 0) inbByCode.push([c === '*' ? null : c, remByCode[c]]); }
+          else remOther += remByCode[c];
+        }
         if (remOther > 0) excluded.push({ barcode: bc, productName: p.productName || '', reason: '다른 입고코드', qty: remOther });
+        const pushInb = () => { for (const [c, q] of inbByCode) items.push(Object.assign({}, base, { qty: q, source: '입고', code: c })); };
         if (filter) {
           // 대상 선택(입고만/재고만): 그 출처 분량만 담고 나머지는 제외로 기록
           const q = filter === '입고' ? remInb : filter === '재고' ? remStk : remain;
-          if (q > 0) items.push(Object.assign({}, base, { qty: q, source: filter }));
-          else excluded.push({ barcode: bc, productName: p.productName || '', reason: `${filter} 배정 없음` });
+          if (q <= 0) excluded.push({ barcode: bc, productName: p.productName || '', reason: `${filter} 배정 없음` });
+          else if (filter === '입고') pushInb();
+          else if (filter === '재고') items.push(Object.assign({}, base, { qty: q, source: '재고', code: STOCK_KEY }));
+          else items.push(Object.assign({}, base, { qty: q, source: filter, code: null }));
         } else {
-          if (remInb > 0) items.push(Object.assign({}, base, { qty: remInb, source: '입고' }));
-          if (remStk > 0) items.push(Object.assign({}, base, { qty: remStk, source: '재고' }));
+          pushInb();
+          if (remStk > 0) items.push(Object.assign({}, base, { qty: remStk, source: '재고', code: STOCK_KEY }));
         }
       } else if (filter) {
         excluded.push({ barcode: bc, productName: p.productName || '', reason: '출처 정보 없음' });
       } else {
-        items.push(Object.assign({}, base, { qty: remain, source: null }));
+        items.push(Object.assign({}, base, { qty: remain, source: null, code: null }));
       }
     }
-    // 출처 순서(입고 → 재고, 출처 정보 없는 것은 맨 앞) → 수량 많은 것부터 → 바코드순
+    // 출처 순서(입고 → 재고, 출처 정보 없는 것은 맨 앞) → 입고코드 오래된 순 → 수량 많은 것부터 → 바코드순
     const srcRank = (s) => { if (s == null) return 0; const i = cfg.sourceOrder.indexOf(s); return i < 0 ? 99 : i + 1; };
-    items.sort((a, b) => (srcRank(a.source) - srcRank(b.source)) || (b.qty - a.qty)
+    const codeKey = (it) => it.source === '입고' && it.code != null ? String(it.code) : '';
+    items.sort((a, b) => (srcRank(a.source) - srcRank(b.source)) || codeKey(a).localeCompare(codeKey(b), 'ko', { numeric: true }) || (b.qty - a.qty)
       || String(a.barcode).localeCompare(String(b.barcode), 'ko', { numeric: true }));
     const sources = [...new Set(items.map((i) => i.source))];   // 담는 순서대로의 출처 목록
     const splitActive = sources.length > 1;
@@ -262,13 +321,16 @@
       return Math.max(0, Math.min(byL, byKg));
     };
     const put = (b, it, n) => {
-      const ex = b.items.find((x) => x.barcode === it.barcode && (x.source || null) === (it.source || null));
+      const code = it.code == null ? null : String(it.code);
+      const ex = b.items.find((x) => x.barcode === it.barcode && (x.source || null) === (it.source || null) && (x.code || null) === code);
       if (ex) ex.qty += n;
-      else b.items.push({ barcode: it.barcode, productName: it.productName, location: it.location, qty: n, unitL: it.unitL, unitKg: it.unitKg, flag: it.flag, source: it.source || null });
+      else b.items.push({ barcode: it.barcode, productName: it.productName, location: it.location, qty: n, unitL: it.unitL, unitKg: it.unitKg, flag: it.flag, source: it.source || null, code });
       b.usedL += n * it.unitL; b.usedKg += n * it.unitKg; it.qty -= n;
       // 박스의 출처 표시 — 한 출처면 그 출처, 둘 이상이면 '혼합' (출처 분리 중에는 새 박스가 섞이지 않는다)
       if (b.source === undefined || b.source === null) b.source = it.source || null;
       else if (it.source && b.source !== it.source) b.source = '혼합';
+      // 박스에 담는 분량의 코드별 개수 (입고코드 · '재고') — 카드 배지·저장(virtualCodes)용. 코드 미기록 분량은 세지 않는다
+      if (code != null) { b.codes = b.codes || {}; b.codes[code] = (b.codes[code] || 0) + n; }
     };
 
     let cursor = 0;                 // boxes[] 의 현재 위치 (기존 박스 → 신규 박스 순)
@@ -301,6 +363,9 @@
       b.fillPct = b.cap ? (b.usedL / b.cap) * 100 : 0;
       b.fillPct0 = b.cap ? (b.usedL0 / b.cap) * 100 : 0;
       b.addQty = b.items.reduce((s, i) => s + i.qty, 0);
+      b.codes = normCodes(b.codes);
+      b.inboundCodes = b.codes ? Object.keys(b.codes).filter((k) => k !== STOCK_KEY).sort((x, y) => String(x).localeCompare(String(y), 'ko', { numeric: true })) : [];
+      if (b.inboundCodes.length > 1) b.warnings.push(`입고코드 ${b.inboundCodes.join(', ')} 분량이 한 박스에 섞입니다 — 모바일 입고에서 입고일자 확인 안내가 뜹니다.`);
       if (b.sizeFrom) b.warnings.push(`크기 변경 ${b.sizeFrom} → ${b.size} — 확정하면 박스 크기도 바뀝니다.`);
       if (hasKg && b.usedKg >= cfg.maxKg * 0.9) b.warnings.push(`무게 ${b.usedKg.toFixed(1)} kg — 상한 ${cfg.maxKg} kg 에 근접`);
       if (b.items.some((i) => i.flag)) b.warnings.push(`사이즈 가정 상품 ${b.items.filter((i) => i.flag).length}종 포함`);
@@ -332,15 +397,17 @@
    *   · 박스 아이템: 같은 박스·바코드 행이 있으면 qty 와 virtualQty 에 담는 개수를 더하고, 없으면 새 행(qty = virtualQty = 담는 개수)
    *   · 박스 크기: 신규 박스·크기 UP 박스는 계획의 크기, 나머지 기존 박스는 지금 크기(boxSizeMap → savedBoxes → '극소')
    *   · 박스 목록: 아이템이 있는 박스 + 저장된(빈) 박스 전부 — 저장 API 가 SET 이라 빠뜨리면 그 박스가 사라진다
-   * @param {object} input  planVirtualScan 과 같은 { boxItems:[{boxNo,barcode,productName,qty,virtualQty}], savedBoxes, boxSizeMap }
+   * @param {object} input  planVirtualScan 과 같은 { boxItems:[{boxNo,barcode,productName,qty,virtualQty,virtualCodes?}], savedBoxes, boxSizeMap }
    * @param {object} plan   planVirtualScan 결과 (ok 인 것)
-   * @returns {{ boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty,virtualQty}], addQty, boxCnt, upCnt }}
-   *          — POST /api/ship-scan/save 의 body 그대로 + 반영 요약
+   * @returns {{ boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty,virtualQty,virtualCodes}], addQty, boxCnt, upCnt }}
+   *          — POST /api/ship-scan/save 의 body 그대로 + 반영 요약. virtualCodes = {입고코드|'재고': 개수} (코드 미기록 분량은 없음)
    */
   function applyPlan(input, plan) {
-    const items = (Array.isArray(input.boxItems) ? input.boxItems : []).map((i) => ({
-      boxNo: Number(i.boxNo), barcode: String(i.barcode || '').trim(), productName: i.productName || '',
-      qty: Math.max(0, parseInt(i.qty, 10) || 0), virtualQty: Math.max(0, parseInt(i.virtualQty, 10) || 0) }));
+    const items = (Array.isArray(input.boxItems) ? input.boxItems : []).map((i) => {
+      const virtualQty = Math.max(0, parseInt(i.virtualQty, 10) || 0);
+      return { boxNo: Number(i.boxNo), barcode: String(i.barcode || '').trim(), productName: i.productName || '',
+        qty: Math.max(0, parseInt(i.qty, 10) || 0), virtualQty, virtualCodes: trimCodes(i.virtualCodes, virtualQty) };
+    });
     const sizeByNo = new Map();
     for (const b of (Array.isArray(input.savedBoxes) ? input.savedBoxes : [])) if (b && b.boxSize) sizeByNo.set(Number(b.boxNo), b.boxSize);
     const m = input.boxSizeMap;
@@ -358,8 +425,8 @@
         const q = Math.max(0, parseInt(it.qty, 10) || 0);
         if (!q) continue;
         const x = items.find((r) => r.boxNo === b.boxNo && r.barcode === it.barcode);
-        if (x) { x.qty += q; x.virtualQty += q; }
-        else items.push({ boxNo: b.boxNo, barcode: it.barcode, productName: it.productName || '', qty: q, virtualQty: q });
+        if (x) { x.qty += q; x.virtualQty += q; x.virtualCodes = addCode(x.virtualCodes, it.code, q); }
+        else items.push({ boxNo: b.boxNo, barcode: it.barcode, productName: it.productName || '', qty: q, virtualQty: q, virtualCodes: addCode(null, it.code, q) });
         addQty += q;
       }
     }
@@ -369,5 +436,5 @@
     return { boxes, items, addQty, boxCnt, upCnt };
   }
 
-  return { CONFIG, planVirtualScan, applyPlan, capL, unitOf };
+  return { CONFIG, STOCK_KEY, planVirtualScan, applyPlan, capL, unitOf, normCodes, addCode, trimCodes, sumCodes };
 }));

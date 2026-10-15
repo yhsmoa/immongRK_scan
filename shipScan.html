@@ -157,6 +157,8 @@
         .vs-tag.src-inb{background:#dbeafe;color:#1d4ed8;}  /* 입고분 = 파랑 */
         .vs-tag.src-stk{background:#dcfce7;color:#15803d;}  /* 재고분 = 초록 */
         .vs-tag.src-mix{background:#f1f5f9;color:#475569;}  /* 기존 박스에 더해 섞임 */
+        .vs-tag.mixed{background:#fef3c7;color:#b45309;}    /* 한 박스에 입고코드 둘 이상 */
+        .vs-code{font-size:10px;font-weight:700;color:#1d4ed8;background:#eff6ff;border-radius:4px;padding:0 4px;margin-left:4px;}   /* 행의 입고코드 */
         .vs-tags{align-items:center;}
         .vs-tags .arrow{font-size:12px;color:#70727c;}
         .vs-box.old{background:#f3f4f7;}                   /* 기존 박스에 추가하는 카드 = 회색 보드 */
@@ -195,6 +197,7 @@
         .vs-foot .btn.primary{background:#3f49c4;border-color:#3f49c4;box-shadow:none;}
         .vs-foot .btn.primary:hover{background:#333cab;border-color:#333cab;}
         .vtag{display:inline-block;margin-left:6px;font-size:11px;font-weight:700;color:#7c3aed;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;padding:0 6px;vertical-align:middle;}
+        .vtag.code{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe;}   /* 가상 분량의 입고코드별 개수 */
         /* 가상스캔 박스 — 목록 버튼·박스 선택 모달. 쉽먼트 배지와 같은 규칙:
            virtual-part(실제+가상 섞임) = 연보라 바탕 + 보라 테두리 · virtual-all(전부 가상) = 진보라 채움 + 흰 글자 */
         .lbx.virtual-part{background:#EEEDFE;border:1.5px solid #7F77DD;}
@@ -452,6 +455,10 @@
         let bcDetailBc=null;          // 바코드 상세 패널 대상 바코드
         const prodByBarcode=bc=>products.find(p=>p.barcode===bc);
         const boxItemFor=(box,bc)=>boxItems.find(i=>i.boxNo===box&&i.barcode===bc);
+        // virtualCodes 합치기 (박스 합치기용) — {코드: 개수} 두 개를 더한다
+        function mergeCodes(a,b){ let out=VirtualPack.normCodes(a); for(const [c,q] of Object.entries(VirtualPack.normCodes(b)||{})) out=VirtualPack.addCode(out,c,q); return out; }
+        // 입고코드 표시 — virtualCodes 에서 재고를 뺀 코드들을 "1011 ×34 · 0930 ×7" 로. 둘 이상이면 섞인 박스 행
+        function codesLabel(codes){ const o=VirtualPack.normCodes(codes); if(!o) return ''; return Object.keys(o).filter(k=>k!==VirtualPack.STOCK_KEY).sort((x,y)=>x.localeCompare(y,'ko',{numeric:true})).map(k=>`${k} ×${o[k]}`).join(' · '); }
         function recomputeScanned(){ const m=new Map(); for(const it of boxItems) m.set(it.barcode,(m.get(it.barcode)||0)+it.qty); products.forEach(p=>p.scannedQty=m.get(p.barcode)||0); }
 
         const orderInput=document.getElementById('orderInput');
@@ -491,7 +498,9 @@
                 const nameByBc=new Map(products.map(p=>[p.barcode,p.productName]));
                 // 저장된 박스 아이템(박스별)
                 // virtualQty = qty 중 [가상스캔]으로 들어온 개수 (DB rk_ship_box_items.virtual_qty) → 화면 '가상' 태그
-                boxItems=(data.items||[]).map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName||nameByBc.get(i.barcode)||'', qty:i.qty, virtualQty:Number(i.virtualQty)||0}));
+                // virtualCodes = 가상 분량의 출처별 개수 {입고코드|'재고': n} (DB virtual_codes). null = 출처 미기록(예전 저장분)
+                boxItems=(data.items||[]).map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName||nameByBc.get(i.barcode)||'', qty:i.qty, virtualQty:Number(i.virtualQty)||0,
+                    virtualCodes:VirtualPack.trimCodes(i.virtualCodes, Number(i.virtualQty)||0)}));
                 recomputeScanned();
                 // 박스 목록 (저장분)
                 savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt,isVirtual:!!b.isVirtual,
@@ -701,7 +710,7 @@
             return `<tr>
                 <td class="ctr">📦 ${esc(it.boxNo)}</td>
                 <td class="bc">${esc(it.barcode)}</td>
-                <td class="pname">${pnameHtml(it.productName)}${vtagHtml(Number(it.virtualQty)||0,it.qty)}</td>
+                <td class="pname">${pnameHtml(it.productName)}${vtagHtml(Number(it.virtualQty)||0,it.qty)}${codesLabel(it.virtualCodes)?`<span class="vtag code" title="가상 분량의 입고코드별 개수">${esc(codesLabel(it.virtualCodes))}</span>`:''}</td>
                 <td class="ctr qedit" onclick="editItemQty(${it.boxNo},'${esc(it.barcode)}')">${it.qty}</td>
                 <td class="ctr"><button class="del-emoji" title="삭제" onclick="delItem(${it.boxNo},'${esc(it.barcode)}')">🗑️</button></td>
             </tr>`;
@@ -779,8 +788,8 @@
             let movedQty=0;
             for(const it of moving){
                 const exist=boxItemFor(targetNo,it.barcode);
-                if(exist){ exist.qty+=it.qty; exist.virtualQty=(exist.virtualQty||0)+(it.virtualQty||0); }   // 가상 분량도 같이 옮긴다
-                else boxItems.push({boxNo:targetNo, barcode:it.barcode, productName:it.productName, qty:it.qty, virtualQty:it.virtualQty||0});
+                if(exist){ exist.qty+=it.qty; exist.virtualQty=(exist.virtualQty||0)+(it.virtualQty||0); exist.virtualCodes=mergeCodes(exist.virtualCodes,it.virtualCodes); }   // 가상 분량(출처 기록 포함)도 같이 옮긴다
+                else boxItems.push({boxNo:targetNo, barcode:it.barcode, productName:it.productName, qty:it.qty, virtualQty:it.virtualQty||0, virtualCodes:VirtualPack.normCodes(it.virtualCodes)});
                 movedQty+=it.qty;
             }
             boxItems=boxItems.filter(i=>i.boxNo!==from);
@@ -844,7 +853,7 @@
         function setItemQty(boxNo,barcode,qty){
             let it=boxItemFor(boxNo,barcode);
             if(qty<=0){ if(it) boxItems=boxItems.filter(x=>x!==it); }
-            else if(it){ it.qty=qty; it.virtualQty=Math.min(it.virtualQty||0, qty); }   // 줄이면 가상 분량부터 깎인 것으로 본다 (가상 ≤ 전체)
+            else if(it){ it.qty=qty; it.virtualQty=Math.min(it.virtualQty||0, qty); it.virtualCodes=VirtualPack.trimCodes(it.virtualCodes,it.virtualQty); }   // 줄이면 가상 분량부터 깎인 것으로 본다 (가상 ≤ 전체). 출처 기록은 재고→최신 입고코드 순으로 깎인다
             else{ const prod=prodByBarcode(barcode); boxItems.push({boxNo,barcode,productName:prod?prod.productName:'',qty,virtualQty:0}); }
             recomputeScanned(); dirty=true;
             renderAll();
@@ -885,7 +894,7 @@
             if(!dirty){ toast('저장할 변경이 없습니다.'); return false; }
             const boxNos=[...new Set([...boxItems.map(i=>i.boxNo), ...savedBoxes.map(b=>b.boxNo)])];
             const boxes=boxNos.map(no=>({boxNo:no, boxSize:boxSizeOf(no)}));
-            const items=boxItems.map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName, qty:i.qty, virtualQty:i.virtualQty||0}));
+            const items=boxItems.map(i=>({boxNo:i.boxNo, barcode:i.barcode, productName:i.productName, qty:i.qty, virtualQty:i.virtualQty||0, virtualCodes:VirtualPack.trimCodes(i.virtualCodes,i.virtualQty||0)}));
             const btn=document.getElementById('saveBtn'); btn.disabled=true;
             toast('저장 중…');
             try{
@@ -1020,7 +1029,7 @@
                 html+=`<div class="vs-box${b.isNew?'':' old'}">
                     <div class="vs-box-h">
                         <span class="vs-box-no"><small>박스</small>${b.boxNo}</span>
-                        <div class="vs-tags">${sizeTags}<span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span>${b.source?`<span class="vs-tag ${({'입고':'src-inb','재고':'src-stk','혼합':'src-mix'})[b.source]||''}" title="이 박스에 담는 분량의 출처">${esc(b.source)}${b.isNew?'':' 추가'}</span>`:''}</div>
+                        <div class="vs-tags">${sizeTags}<span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span>${b.source?`<span class="vs-tag ${({'입고':'src-inb','재고':'src-stk','혼합':'src-mix'})[b.source]||''}" title="이 박스에 담는 분량의 출처">${esc(b.source)}${b.isNew?'':' 추가'}</span>`:''}${(b.inboundCodes||[]).map(c=>`<span class="vs-tag src-inb${(b.inboundCodes||[]).length>1?' mixed':''}" title="입고코드 ${esc(c)} 분량">${esc(c)} ×${b.codes[c]}</span>`).join('')}</div>
                         <div class="vs-prog">
                             <div class="lab"><span>${pctLabel}</span><span>${fmtL(b.usedL)}/${fmtL(b.cap)} L · ${fmtKg(b.usedKg)} kg</span></div>
                             <div class="vs-bar"><i class="after" style="width:${p1}%"></i><i style="width:${p0}%"></i></div>
@@ -1030,7 +1039,7 @@
                 if(b.items.length){
                     html+=`<div class="vs-items">
                         <div class="vs-row hd"><span>바코드</span><span>상품명</span><span class="lc">위치</span><span style="text-align:right">담을 개수</span></div>`
-                        +b.items.map(it=>`<div class="vs-row"><span class="bc">${esc(it.barcode)}</span><span class="nm">${pnameHtml(it.productName)}${it.flag?' <span class="vs-assume-flag" title="사이즈 가정">⚠</span>':''}</span><span class="lc">${esc(it.location||'-')}</span><span class="q">${it.qty}</span></div>`).join('')
+                        +b.items.map(it=>`<div class="vs-row"><span class="bc">${esc(it.barcode)}${it.source==='입고'&&it.code?` <small class="vs-code">${esc(it.code)}</small>`:''}</span><span class="nm">${pnameHtml(it.productName)}${it.flag?' <span class="vs-assume-flag" title="사이즈 가정">⚠</span>':''}</span><span class="lc">${esc(it.location||'-')}</span><span class="q">${it.qty}</span></div>`).join('')
                         +`</div>`;
                 }else{
                     html+=`<div class="vs-empty">남은 용량이 없어 추가로 담지 않습니다.</div>`;
@@ -1072,9 +1081,10 @@
                 for(const it of b.items){
                     const prod=prodByBarcode(it.barcode);
                     // 가상 분량(virtualQty)을 같이 올린다 → 저장 시 DB virtual_qty / 박스 is_virtual 로 남는다 (기존 박스에 채워도 그 박스가 '가상' 표시됨)
+                    //   출처 코드(it.code = 입고코드 | '재고')도 virtualCodes 에 더해 저장 → DB virtual_codes (전체로 돌려 여러 입고코드가 한 박스에 섞여도 코드별 개수가 남는다)
                     let x=boxItemFor(b.boxNo,it.barcode);
-                    if(x){ x.qty+=it.qty; x.virtualQty=(x.virtualQty||0)+it.qty; }
-                    else boxItems.push({boxNo:b.boxNo, barcode:it.barcode, productName:(prod&&prod.productName)||it.productName||'', qty:it.qty, virtualQty:it.qty});
+                    if(x){ x.qty+=it.qty; x.virtualQty=(x.virtualQty||0)+it.qty; x.virtualCodes=VirtualPack.addCode(x.virtualCodes,it.code,it.qty); }
+                    else boxItems.push({boxNo:b.boxNo, barcode:it.barcode, productName:(prod&&prod.productName)||it.productName||'', qty:it.qty, virtualQty:it.qty, virtualCodes:VirtualPack.addCode(null,it.code,it.qty)});
                     records.push({boxNo:b.boxNo, boxSize:b.size, barcode:it.barcode, productName:(prod&&prod.productName)||it.productName||'', qty:it.qty, virtual:true});
                     addQty+=it.qty;
                 }

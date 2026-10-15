@@ -368,4 +368,53 @@ test('이미 담긴 분량의 출처: 실제 스캔은 재고부터, 가상스�
   assert.ok(!run([p], {}, { sourceFilter: '입고', inboundCodes: ['1011'] }).ok);
 });
 
+// ── 입고코드별 기록 (virtualCodes, 2026-10-15 저녁) ──
+const { trimCodes, addCode, STOCK_KEY } = require('../virtualPack');
+const srcProd = (bc, byCode, stock, opt = {}) => Object.assign(prod(bc, Object.values(byCode).reduce((s, q) => s + q, 0) + stock, opt),
+  { allocInbound: Object.values(byCode).reduce((s, q) => s + q, 0), allocStock: stock, allocInboundByCode: byCode });
+
+test('전체 + 입고코드 둘: 항목마다 코드가 붙고 박스에 코드별 개수(codes)·섞임 경고가 남는다', () => {
+  const p = srcProd('A', { '1011': 2, '0930': 3 }, 0);
+  const plan = run([p], {}, { splitBySource: true, inboundCodes: ['0930', '1011'] });
+  assert.ok(plan.ok);
+  assert.strictEqual(plan.boxes.length, 1);
+  const b = plan.boxes[0];
+  assert.deepStrictEqual(b.items.map((i) => [i.code, i.qty]), [['0930', 3], ['1011', 2]]);   // 오래된 코드부터
+  assert.deepStrictEqual(b.codes, { '0930': 3, '1011': 2 });
+  assert.deepStrictEqual(b.inboundCodes, ['0930', '1011']);
+  assert.ok(b.warnings.some((w) => w.includes('섞입니다')));
+  // applyPlan → 저장 행에 virtualCodes
+  const body = applyPlan({ boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, plan);
+  assert.deepStrictEqual(body.items, [{ boxNo: 1, barcode: 'A', productName: 'A', qty: 5, virtualQty: 5, virtualCodes: { '0930': 3, '1011': 2 } }]);
+});
+
+test('입고코드 하나만 고르면 그 코드만 기록되고, 재고분은 재고 키로 기록된다', () => {
+  const p = srcProd('A', { '1011': 2, '0930': 3 }, 4);
+  const plan = run([p], {}, { splitBySource: true, inboundCodes: ['1011'] });
+  const body = applyPlan({ boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, plan);
+  const byBox = Object.fromEntries(body.items.map((i) => [i.boxNo, i.virtualCodes]));
+  assert.deepStrictEqual(byBox, { 1: { '1011': 2 }, 2: { [STOCK_KEY]: 4 } });   // 입고 박스 / 재고 박스 (출처별 분리)
+  assert.ok(plan.excluded.some((e) => e.reason === '다른 입고코드' && e.qty === 3));
+});
+
+test('이미 담긴 가상 분량에 코드 기록이 있으면 그 코드에서 정확히 뺀다 (오래된 코드부터 가정하지 않는다)', () => {
+  // 0930 3 · 1011 2 배정, 1011 분량 2개가 이미 가상으로 담겨 있음 (코드 기록 있음)
+  const p = srcProd('A', { '1011': 2, '0930': 3 }, 0, { scanned: 2 });
+  const boxItems = [{ boxNo: 1, barcode: 'A', qty: 2, virtualQty: 2, virtualCodes: { '1011': 2 } }];
+  const plan = run([p], { boxItems }, { splitBySource: true, inboundCodes: ['0930', '1011'] });
+  assert.deepStrictEqual(plan.boxes.flatMap((b) => b.items.map((i) => [i.code, i.qty])), [['0930', 3]]);
+  assert.ok(!plan.warnings.some((w) => w.includes('오래된 입고코드부터')));
+  // 코드 기록이 없으면(예전 저장분) 전처럼 오래된 코드(0930)부터 뺀 것으로 본다 → 0930 1 + 1011 2
+  const legacy = run([p], { boxItems: [{ boxNo: 1, barcode: 'A', qty: 2, virtualQty: 2 }] }, { splitBySource: true, inboundCodes: ['0930', '1011'] });
+  assert.deepStrictEqual(legacy.boxes.flatMap((b) => b.items.map((i) => [i.code, i.qty])), [['0930', 1], ['1011', 2]]);
+  assert.ok(legacy.warnings.some((w) => w.includes('오래된 입고코드부터')));
+});
+
+test('trimCodes/addCode: 합이 상한을 넘으면 재고 → 최신 입고코드 순으로 깎는다', () => {
+  assert.deepStrictEqual(trimCodes({ [STOCK_KEY]: 2, '0930': 3, '1011': 4 }, 5), { '0930': 3, '1011': 2 });
+  assert.strictEqual(trimCodes({ '1011': 4 }, 0), null);
+  assert.deepStrictEqual(addCode(addCode(null, '1011', 2), '1011', 3), { '1011': 5 });
+  assert.strictEqual(addCode(null, null, 3), null);   // 코드 미기록은 더하지 않는다
+});
+
 console.log(`\n${n} tests passed`);

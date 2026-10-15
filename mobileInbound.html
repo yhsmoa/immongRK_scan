@@ -186,6 +186,18 @@
 
         #toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;line-height:1.5;box-shadow:0 8px 24px rgba(23,22,26,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:60;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+        /* 입고일자 확인 모달 — 한 발주서(또는 라벨로 들어온 박스)에 입고코드가 둘 이상 섞여 있을 때 카드 진입 전에 띄운다 */
+        .mix-back{position:fixed;inset:0;background:rgba(23,22,26,.55);display:none;align-items:center;justify-content:center;z-index:55;padding:24px;}
+        .mix-back.show{display:flex;}
+        .mix-card{background:#fff;border-radius:20px;padding:22px 20px 18px;width:100%;max-width:340px;box-shadow:0 16px 40px rgba(0,0,0,.25);}
+        .mix-card h2{margin:0 0 10px;font-size:19px;font-weight:900;color:var(--coral);display:flex;align-items:center;gap:8px;letter-spacing:-.02em;}
+        .mix-card h2 .ex{width:26px;height:26px;border-radius:50%;background:var(--coral);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;}
+        .mix-card p{margin:0 0 12px;font-size:15px;line-height:1.55;color:var(--ink);white-space:pre-line;}
+        .mix-card p b{color:var(--coral);}
+        .mix-card .codes{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;}
+        .mix-card .codes div{display:flex;justify-content:space-between;align-items:center;background:var(--fill);border-radius:10px;padding:8px 12px;font-size:14px;font-weight:700;color:var(--ink2);}
+        .mix-card .codes .c b{color:var(--coral);}
+        .orow .no .bx.mix{background:#FEF3C7;color:#B45309;}
     </style>
 </head>
 <body>
@@ -276,6 +288,17 @@
         <video id="camVideo" playsinline muted autoplay></video>
         <div class="guide"></div>
         <div class="cam-top"><span id="camHint">발주서 바코드를 맞춰 주세요</span><button onclick="closeCam()">닫기</button></div>
+    </div>
+
+    <!-- 입고일자 확인 — 발주서(또는 박스)에 여러 입고코드의 가상 분량이 섞여 있으면 [확인] 을 눌러야 카드로 들어간다 -->
+    <div class="mix-back" id="mixBack">
+        <div class="mix-card" role="alertdialog" aria-labelledby="mixTitle">
+            <h2 id="mixTitle"><span class="ex">!</span>입고일자 확인</h2>
+            <p>해당 발주서는 <b>여러 입고일 박스가 섞여있습니다.</b>
+'입고일자를 반드시 확인해주세요'</p>
+            <div class="codes" id="mixCodes"></div>
+            <button class="btn primary" onclick="mixOk()">확인</button>
+        </div>
     </div>
 
     <div id="toast"></div>
@@ -398,7 +421,8 @@
                     ? (o.missing?`<span class="prog miss">찾음 ${o.found} · 없음 ${o.missing}</span>`:`<span class="prog ok">${ICON('i-check',15,3)}완료</span>`)
                     : `<span class="prog ${n>0?'part':''}">${n} / ${o.total}</span>`;
                 // 큰 글자 = 박스 라벨에 찍힌 그대로 "발주번호-박스번호" (라벨과 같은 모양이어야 찾기 쉽다, 2026-10-15). 배지는 박스 크기
-                const bx=o.boxNo!=null?`<span class="bx">📦 ${esc(o.boxSize||'')}</span>`:'<span class="bx none">박스 미정</span>';
+                const bx=(o.boxNo!=null?`<span class="bx">📦 ${esc(o.boxSize||'')}</span>`:'<span class="bx none">박스 미정</span>')
+                    +(o.mixed?`<span class="bx mix" title="입고코드 ${esc((o.codes||[]).join(', '))}">입고일 섞임</span>`:'');
                 return `<div class="orow ${rowCls}" onclick="startOrder('${esc(orderKey(o))}')">
                     <div class="body"><div class="no">${esc(o.orderNumber)}${o.boxNo!=null?`<span class="dash">-</span>${o.boxNo}`:''}${bx}</div>
                     <div class="meta">${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}<span class="qw">${o.qty}개 · ${o.kg}kg</span></div></div>${pill}</div>`;
@@ -441,6 +465,18 @@
         }
         function backToPick(){ stopCam(); show('s2'); loadOrders(); setTimeout(()=>$('orderInput').focus(),50); }
 
+        // ── 입고일자 확인 모달 — mixed = { codes:[…], boxes:[{boxNo, codes:[…]}] }. [확인] 을 누르면 resolve ──
+        let mixResolve=null;
+        function mixedConfirm(mix){
+            return new Promise(res=>{
+                mixResolve=res;
+                $('mixCodes').innerHTML=(mix.boxes||[]).map(b=>`<div><span>📦 ${esc(b.boxNo)}</span><span class="c">${(b.codes||[]).map(c=>c===active.code?`<b>${esc(c)}</b>`:esc(c)).join(' · ')}</span></div>`).join('');
+                $('mixBack').classList.add('show');
+                playWarn();
+            });
+        }
+        function mixOk(){ $('mixBack').classList.remove('show'); const r=mixResolve; mixResolve=null; if(r) r(); }
+
         // ════════ 3화면: 카드 덱 ════════
         async function reloadDeck(first){
             try{
@@ -454,6 +490,8 @@
                     else toast(`입고코드 ${active.code} 에 발주서 ${curOrder} 배정이 없습니다.`);
                     backToPick(); return;
                 }
+                // 입고코드가 둘 이상 섞인 발주서/박스 → 처음 들어갈 때 확인 모달을 거친 뒤 카드로 (2026-10-15)
+                if(first && d.mixed) await mixedConfirm(d.mixed);
                 const h=rows[0];
                 $('deckTitle').innerHTML=`<b>${esc(curOrder)}${boxTag()}</b><small>${esc(h.센터)||''} · ${esc(md(h.출고예정일))||''}</small>`;
                 renderDeck();

@@ -11,6 +11,7 @@ const S = require('./rkShared');
 const upload = multer({ storage: multer.memoryStorage() });
 const router = express.Router();
 const sb = S.supabase;
+const VirtualPack = require('../virtualPack');   // virtual_codes 정리(trimCodes/sumCodes/STOCK_KEY) — 모바일 입고 박스 칩 배정용
 
 // 상품명에서 모델코드 추출 (상품명 배지 기준):
 // 콤마 있으면 첫 콤마 앞에서, 없으면 전체에서 — 영어+숫자 조합 단어를 뒤에서부터 탐색
@@ -256,36 +257,56 @@ async function loadVirtualBoxes(orderNumbers) {
   if (!nos.length) return out;
   const [boxes, bItems] = await Promise.all([
     S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_boxes').select('id, order_number, box_no, box_size').in('order_number', part).order('id', { ascending: true }))),
-    S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_box_items').select('order_number, box_id, barcode, qty, virtual_qty').in('order_number', part).order('id', { ascending: true }))),
+    S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_box_items').select('order_number, box_id, barcode, qty, virtual_qty, virtual_codes').in('order_number', part).order('id', { ascending: true }))),
   ]);
   const boxById = new Map();
-  for (const b of boxes) { boxById.set(b.id, b); (out[String(b.order_number)] ||= { boxes: [], virtualByBc: {} }).boxes.push(b); }
+  for (const b of boxes) { boxById.set(b.id, b); (out[String(b.order_number)] ||= { boxes: [], virtualByBc: {}, codesByBox: {} }).boxes.push(b); }
   for (const it of bItems) {
     const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0; const vq = parseInt(it.virtual_qty, 10) || 0;
     if (!b || !it.barcode || qty <= 0 || vq <= 0) continue;
     const o = out[String(b.order_number)];
-    (o.virtualByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, boxQty: qty, remain: vq });
+    // virtual_codes = 가상 분량의 출처별 개수 {입고코드|'재고': n} (2026-10-15). 기록된 만큼은 그 코드 행에만 배정하고,
+    // 기록이 없는 나머지(remainFree, 예전 저장분)는 어느 입고코드 행에든 앞에서부터 배정한다
+    const codes = VirtualPack.trimCodes(it.virtual_codes, vq) || {};
+    const remainByCode = {};
+    for (const c of Object.keys(codes)) if (c !== VirtualPack.STOCK_KEY) remainByCode[c] = codes[c];
+    const remainFree = Math.max(0, vq - VirtualPack.sumCodes(codes));
+    (o.virtualByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, boxQty: qty, remainByCode, remainFree });
+    for (const c of Object.keys(remainByCode)) (o.codesByBox[b.box_no] ||= new Set()).add(c);
   }
   for (const o of Object.values(out)) for (const l of Object.values(o.virtualByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
   return out;
 }
-// 가상 박스 배정 — 가상스캔은 바코드 단위라 어느 입고 행(BR7/BR8)의 물건이 어느 박스로 가는지는 정해져 있지 않다
-//   → 카드 순서(mobileCmp)대로 박스 번호 순으로 채워 나눈다 (같은 바코드의 두 행에 같은 박스가 중복 표시되던 문제, 2026-10-15).
+// 가상 박스 배정 — 행의 입고코드(출고코드)와 같은 코드로 기록된 가상 분량을 먼저, 그다음 코드 미기록 분량을 박스 번호 순으로 채워 나눈다.
+//   다른 입고코드로 기록된 분량은 이 행에 주지 않는다 (같은 바코드가 두 입고코드에 있을 때 두 번째 코드 카드가 첫 코드의 박스를 가리키던 문제, 2026-10-15)
+//   코드 기록이 없는 예전 저장분은 전처럼 카드 순서(mobileCmp)대로 앞에서부터 (같은 바코드의 두 행에 같은 박스가 중복 표시되지 않게)
 //   예: 바코드 가상 34 = 1번(30)+2번(4), 입고 행 BR7 22 · BR8 12 → BR7: 1번 ×22 / BR8: 1번 ×8 + 2번 ×4
 //   rows 순서대로 [{ boxNo, boxSize, qty, virtualQty }][] 를 돌려준다 (virtualByBc 의 remain 을 소모하므로 발주서당 한 번만 부를 것)
 function assignVirtualBoxes(rows, virtualByBc) {
   return rows.map((r) => {
     const assigned = [];
+    const code = r.출고코드 == null ? null : String(r.출고코드);
     let need = parseInt(r.출고개수, 10) || 0;
     for (const b of ((virtualByBc || {})[r.바코드] || [])) {
       if (need <= 0) break;
-      if (b.remain <= 0) continue;
-      const take = Math.min(need, b.remain);
-      b.remain -= take; need -= take;
-      assigned.push({ boxNo: b.boxNo, boxSize: b.boxSize, qty: b.boxQty, virtualQty: take });
+      let take = 0;
+      if (code != null && b.remainByCode[code] > 0) { const t = Math.min(need, b.remainByCode[code]); b.remainByCode[code] -= t; need -= t; take += t; }
+      if (need > 0 && b.remainFree > 0) { const t = Math.min(need, b.remainFree); b.remainFree -= t; need -= t; take += t; }
+      if (take > 0) assigned.push({ boxNo: b.boxNo, boxSize: b.boxSize, qty: b.boxQty, virtualQty: take });
     }
     return assigned;
   });
+}
+// 입고코드 섞임 판정 — 발주서(boxNo 없음)면 가상 박스 전체에 기록된 입고코드가 둘 이상, 박스 라벨로 들어왔으면 그 박스 안에 둘 이상.
+//   섞였으면 { codes:[…], boxes:[{ boxNo, codes:[…] }] } (코드가 기록된 박스 전부, 번호 순) · 아니면 null. 코드 기록이 없는 예전 저장분은 알 수 없어 null
+function mixedInboundCodes(vbOrder, boxNo) {
+  const byBox = (vbOrder && vbOrder.codesByBox) || {};
+  const sortCodes = (s) => [...s].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
+  const boxes = Object.keys(byBox).map(Number).sort((a, b) => a - b).map((no) => ({ boxNo: no, codes: sortCodes(byBox[no]) }));
+  if (!boxes.length) return null;
+  const scope = boxNo != null && boxNo !== 0 ? boxes.filter((b) => b.boxNo === boxNo) : boxes;
+  const codes = sortCodes(new Set(scope.flatMap((b) => b.codes)));
+  return codes.length > 1 ? { codes, boxes } : null;
 }
 
 // 출고코드의 **박스** 목록 + 진행 (?shipmentCode=) — 2026-10-15: 발주서 단위 → (발주서, 가상 박스) 단위
@@ -322,8 +343,11 @@ router.get('/api/inbound/mobile-orders', async (req, res) => {
         for (const k of keys) {
           if (!byBox.has(k)) {
             const bx = assigned[i].find(b => b.boxNo === k);
+            // codes: 이 박스에 기록된 입고코드들(virtual_codes) · mixed: 둘 이상 = 입고일이 섞인 박스 (목록에 표시, 카드 진입 때 확인 모달)
+            const codes = k ? [...((vb[no] || {}).codesByBox || {})[k] || []].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true })) : [];
             byBox.set(k, { orderNumber: no, boxNo: k || null, boxSize: bx ? bx.boxSize || null : null,
-              center: r.센터 || '', shippingDate: r.출고예정일 || '', batch: r.회차 || 1, total: 0, found: 0, missing: 0, qty: 0, kg: 0 });
+              center: r.센터 || '', shippingDate: r.출고예정일 || '', batch: r.회차 || 1, total: 0, found: 0, missing: 0, qty: 0, kg: 0,
+              codes, mixed: codes.length > 1 });
           }
           const o = byBox.get(k);
           // 개수·무게 = 이 박스에 담을 분량 (카드의 출고개수와 같은 값: 박스 몫, 미정은 행의 출고개수)
@@ -381,7 +405,8 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
       else if (boxNo != null) { mine = mine.filter(b => b.boxNo === boxNo); if (!mine.length) return; }
       out.push({ ...r, img: img[r.바코드] || null, boxes: mine });
     });
-    res.json({ rows: out, boxNo, boxExists });
+    // mixed: 입고코드가 둘 이상 섞인 발주서/박스면 { codes, boxes } — 화면이 카드 진입 전에 "입고일자 확인" 모달을 띄운다 (2026-10-15)
+    res.json({ rows: out, boxNo, boxExists, mixed: mixedInboundCodes(vb[orderNumber], boxNo) });
   } catch (e) {
     console.error('[rk] inbound/mobile-list:', e);
     res.status(500).json({ error: '출고리스트 조회 실패: ' + e.message });

@@ -185,7 +185,9 @@ async function loadOrderScanState(orderNumberIn) {
     // virtualConfirmedQty: 가상확정 당시 가상 합 — 화면이 현재 가상 합과 비교해 "확정" 여부를 판단한다
     boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at, isVirtual: !!b.is_virtual,
       virtualConfirmedQty: parseInt(b.virtual_confirmed_qty, 10) || 0 })),
-    items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty, virtualQty: i.virtual_qty || 0 })),
+    // virtualCodes: 가상 분량의 출처별 개수 {입고코드|'재고': n} (rk_ship_box_items.virtual_codes). 없으면 null = 출처 미기록(예전 저장분)
+    items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty, virtualQty: i.virtual_qty || 0,
+      virtualCodes: i.virtual_codes || null })),
   } };
 }
 
@@ -203,11 +205,13 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
 
 // 상태 코드를 붙인 오류 — saveShipState 가 검증 실패를 알릴 때. 라우트는 e.status 로 응답 코드를 정한다
 const httpErr = (status, message) => Object.assign(new Error(message), { status });
+const VirtualPack = require('../virtualPack');   // 가상스캔 계산 + virtualCodes 정리(addCode/trimCodes) — 저장과 일괄 가상스캔이 같이 쓴다
 
 // 저장 — 현재 작업 상태(박스아이템 전체)를 그대로 반영(SET). 스캔·개수편집·삭제 모두 지원.
-// body: { orderNumber, boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty,virtualQty?}] }
+// body: { orderNumber, boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty,virtualQty?,virtualCodes?}] }
 //   virtualQty = qty 중 [가상스캔]으로 들어온 개수 (0~qty). rk_ship_box_items.virtual_qty 로 저장하고,
 //   박스에 가상 수량이 하나라도 있으면 rk_ship_boxes.is_virtual=true (없으면 false 로 되돌린다 — SET 이므로 매번 다시 계산).
+//   virtualCodes = 가상 분량의 출처별 개수 {입고코드|'재고': n} → rk_ship_box_items.virtual_codes (합이 virtualQty 를 넘으면 재고→최신 코드 순으로 깎는다, 2026-10-15)
 // POST /api/ship-scan/save 와 일괄 가상스캔(virtual-batch)이 같이 쓴다. 검증 실패는 httpErr(400/404) 로 throw.
 async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
   const orderNumber = String(orderNumberIn || '').trim();
@@ -227,11 +231,15 @@ async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
     if (!Number.isFinite(boxNo) || boxNo < 1 || !barcode || !Number.isFinite(qty) || qty <= 0) continue;
     const vq = Math.min(qty, Math.max(0, parseInt(it.virtualQty, 10) || 0));
     const k = `${boxNo}|${barcode}`;
-    if (!merged.has(k)) merged.set(k, { boxNo, barcode, productName: String(it.productName || '').trim(), qty: 0, virtualQty: 0 });
-    merged.get(k).qty += qty;
-    merged.get(k).virtualQty += vq;
+    if (!merged.has(k)) merged.set(k, { boxNo, barcode, productName: String(it.productName || '').trim(), qty: 0, virtualQty: 0, virtualCodes: null });
+    const m = merged.get(k);
+    m.qty += qty;
+    m.virtualQty += vq;
+    const codes = VirtualPack.trimCodes(it.virtualCodes, vq);
+    if (codes) for (const c of Object.keys(codes)) m.virtualCodes = VirtualPack.addCode(m.virtualCodes, c, codes[c]);
   }
   const list = [...merged.values()];
+  for (const it of list) it.virtualCodes = VirtualPack.trimCodes(it.virtualCodes, it.virtualQty);
 
   // 초과/미존재 검증 (바코드 단위, SET이므로 전체 = list 합)
   const { order, limit, name } = await orderBarcodeMeta(orderNumber);
@@ -275,6 +283,7 @@ async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
     const rows = list.map(it => ({
       box_id: boxIdByNo.get(it.boxNo), order_number: orderNumber, barcode: it.barcode,
       product_name: it.productName || name.get(it.barcode) || null, qty: it.qty, virtual_qty: it.virtualQty,
+      virtual_codes: it.virtualCodes || null,
     }));
     const BATCH = 500;
     for (let i = 0; i < rows.length; i += BATCH) {
@@ -315,7 +324,6 @@ router.post('/api/ship-scan/save', async (req, res) => {
 //          qty, skus, L, kg, bySource, existingBoxes, newBoxes, topUpBoxes, upgradedBoxes, assumedCount,
 //          boxes:[{boxNo,size,sizeFrom,isNew,addQty,source,warnings}], warnings, excluded:{done,none,other:{사유:종수}}, saved?:{addQty,boxCnt,upCnt,savedQty,virtualQty} }],
 //        summary:{ orders, ready, saved, skipped, errors, qty, boxes, newBoxes } }
-const VirtualPack = require('../virtualPack');
 const VB_TARGETS = new Set(['all', '입고', '재고']);
 async function virtualBatchOne(orderNumber, opt, confirm) {
   const st = await loadOrderScanState(orderNumber);
