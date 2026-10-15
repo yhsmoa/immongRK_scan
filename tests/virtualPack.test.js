@@ -264,6 +264,27 @@ test('대상 선택(sourceFilter): 입고만 / 재고만 담고 나머지는 제
   assert.ok(legacy.excluded.some((e) => e.reason === '출처 정보 없음'));
 });
 
+test('입고코드 선택(inboundCodes): 고른 코드의 입고분만, 다른 코드는 "다른 입고코드" 로 제외', () => {
+  const pc = (barcode, byCode, stk = 0, opts = {}) => {
+    const inb = Object.values(byCode).reduce((s, v) => s + v, 0);
+    return Object.assign(prod(barcode, inb + stk, opts), { allocInbound: inb, allocStock: stk, allocInboundByCode: byCode });
+  };
+  const p = run([pc('A', { '1011': 4, '1015': 3 }, 2)], {}, { sourceFilter: '입고', inboundCodes: ['1011'] });
+  assert.deepStrictEqual(p.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:4']);
+  assert.ok(p.excluded.some((e) => e.reason === '다른 입고코드' && e.qty === 3));
+  assert.ok(p.warnings.some((w) => w.includes('다른 입고코드') || w.includes('고른 입고코드')));
+  // 전체 + 코드 선택: 1011 입고분 4 → 재고 2, 1015 분 3은 제외
+  const all = run([pc('A', { '1011': 4, '1015': 3 }, 2)], {}, { inboundCodes: ['1011'] });
+  assert.deepStrictEqual(all.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:4', '재고:2']);
+  // 두 코드 모두 고르면 전부
+  const both = run([pc('A', { '1011': 4, '1015': 3 }, 2)], {}, { sourceFilter: '입고', inboundCodes: ['1011', '1015'] });
+  assert.deepStrictEqual(both.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:7']);
+  // 스캔은 고른 입고 → 다른 입고 → 재고 순으로 뺀다: 1011 분 4개를 이미 담았으면 1015 로 돌릴 때 3개
+  const later = run([pc('A', { '1011': 4, '1015': 3 }, 2, { scanned: 4 })], {}, { sourceFilter: '입고', inboundCodes: ['1015'] });
+  assert.deepStrictEqual(later.boxes.map((b) => `${b.source}:${b.addQty}`), ['입고:3']);
+  assert.deepStrictEqual(later.assumptions.inboundCodes, ['1015']);
+});
+
 test('출처 분리: 출처 정보가 없는 상품은 예전과 같다', () => {
   const p = run([prod('A', 5), prod('B', 3)]);
   assert.deepStrictEqual(shape(p), '1:중:8');

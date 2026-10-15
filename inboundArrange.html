@@ -185,7 +185,7 @@
 
             <div class="search">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                <input id="searchInput" type="text" placeholder="출고코드 · 박스명 · 중국번호 · 상품명 · 바코드 · 출고번호 검색 후 Enter" onkeydown="if(event.key==='Enter')render()">
+                <input id="searchInput" type="text" placeholder="입고코드 · 박스명 · 중국번호 · 상품명 · 바코드 · 출고번호 검색 후 Enter" onkeydown="if(event.key==='Enter')render()">
             </div>
 
             <div class="tabbar">
@@ -308,7 +308,8 @@
         }
         function fillCodes(y,m){
             const list=(y&&m)?shipments.filter(s=>{const d=shipDate(s);return String(d.getFullYear())===String(y)&&String(d.getMonth()+1)===String(m);}):[];
-            document.getElementById('codeSel').innerHTML='<option value="">출고코드 선택</option>'+list.map(s=>`<option value="${esc(s.shipmentCode)}">${esc(s.shipmentCode)} (${s.itemCount})</option>`).join('');
+            // 화면 명칭은 "입고코드" (입고된 건이라 '출고코드' 라고 하면 헷갈림, 2026-10-15). 데이터 필드명(출고코드/shipmentCode)은 그대로
+            document.getElementById('codeSel').innerHTML='<option value="">입고코드 선택</option>'+list.map(s=>`<option value="${esc(s.shipmentCode)}">${esc(s.shipmentCode)} (${s.itemCount})</option>`).join('');
         }
         // 드롭박스를 특정 출고코드(연/월/코드)로 맞춘다 — 불러오지는 않음
         function selectShipment(s){
@@ -409,10 +410,10 @@
             const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
             // 헤더에 정렬 순위 표시 (예: 출고예정일 1↑)
             const ind=k=>{ const i=sortRules.findIndex(r=>r.k===k); return i<0?'':`<span class="sort-ind">${i+1}${sortRules[i].dir>0?'↑':'↓'}</span>`; };
-            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차${ind('회차')}</th><th>출고코드${ind('출고코드')}</th><th>박스명${ind('박스명')}</th><th>중국번호${ind('중국번호')}</th><th>상품명${ind('상품명')}</th><th class="ctr">수량${ind('수량')}</th><th>바코드${ind('바코드')}</th><th>출고번호${ind('출고번호')}</th><th style="width:96px">박스</th><th>센터${ind('센터')}</th><th class="ctr">출고개수${ind('출고개수')}</th><th>출고예정일${ind('출고예정일')}</th><th class="ctr" style="width:58px" title="모바일 입고 — ✅ 찾음 · ❌ 없음 (마우스를 올리면 처리자)">모바일</th></tr>`;
+            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차${ind('회차')}</th><th>입고코드${ind('출고코드')}</th><th>박스명${ind('박스명')}</th><th>중국번호${ind('중국번호')}</th><th>상품명${ind('상품명')}</th><th class="ctr">수량${ind('수량')}</th><th>바코드${ind('바코드')}</th><th>출고번호${ind('출고번호')}</th><th style="width:96px">박스</th><th>센터${ind('센터')}</th><th class="ctr">출고개수${ind('출고개수')}</th><th>출고예정일${ind('출고예정일')}</th><th class="ctr" style="width:58px" title="모바일 입고 — ✅ 찾음 · ❌ 없음 (마우스를 올리면 처리자)">모바일</th></tr>`;
             if(rows.length===0){
                 let msg;
-                if(!selectedCode()) msg='연도 · 월 · 출고코드를 선택하세요.';
+                if(!selectedCode()) msg='연도 · 월 · 입고코드를 선택하세요.';
                 else if(activeTab==='shipping') msg=prepared?'출고 배정된 항목이 없습니다.':'‘출고준비’ 버튼으로 발주서를 선택해 정리하세요.';
                 else msg='남은상품이 없습니다.';
                 tb.innerHTML=`<tr class="state-row"><td colspan="14">${msg}</td></tr>`;
@@ -468,6 +469,7 @@
             {k:'회차',num:true},{k:'출고코드'},{k:'박스명'},{k:'중국번호'},{k:'상품명'},{k:'수량',num:true},
             {k:'바코드'},{k:'출고번호'},{k:'센터'},{k:'출고개수',num:true},{k:'출고예정일'}];
         const SORT_NUM=new Set(SORT_COLS.filter(c=>c.num).map(c=>c.k));
+        const COL_LABEL={'출고코드':'입고코드'};   // 화면 표시 이름 (데이터 키는 그대로)
         let sortRules=[];   // 적용된 순위 [{k, dir:1(오름)|-1(내림)}]
         let sortDraft=[];   // 모달에서 편집 중인 순위 (적용 전)
 
@@ -485,7 +487,7 @@
             const b=document.getElementById('sortBtn'), n=sortRules.length;
             b.classList.toggle('sort-on',n>0);
             b.innerHTML=n?`정렬 <span class="sort-cnt">${n}</span>`:'정렬';
-            b.title=n?sortRules.map((r,i)=>`${i+1}순위 ${r.k} ${r.dir>0?'오름차순':'내림차순'}`).join('\n'):'순위별 정렬';
+            b.title=n?sortRules.map((r,i)=>`${i+1}순위 ${COL_LABEL[r.k]||r.k} ${r.dir>0?'오름차순':'내림차순'}`).join('\n'):'순위별 정렬';
         }
         function openSortModal(){
             sortDraft=sortRules.length?sortRules.map(r=>({...r})):[{k:'',dir:1}];
@@ -499,7 +501,7 @@
                 // 다른 순위에서 이미 고른 항목은 선택지에서 뺀다 (중복 방지)
                 const used=new Set(sortDraft.filter((_,j)=>j!==i).map(x=>x.k).filter(Boolean));
                 const opts=SORT_COLS.filter(c=>!used.has(c.k))
-                    .map(c=>`<option value="${esc(c.k)}" ${c.k===r.k?'selected':''}>${esc(c.k)}</option>`).join('');
+                    .map(c=>`<option value="${esc(c.k)}" ${c.k===r.k?'selected':''}>${esc(COL_LABEL[c.k]||c.k)}</option>`).join('');
                 return `<div class="sort-row">
                     <span class="sort-rank">${i+1}순위</span>
                     <select onchange="setSortKey(${i},this.value)" aria-label="${i+1}순위 항목"><option value="">항목 선택</option>${opts}</select>

@@ -38,6 +38,7 @@
     splitBySource: true,                              // true = 입고분/재고분을 다른 박스에 담는다 (products 에 allocInbound/allocStock 이 있을 때만 효과)
     sourceOrder: ['입고', '재고'],                     // 담는 순서 — 앞 출처가 기존 마지막 박스를 채운다
     sourceFilter: null,                               // null = 전체 · '입고' | '재고' = 그 출처 배정분만 담는다 (모달의 대상 선택)
+    inboundCodes: null,                               // null = 입고분 전부 · ['1011', …] = 그 입고코드의 입고분만 (다른 코드 분량은 '다른 입고코드' 로 제외)
   };
 
   const EPS = 1e-9;
@@ -96,6 +97,7 @@
     const items = [];       // 담을 것 [{barcode, productName, location, qty, unitL, unitKg, flag}]
     const excluded = [];    // 제외 [{barcode, productName, reason}]
     let assumedCount = 0;
+    let attributedScan = false;   // 입고코드가 여럿인 상품에서 이미 담긴 개수를 오래된 코드부터 뺐다 (경고용)
     for (const p of products) {
       const bc = String(p.barcode || '').trim();
       if (!bc) continue;
@@ -113,12 +115,32 @@
         unitL: u.L, unitKg: u.kg, flag: u.flag, capped: alloc > conf };
       // 출처별 분리: 배정량을 입고분/재고분으로 나눈다. 확정수량이 배정보다 작으면 재고분부터 줄이고,
       // 이미 스캔한 개수는 입고분부터 뺀다 (입고분을 먼저 담는 순서와 맞춤).
-      const inb = Math.max(0, parseInt(p.allocInbound, 10) || 0), stk = Math.max(0, parseInt(p.allocStock, 10) || 0);
+      const inbAll = Math.max(0, parseInt(p.allocInbound, 10) || 0), stk = Math.max(0, parseInt(p.allocStock, 10) || 0);
       const filter = cfg.sourceFilter || null;
-      if ((cfg.splitBySource || filter) && (inb > 0 || stk > 0)) {
-        const inbT = Math.min(inb, target);
-        const remInb = Math.max(0, inbT - scanned);
-        const remStk = remain - remInb;
+      if ((cfg.splitBySource || filter) && (inbAll > 0 || stk > 0)) {
+        // 입고분을 입고코드별로 본다. 코드 정보가 없으면 '*' 하나로.
+        //   목표(target)는 입고코드 오래된 순 → 재고 순으로 채우고, 이미 스캔(담은) 개수도 같은 순서로 뺀다.
+        //   (담긴 개수에는 코드 표시가 없어서 "오래된 입고코드부터 처리했다" 고 보는 것 — 입고코드 순서대로 돌리는 운영 전제)
+        const rawByCode = p.allocInboundByCode && typeof p.allocInboundByCode === 'object' ? p.allocInboundByCode : {};
+        let codes = Object.keys(rawByCode).filter((c) => (parseInt(rawByCode[c], 10) || 0) > 0)
+          .sort((a, b) => String(a).localeCompare(String(b), 'ko', { numeric: true }));
+        const byCode = {};
+        for (const c of codes) byCode[c] = Math.max(0, parseInt(rawByCode[c], 10) || 0);
+        if (!codes.length && inbAll > 0) { codes = ['*']; byCode['*'] = inbAll; }
+        let left = target;
+        const capQ = {};
+        for (const c of codes) { capQ[c] = Math.min(byCode[c], left); left -= capQ[c]; }
+        const stkT = Math.min(stk, left);
+        let s = scanned;
+        const remByCode = {};
+        for (const c of codes) { remByCode[c] = Math.max(0, capQ[c] - s); s = Math.max(0, s - capQ[c]); }
+        const remStk = Math.max(0, stkT - s);
+        if (scanned > 0 && codes.length > 1) attributedScan = true;
+        // 입고코드 선택: 고른 코드의 남은 입고분만 담고, 다른 코드 분량은 '다른 입고코드' 로 제외 (코드 정보 없는 '*' 도 다른 코드 취급)
+        const sel = Array.isArray(cfg.inboundCodes) && cfg.inboundCodes.length ? new Set(cfg.inboundCodes.map(String)) : null;
+        let remInb = 0, remOther = 0;
+        for (const c of codes) { if (!sel || sel.has(String(c))) remInb += remByCode[c]; else remOther += remByCode[c]; }
+        if (remOther > 0) excluded.push({ barcode: bc, productName: p.productName || '', reason: '다른 입고코드', qty: remOther });
         if (filter) {
           // 대상 선택(입고만/재고만): 그 출처 분량만 담고 나머지는 제외로 기록
           const q = filter === '입고' ? remInb : filter === '재고' ? remStk : remain;
@@ -144,6 +166,7 @@
     const assumptions = {
       overfill: cfg.overfill, maxKg: cfg.maxKg, defaultUnitL: cfg.defaultUnitL, assumedCount, topUpExisting: !!cfg.topUpExisting,
       splitBySource: !!cfg.splitBySource, splitActive, sourceFilter: cfg.sourceFilter || null,
+      inboundCodes: Array.isArray(cfg.inboundCodes) && cfg.inboundCodes.length ? cfg.inboundCodes.slice() : null,
       cap: Object.fromEntries(cfg.newSizes.map((s) => [s, capL(s, cfg)])),
     };
     const bySource = {};
@@ -273,6 +296,11 @@
     if (untouchedExisting.length) warnings.push(`남은 용량이 없어 그대로 둔 기존 박스: ${untouchedExisting.map((b) => `📦${b.boxNo}`).join(', ')}`);
     if (items.some((i) => i.capped)) warnings.push(`배정량이 확정수량보다 큰 상품 ${items.filter((i) => i.capped).length}종은 확정수량까지만 담았습니다.`);
     if (excluded.some((e) => e.reason === '배정 없음')) warnings.push(`출고예정 배정이 없는 상품 ${excluded.filter((e) => e.reason === '배정 없음').length}종은 제외했습니다.`);
+    if (attributedScan) warnings.push('이미 담긴 개수는 오래된 입고코드부터 담은 것으로 보고 뺐습니다 (입고코드 순서대로 돌리는 것을 전제).');
+    if (excluded.some((e) => e.reason === '다른 입고코드')) {
+      const oth = excluded.filter((e) => e.reason === '다른 입고코드');
+      warnings.push(`고른 입고코드가 아닌 입고분 ${oth.reduce((s, e) => s + (e.qty || 0), 0)}개(${oth.length}종)는 담지 않았습니다 — 그 입고코드로 다시 돌리세요.`);
+    }
 
     if (stop) return { ok: false, reason: stop, assumptions, boxes: result, excluded, totals, warnings };
     return { ok: true, reason: null, assumptions, boxes: result, excluded, totals, warnings };

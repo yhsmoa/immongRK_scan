@@ -78,20 +78,33 @@ async function locationsByBarcode(orderNumber, barcodes) {
 
 // 바코드별 출고예정 배정량(재고+입고 합) — 가상스캔의 목표 수량 기준 (docs/plan-virtual-scan.md §1-1)
 // 준비수량(prepared_qty)과는 별개 값이다. 실패해도 조용히 빈 맵 (가상스캔만 영향).
-//   바코드 → { total, stock(재고), inbound(입고) } — 가상스캔이 출처별로 박스를 나눠 담을 수 있게 source 도 같이 센다 (2026-10-15)
+//   바코드 → { total, stock(재고), inbound(입고), inboundByCode:{입고코드: qty} } — 가상스캔이 출처별로 박스를 나눠 담고,
+//   입고분은 입고코드(rk_cn_shipments.shipment_code, 입고정리의 드롭박스)별로 골라 담을 수 있게 같이 센다 (2026-10-15)
 async function allocByBarcode(orderNumber) {
   const out = new Map();
   try {
     const { data, error } = await sb.from('rk_shipping_list')
-      .select('barcode, qty, source').eq('order_number', orderNumber).eq('status', '출고예정');
+      .select('barcode, qty, source, shipment_id').eq('order_number', orderNumber).eq('status', '출고예정');
     if (error) throw error;
+    // 입고분의 shipment_id → 입고코드
+    const shipIds = [...new Set((data || []).map((r) => r.shipment_id).filter((x) => x != null))];
+    const codeById = new Map();
+    for (let i = 0; i < shipIds.length; i += 200) {
+      const { data: cs, error: eC } = await sb.from('rk_cn_shipments').select('id, shipment_code').in('id', shipIds.slice(i, i + 200));
+      if (eC) throw eC;
+      for (const c of (cs || [])) codeById.set(c.id, c.shipment_code);
+    }
     for (const r of (data || [])) {
       if (!r.barcode) continue;
       const q = parseInt(r.qty, 10) || 0;
-      const a = out.get(r.barcode) || { total: 0, stock: 0, inbound: 0 };
+      const a = out.get(r.barcode) || { total: 0, stock: 0, inbound: 0, inboundByCode: {} };
       a.total += q;
       if (r.source === '재고') a.stock += q;
-      else if (r.source === '입고') a.inbound += q;
+      else if (r.source === '입고') {
+        a.inbound += q;
+        const code = codeById.get(r.shipment_id) || '(코드 없음)';
+        a.inboundByCode[code] = (a.inboundByCode[code] || 0) + q;
+      }
       out.set(r.barcode, a);
     }
   } catch (e) {
@@ -144,6 +157,7 @@ router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
       allocQty: (allocMap.get(bc) || {}).total || 0,        // 출고예정 배정량 (가상스캔 목표)
       allocStock: (allocMap.get(bc) || {}).stock || 0,      //   그중 재고분 — 가상스캔 출처별 박스 분리용
       allocInbound: (allocMap.get(bc) || {}).inbound || 0,  //   그중 입고분
+      allocInboundByCode: (allocMap.get(bc) || {}).inboundByCode || {},   //   입고분을 입고코드별로 — 가상스캔 모달의 입고코드 선택용
       size: sizeMap.get(bc) || null,                        // {w,l,h,g} mm·g (가상스캔 부피/무게)
     }));
 

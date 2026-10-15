@@ -150,6 +150,7 @@
         .vs-tag.from{text-decoration:line-through;opacity:.55;}
         .vs-opt .hint b.need{color:#dc2626;}                /* 아직 안 고른 옵션 */
         .vs-seg button:disabled{opacity:.4;cursor:not-allowed;}
+        .vs-seg button small{font-weight:500;opacity:.75;margin-left:3px;}   /* 입고코드 칩의 개수 */
         .vs-pick{padding:44px 20px;text-align:center;color:#6b7280;font-size:14.5px;}
         .vs-pick b{color:#1f2937;}
         .vs-tag.src-inb{background:#dbeafe;color:#1d4ed8;}  /* 입고분 = 파랑 */
@@ -484,6 +485,7 @@
                 products=(data.products||[]).map(p=>({barcode:p.barcode, productName:p.productName||'', orderQty:p.confirmedQty||0,
                     preparedQty:(p.preparedQty==null?null:Number(p.preparedQty)), location:p.location||'', scannedQty:0,
                     allocQty:Number(p.allocQty)||0, allocStock:Number(p.allocStock)||0, allocInbound:Number(p.allocInbound)||0,   // 배정량(재고분/입고분) = 가상스캔 계산용 (준비 열과 별개)
+                    allocInboundByCode:(p.allocInboundByCode&&typeof p.allocInboundByCode==='object')?p.allocInboundByCode:{},   // 입고분을 입고코드별로 (모달 입고코드 선택)
                     size:p.size||null}));
                 const nameByBc=new Map(products.map(p=>[p.barcode,p.productName]));
                 // 저장된 박스 아이템(박스별)
@@ -904,21 +906,31 @@
         // 옵션 두 가지 — 열 때마다 비워 두고 이용자가 직접 고르게 한다 (기본값이 있으면 놓치고 확정할 수 있어서, 2026-10-15). 브라우저에 기억하지 않는다.
         //   vsTopUp : null(미선택) | true(기존 박스 채우기) | false(새 박스만). 기존 박스가 없으면 고를 것이 없어 자동 통과
         //   vsTarget: null(미선택) | 'all'(전체: 입고분 먼저, 재고분은 새 박스부터) | '입고' | '재고'(그 배정분만)
-        let vsTopUp=null, vsTarget=null;
+        //   vsCodes : 입고코드 선택(Set). 대상이 전체/입고이고 이 발주서에 입고 배정이 있으면 하나 이상 골라야 한다 (과도기: 어느 입고건인지 명시, 2026-10-15)
+        let vsTopUp=null, vsTarget=null, vsCodes=new Set();
         function setVsTopUp(on){ vsTopUp=!!on; buildVirtualPlan(); }
         function setVsTarget(t){ vsTarget=t; buildVirtualPlan(); }
-        function vsReady(){ return vsTarget!=null && (vsTopUp!=null || boxNosAll().length===0); }
+        function toggleVsCode(code){ if(vsCodes.has(code)) vsCodes.delete(code); else vsCodes.add(code); buildVirtualPlan(); }
+        // 이 발주서의 입고코드 목록 (코드 → 입고 배정 개수), 최근 코드가 앞에 오게 내림차순
+        function vsCodeList(){
+            const m=new Map();
+            for(const p of products) for(const [c,q] of Object.entries(p.allocInboundByCode||{})) m.set(c,(m.get(c)||0)+(Number(q)||0));
+            return [...m.entries()].filter(([,q])=>q>0).sort((a,b)=>String(b[0]).localeCompare(String(a[0]),'ko',{numeric:true}));
+        }
+        function vsNeedCodes(){ return (vsTarget==='all'||vsTarget==='입고') && vsCodeList().length>0; }
+        function vsReady(){ return vsTarget!=null && (vsTopUp!=null || boxNosAll().length===0) && (!vsNeedCodes() || vsCodes.size>0); }
         function buildVirtualPlan(){
-            if(!vsReady()){ vsPlan=null; renderVirtualModal(null); return null; }   // 둘 다 고르기 전에는 계산하지 않는다
+            if(!vsReady()){ vsPlan=null; renderVirtualModal(null); return null; }   // 다 고르기 전에는 계산하지 않는다
             vsPlan=VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap },
-                { topUpExisting: vsTopUp===true, splitBySource: vsTarget==='all', sourceFilter: vsTarget==='all'?null:vsTarget });
+                { topUpExisting: vsTopUp===true, splitBySource: vsTarget==='all', sourceFilter: vsTarget==='all'?null:vsTarget,
+                  inboundCodes: vsNeedCodes()?[...vsCodes]:null });
             renderVirtualModal(vsPlan);
             return vsPlan;
         }
         function openVirtualScan(){
             if(!currentOrder){ toast('먼저 발주서를 조회하세요.'); return; }
             if(typeof VirtualPack==='undefined'){ toast('가상스캔 모듈을 불러오지 못했습니다. 새로고침 후 다시 시도하세요.'); return; }
-            vsTopUp=null; vsTarget=null; vsPlan=null;   // 매번 다시 고른다
+            vsTopUp=null; vsTarget=null; vsCodes=new Set(); vsPlan=null;   // 매번 다시 고른다
             renderVirtualModal(null);
             document.getElementById('vsBack').classList.add('show');
         }
@@ -952,6 +964,17 @@
                     :vsTarget==='all'?'배정 전체를 담습니다. 입고분을 먼저 담고 박스를 마감한 뒤 재고분은 새 박스부터 담아 한 박스는 한 곳에서 끝납니다.'
                     :`${vsTarget} 배정분만 담습니다. 다른 출처 분량은 제외되고 나중에 따로 돌릴 수 있습니다.`}</span>
             </div>`;
+            // 입고코드 — 대상이 전체/입고일 때 어느 입고건(입고정리의 입고코드)의 입고분인지 고른다. 여러 개 고를 수 있고 하나 이상 필수
+            if(vsTarget==='all'||vsTarget==='입고'){
+                const codes=vsCodeList();
+                top+=`<div class="vs-opt">
+                    <span class="lbl">입고코드</span>
+                    ${codes.length?`<div class="vs-seg">${codes.map(([c,q])=>`<button type="button" class="${vsCodes.has(c)?'on':''}" onclick="toggleVsCode(${JSON.stringify(c)})">${esc(c)} <small>${q}개</small></button>`).join('')}</div>`:''}
+                    <span class="hint">${!codes.length?'이 발주서에는 입고 배정이 없습니다.'+(vsTarget==='all'?' 재고분만 담습니다.':'')
+                        :vsCodes.size===0?'<b class="need">선택하세요</b> — 고른 입고코드의 입고분만 담습니다. 여러 개를 고를 수 있습니다.'
+                        :`입고코드 ${[...vsCodes].join(', ')} 의 입고분만 담습니다.${codes.length>vsCodes.size?' 나머지 코드의 입고분은 제외됩니다.':''}`}</span>
+                </div>`;
+            }
             const btn=document.getElementById('vsConfirmBtn'), note=document.getElementById('vsNote');
             if(!plan){
                 top+=`<div class="vs-stats">
@@ -960,7 +983,8 @@
                     <div class="vs-stat"><div class="k">필요 박스</div><div class="v">—</div></div>
                 </div>`;
                 document.getElementById('vsTop').innerHTML=top;
-                document.getElementById('vsBody').innerHTML=`<div class="vs-pick">위에서 <b>${needTopUp?'기존 박스 · 대상':'대상'}</b>을 고르면 예상 박스를 계산합니다.</div>`;
+                const picks=[needTopUp?'기존 박스':null,'대상',vsNeedCodes()?'입고코드':null].filter(Boolean).join(' · ');
+                document.getElementById('vsBody').innerHTML=`<div class="vs-pick">위에서 <b>${picks}</b>을 고르면 예상 박스를 계산합니다.</div>`;
                 note.className='vs-note'; note.textContent='아직 계산 전입니다. 선택을 마치면 확정할 수 있습니다.';
                 btn.disabled=true; btn.textContent='확정 · 스캔 반영 + 저장'; delete btn.dataset.busy;
                 return;
@@ -971,7 +995,7 @@
             const bs=t.bySource||{};
             const srcTxt=Object.keys(bs).length>1?Object.entries(bs).map(([k,v])=>`${k} ${v}`).join(' · '):'';
             top+=`<div class="vs-stats">
-                <div class="vs-stat"><div class="k">대상 상품${a.sourceFilter?` (${a.sourceFilter}만)`:''}</div><div class="v">${t.qty.toLocaleString()}<small>개</small><small class="gap">${t.skus}종${srcTxt?` · ${srcTxt}`:''}</small></div></div>
+                <div class="vs-stat"><div class="k">대상 상품${a.sourceFilter?` (${a.sourceFilter}만)`:''}${a.inboundCodes?` · 입고 ${a.inboundCodes.join(',')}`:''}</div><div class="v">${t.qty.toLocaleString()}<small>개</small><small class="gap">${t.skus}종${srcTxt?` · ${srcTxt}`:''}</small></div></div>
                 <div class="vs-stat"><div class="k">총 부피 · 무게</div><div class="v">${fmtL(t.L)}<small>L</small><small class="gap">${fmtKg(t.kg)} kg</small></div></div>
                 <div class="vs-stat"><div class="k">필요 박스</div><div class="v hi">${boxCnt}<small>개</small><small class="gap">기존 ${t.topUpBoxes} · 신규 ${t.newBoxes}${t.upgradedBoxes?` · 크기 UP ${t.upgradedBoxes}`:''}</small></div></div>
             </div>`;
@@ -1016,8 +1040,9 @@
             if(plan.warnings.length) html+=`<div class="vs-warn soft">${plan.warnings.map(w=>'• '+esc(w)).join('<br>')}</div>`;
             if(plan.excluded.length){
                 const done=plan.excluded.filter(e=>e.reason==='이미 완료').length, none=plan.excluded.filter(e=>e.reason==='배정 없음');
-                const other=plan.excluded.filter(e=>e.reason!=='이미 완료'&&e.reason!=='배정 없음');   // 대상(입고/재고)에 없는 상품 등
-                html+=`<div class="vs-ex">제외: 이미 스캔 완료 ${done}종${none.length?` · 배정 없음 ${none.length}종 (${none.slice(0,6).map(e=>esc(e.barcode)).join(', ')}${none.length>6?' …':''})`:''}${other.length?` · ${esc(other[0].reason)} ${other.length}종`:''}</div>`;
+                const other=plan.excluded.filter(e=>e.reason!=='이미 완료'&&e.reason!=='배정 없음');   // 대상(입고/재고)에 없는 상품 · 다른 입고코드 등
+                const byReason=new Map(); for(const e of other) byReason.set(e.reason,(byReason.get(e.reason)||0)+1);
+                html+=`<div class="vs-ex">제외: 이미 스캔 완료 ${done}종${none.length?` · 배정 없음 ${none.length}종 (${none.slice(0,6).map(e=>esc(e.barcode)).join(', ')}${none.length>6?' …':''})`:''}${[...byReason].map(([r,c])=>` · ${esc(r)} ${c}종`).join('')}</div>`;
             }
             document.getElementById('vsBody').innerHTML=html;
             note.className='vs-note';
