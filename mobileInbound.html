@@ -448,12 +448,13 @@
             }catch(e){ playWarn(); toast(e.message); }
         }
         // 꺼내는 곳(박스명, 검정) → 담는 곳(출고스캔 박스 번호 · 크기, 오른쪽). 서버가 가상으로 담긴 박스만 준다(이미 실제로 담은 분량은 제외).
-        //   개수는 그 박스에 "가상으로 담을" 개수. 박스가 여럿이거나 출고개수와 다르면 ×n 으로 표시. 박스가 없으면 "직접 스캔"
+        //   칩에는 박스 번호·크기만. 담을 개수는 아래 큰 숫자(출고개수)로 보여준다 — 박스가 여럿일 때(발주번호만 입력한 전체 보기)만 칩에 ×n (2026-10-15: 칩의 ×4 와 출고개수 12 가 같이 보여 헷갈림)
+        //   박스가 없으면 "직접 스캔"
         function boxRow(r){
             const src=`<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
             const list=(r.boxes||[]);
             const dst=list.length
-                ? list.map(b=>`<span class="chip" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개)">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${(list.length>1||Number(b.virtualQty)!==Number(r.출고개수))?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
+                ? list.map(b=>`<span class="chip" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개)">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
                 : `<span class="chip none">${ICON('i-box',18,2)}박스 미정 · 직접 스캔</span>`;
             return `<div class="boxrow">${src}<span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
         }
@@ -468,10 +469,17 @@
                 ${boxRow(r)}
                 <div class="thumb">${r.img?`<img src="${esc(r.img)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML=NOIMG">`:noimg}</div>
                 <div class="pname"><div class="nm">${modelBadge(r.상품명)}</div><span class="bc">${esc(r.바코드)||'-'}</span></div>
-                <div class="qty"><span class="k">출고개수</span><span class="v">${esc(r.출고개수)}</span><span class="u">개</span></div>
+                ${qtyRow(r)}
             </div></div>`;
         }
         const NOIMG=ICON('i-img',40,1.6)+'<div>이미지 없음</div>';
+        // 출고개수 = 이 카드에서 **지금 담을 개수**. 가상 박스가 잡혀 있으면 그 박스(들) 몫의 합(박스 보기면 그 박스 몫), 아니면 행의 출고개수.
+        //   박스 몫이 행의 출고개수보다 작으면(나머지는 이미 실제 포장됐거나 다른 입고코드) 작게 "배정 n" 을 덧붙인다
+        function qtyRow(r){
+            const list=r.boxes||[], share=list.reduce((s,b)=>s+(Number(b.virtualQty)||0),0);
+            const total=Number(r.출고개수)||0, show=list.length?share:total;
+            return `<div class="qty"><span class="k">출고개수</span><span class="v">${show}</span><span class="u">개</span>${list.length&&show!==total?`<span class="u" style="font-weight:600">· 배정 ${total}</span>`:''}</div>`;
+        }
         function endHtml(){
             const f=rows.filter(r=>r.모바일==='found').length, m=rows.filter(r=>r.모바일==='missing').length, left=rows.length-f-m;
             const miss=rows.filter(r=>r.모바일==='missing');
