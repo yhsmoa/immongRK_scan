@@ -132,158 +132,263 @@ async function sizesByBarcode(barcodes) {
   return out;
 }
 
+// 발주서 스캔 상태 한 벌 — GET /api/ship-scan/order 의 응답 본문. 일괄 가상스캔(virtual-batch)도 같은 것을 쓴다.
+//   { ok:true, payload } | { ok:false, status, error }
+async function loadOrderScanState(orderNumberIn) {
+  const orderNumber = String(orderNumberIn || '').trim();
+  if (!orderNumber) return { ok: false, status: 400, error: '발주번호가 필요합니다.' };
+
+  const orderId = await S.getOrderId('rk_orders', orderNumber);
+  if (!orderId) return { ok: false, status: 404, error: '존재하지 않는 발주서입니다.' };
+
+  const { order, limit, name, prep, loc } = await orderBarcodeMeta(orderNumber);
+  // 처리완료(DONE) 발주서는 스캔 대상에서 제외
+  if (S.isDoneOrder(order)) return { ok: false, status: 404, error: '처리완료된 발주서입니다.' };
+  const barcodes = [...limit.keys()];
+  const [locMap, allocMap, sizeMap] = await Promise.all([
+    locationsByBarcode(orderNumber, barcodes),
+    allocByBarcode(orderNumber),
+    sizesByBarcode(barcodes),
+  ]);
+  const products = barcodes.map(bc => ({
+    barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0,
+    preparedQty: prep.has(bc) ? prep.get(bc) : null,      // 미입력은 null (0 과 구분)
+    location: locMap.get(bc) || loc.get(bc) || '',        // 정렬용
+    allocQty: (allocMap.get(bc) || {}).total || 0,        // 출고예정 배정량 (가상스캔 목표)
+    allocStock: (allocMap.get(bc) || {}).stock || 0,      //   그중 재고분 — 가상스캔 출처별 박스 분리용
+    allocInbound: (allocMap.get(bc) || {}).inbound || 0,  //   그중 입고분
+    allocInboundByCode: (allocMap.get(bc) || {}).inboundByCode || {},   //   입고분을 입고코드별로 — 가상스캔 모달의 입고코드 선택용
+    size: sizeMap.get(bc) || null,                        // {w,l,h,g} mm·g (가상스캔 부피/무게)
+  }));
+
+  // 기존 박스 + 출고리스트
+  const { data: boxes, error: eB } = await sb.from('rk_ship_boxes')
+    .select('*').eq('order_number', orderNumber).order('box_no', { ascending: true });
+  if (eB) throw eB;
+  const boxIds = (boxes || []).map(b => b.id);
+  let items = [];
+  if (boxIds.length) {
+    const { data: it, error: eI } = await sb.from('rk_ship_box_items')
+      .select('*').in('box_id', boxIds).order('id', { ascending: true });
+    if (eI) throw eI;
+    items = it || [];
+  }
+  const boxNoById = new Map((boxes || []).map(b => [b.id, b.box_no]));
+
+  return { ok: true, payload: {
+    valid: true,
+    orderNumber,
+    center: (order && order.물류센터) || '',
+    arrivalDate: (order && order.입고예정일) || '',
+    products,
+    // isVirtual / virtualQty: [가상스캔]으로 들어온 분량 표시 (화면 '가상' 태그)
+    // virtualConfirmedQty: 가상확정 당시 가상 합 — 화면이 현재 가상 합과 비교해 "확정" 여부를 판단한다
+    boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at, isVirtual: !!b.is_virtual,
+      virtualConfirmedQty: parseInt(b.virtual_confirmed_qty, 10) || 0 })),
+    items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty, virtualQty: i.virtual_qty || 0 })),
+  } };
+}
+
 // 발주서 조회 (유효성 + 상품/박스/출고리스트)
 router.get('/api/ship-scan/order/:orderNumber', async (req, res) => {
   try {
-    const orderNumber = String(req.params.orderNumber || '').trim();
-    if (!orderNumber) return res.status(400).json({ error: '발주번호가 필요합니다.' });
-
-    const orderId = await S.getOrderId('rk_orders', orderNumber);
-    if (!orderId) return res.status(404).json({ valid: false, error: '존재하지 않는 발주서입니다.' });
-
-    const { order, limit, name, prep, loc } = await orderBarcodeMeta(orderNumber);
-    // 처리완료(DONE) 발주서는 스캔 대상에서 제외
-    if (S.isDoneOrder(order)) return res.status(404).json({ valid: false, error: '처리완료된 발주서입니다.' });
-    const barcodes = [...limit.keys()];
-    const [locMap, allocMap, sizeMap] = await Promise.all([
-      locationsByBarcode(orderNumber, barcodes),
-      allocByBarcode(orderNumber),
-      sizesByBarcode(barcodes),
-    ]);
-    const products = barcodes.map(bc => ({
-      barcode: bc, productName: name.get(bc) || '', confirmedQty: limit.get(bc) || 0,
-      preparedQty: prep.has(bc) ? prep.get(bc) : null,      // 미입력은 null (0 과 구분)
-      location: locMap.get(bc) || loc.get(bc) || '',        // 정렬용
-      allocQty: (allocMap.get(bc) || {}).total || 0,        // 출고예정 배정량 (가상스캔 목표)
-      allocStock: (allocMap.get(bc) || {}).stock || 0,      //   그중 재고분 — 가상스캔 출처별 박스 분리용
-      allocInbound: (allocMap.get(bc) || {}).inbound || 0,  //   그중 입고분
-      allocInboundByCode: (allocMap.get(bc) || {}).inboundByCode || {},   //   입고분을 입고코드별로 — 가상스캔 모달의 입고코드 선택용
-      size: sizeMap.get(bc) || null,                        // {w,l,h,g} mm·g (가상스캔 부피/무게)
-    }));
-
-    // 기존 박스 + 출고리스트
-    const { data: boxes, error: eB } = await sb.from('rk_ship_boxes')
-      .select('*').eq('order_number', orderNumber).order('box_no', { ascending: true });
-    if (eB) throw eB;
-    const boxIds = (boxes || []).map(b => b.id);
-    let items = [];
-    if (boxIds.length) {
-      const { data: it, error: eI } = await sb.from('rk_ship_box_items')
-        .select('*').in('box_id', boxIds).order('id', { ascending: true });
-      if (eI) throw eI;
-      items = it || [];
-    }
-    const boxNoById = new Map((boxes || []).map(b => [b.id, b.box_no]));
-
-    res.json({
-      valid: true,
-      orderNumber,
-      center: (order && order.물류센터) || '',
-      arrivalDate: (order && order.입고예정일) || '',
-      products,
-      // isVirtual / virtualQty: [가상스캔]으로 들어온 분량 표시 (화면 '가상' 태그)
-      // virtualConfirmedQty: 가상확정 당시 가상 합 — 화면이 현재 가상 합과 비교해 "확정" 여부를 판단한다
-      boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at, isVirtual: !!b.is_virtual,
-        virtualConfirmedQty: parseInt(b.virtual_confirmed_qty, 10) || 0 })),
-      items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty, virtualQty: i.virtual_qty || 0 })),
-    });
+    const r = await loadOrderScanState(req.params.orderNumber);
+    if (!r.ok) return res.status(r.status).json(r.status === 400 ? { error: r.error } : { valid: false, error: r.error });
+    res.json(r.payload);
   } catch (e) {
     console.error('[rk] ship-scan/order:', e);
     res.status(500).json({ error: '발주서 조회 실패: ' + e.message });
   }
 });
 
+// 상태 코드를 붙인 오류 — saveShipState 가 검증 실패를 알릴 때. 라우트는 e.status 로 응답 코드를 정한다
+const httpErr = (status, message) => Object.assign(new Error(message), { status });
+
 // 저장 — 현재 작업 상태(박스아이템 전체)를 그대로 반영(SET). 스캔·개수편집·삭제 모두 지원.
 // body: { orderNumber, boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty,virtualQty?}] }
 //   virtualQty = qty 중 [가상스캔]으로 들어온 개수 (0~qty). rk_ship_box_items.virtual_qty 로 저장하고,
 //   박스에 가상 수량이 하나라도 있으면 rk_ship_boxes.is_virtual=true (없으면 false 로 되돌린다 — SET 이므로 매번 다시 계산).
-router.post('/api/ship-scan/save', async (req, res) => {
-  try {
-    const orderNumber = String(req.body.orderNumber || '').trim();
-    const boxesIn = Array.isArray(req.body.boxes) ? req.body.boxes : [];
-    const itemsIn = Array.isArray(req.body.items) ? req.body.items : [];
-    if (!orderNumber) return res.status(400).json({ error: '발주번호가 없습니다.' });
+// POST /api/ship-scan/save 와 일괄 가상스캔(virtual-batch)이 같이 쓴다. 검증 실패는 httpErr(400/404) 로 throw.
+async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
+  const orderNumber = String(orderNumberIn || '').trim();
+  const boxesIn = Array.isArray(boxesRaw) ? boxesRaw : [];
+  const itemsIn = Array.isArray(itemsRaw) ? itemsRaw : [];
+  if (!orderNumber) throw httpErr(400, '발주번호가 없습니다.');
 
-    const orderId = await S.getOrderId('rk_orders', orderNumber);
-    if (!orderId) return res.status(404).json({ error: '존재하지 않는 발주서입니다.' });
+  const orderId = await S.getOrderId('rk_orders', orderNumber);
+  if (!orderId) throw httpErr(404, '존재하지 않는 발주서입니다.');
 
-    // 아이템 정리 (boxNo+barcode 합산)
-    const merged = new Map();
-    for (const it of itemsIn) {
-      const boxNo = parseInt(it.boxNo, 10);
-      const barcode = String(it.barcode || '').trim();
-      const qty = parseInt(it.qty, 10);
-      if (!Number.isFinite(boxNo) || boxNo < 1 || !barcode || !Number.isFinite(qty) || qty <= 0) continue;
-      const vq = Math.min(qty, Math.max(0, parseInt(it.virtualQty, 10) || 0));
-      const k = `${boxNo}|${barcode}`;
-      if (!merged.has(k)) merged.set(k, { boxNo, barcode, productName: String(it.productName || '').trim(), qty: 0, virtualQty: 0 });
-      merged.get(k).qty += qty;
-      merged.get(k).virtualQty += vq;
-    }
-    const list = [...merged.values()];
+  // 아이템 정리 (boxNo+barcode 합산)
+  const merged = new Map();
+  for (const it of itemsIn) {
+    const boxNo = parseInt(it.boxNo, 10);
+    const barcode = String(it.barcode || '').trim();
+    const qty = parseInt(it.qty, 10);
+    if (!Number.isFinite(boxNo) || boxNo < 1 || !barcode || !Number.isFinite(qty) || qty <= 0) continue;
+    const vq = Math.min(qty, Math.max(0, parseInt(it.virtualQty, 10) || 0));
+    const k = `${boxNo}|${barcode}`;
+    if (!merged.has(k)) merged.set(k, { boxNo, barcode, productName: String(it.productName || '').trim(), qty: 0, virtualQty: 0 });
+    merged.get(k).qty += qty;
+    merged.get(k).virtualQty += vq;
+  }
+  const list = [...merged.values()];
 
-    // 초과/미존재 검증 (바코드 단위, SET이므로 전체 = list 합)
-    const { order, limit, name } = await orderBarcodeMeta(orderNumber);
-    // 처리완료(DONE) 발주서에는 저장하지 않는다
-    if (S.isDoneOrder(order)) return res.status(400).json({ error: '처리완료된 발주서에는 저장할 수 없습니다.' });
-    const byBc = new Map();
-    for (const it of list) byBc.set(it.barcode, (byBc.get(it.barcode) || 0) + it.qty);
-    for (const [bc, q] of byBc) {
-      if (!limit.has(bc)) return res.status(400).json({ error: `발주서에 없는 바코드입니다: ${bc}` });
-      if (q > limit.get(bc)) return res.status(400).json({ error: `확정수량(${limit.get(bc)})을 초과했습니다: ${bc}` });
-    }
+  // 초과/미존재 검증 (바코드 단위, SET이므로 전체 = list 합)
+  const { order, limit, name } = await orderBarcodeMeta(orderNumber);
+  // 처리완료(DONE) 발주서에는 저장하지 않는다
+  if (S.isDoneOrder(order)) throw httpErr(400, '처리완료된 발주서에는 저장할 수 없습니다.');
+  const byBc = new Map();
+  for (const it of list) byBc.set(it.barcode, (byBc.get(it.barcode) || 0) + it.qty);
+  for (const [bc, q] of byBc) {
+    if (!limit.has(bc)) throw httpErr(400, `발주서에 없는 바코드입니다: ${bc}`);
+    if (q > limit.get(bc)) throw httpErr(400, `확정수량(${limit.get(bc)})을 초과했습니다: ${bc}`);
+  }
 
-    // 박스 upsert (없으면 생성) — 크기는 boxes 입력 우선
-    const sizeByNo = new Map(boxesIn.map(b => [parseInt(b.boxNo, 10), String(b.boxSize || '극소').trim() || '극소']));
-    const { data: existBoxes } = await sb.from('rk_ship_boxes').select('id, box_no').eq('order_number', orderNumber);
-    const boxIdByNo = new Map((existBoxes || []).map(b => [b.box_no, b.id]));
-    const allBoxNos = new Set([...list.map(i => i.boxNo), ...sizeByNo.keys()].filter(n => Number.isFinite(n) && n >= 1));
-    for (const no of allBoxNos) {
-      const size = sizeByNo.get(no) || '극소';
-      if (boxIdByNo.has(no)) {
-        // 기존 박스: 크기 변경 반영 (박스 크기 입력이 있을 때만)
-        if (sizeByNo.has(no)) {
-          const { error } = await sb.from('rk_ship_boxes').update({ box_size: size }).eq('id', boxIdByNo.get(no));
-          if (error) throw error;
-        }
-        continue;
-      }
-      const { data, error } = await sb.from('rk_ship_boxes')
-        .insert({ order_number: orderNumber, box_no: no, box_size: size }).select('id').single();
-      if (error) throw error;
-      boxIdByNo.set(no, data.id);
-    }
-
-    // 아이템 SET: 이 발주서의 기존 박스아이템 전부 삭제 후 현재 상태 삽입
-    const allBoxIds = [...boxIdByNo.values()];
-    if (allBoxIds.length) {
-      const { error } = await sb.from('rk_ship_box_items').delete().in('box_id', allBoxIds);
-      if (error) throw error;
-    }
-    if (list.length) {
-      const rows = list.map(it => ({
-        box_id: boxIdByNo.get(it.boxNo), order_number: orderNumber, barcode: it.barcode,
-        product_name: it.productName || name.get(it.barcode) || null, qty: it.qty, virtual_qty: it.virtualQty,
-      }));
-      const BATCH = 500;
-      for (let i = 0; i < rows.length; i += BATCH) {
-        const { error } = await sb.from('rk_ship_box_items').insert(rows.slice(i, i + BATCH));
+  // 박스 upsert (없으면 생성) — 크기는 boxes 입력 우선
+  const sizeByNo = new Map(boxesIn.map(b => [parseInt(b.boxNo, 10), String(b.boxSize || '극소').trim() || '극소']));
+  const { data: existBoxes } = await sb.from('rk_ship_boxes').select('id, box_no').eq('order_number', orderNumber);
+  const boxIdByNo = new Map((existBoxes || []).map(b => [b.box_no, b.id]));
+  const allBoxNos = new Set([...list.map(i => i.boxNo), ...sizeByNo.keys()].filter(n => Number.isFinite(n) && n >= 1));
+  for (const no of allBoxNos) {
+    const size = sizeByNo.get(no) || '극소';
+    if (boxIdByNo.has(no)) {
+      // 기존 박스: 크기 변경 반영 (박스 크기 입력이 있을 때만)
+      if (sizeByNo.has(no)) {
+        const { error } = await sb.from('rk_ship_boxes').update({ box_size: size }).eq('id', boxIdByNo.get(no));
         if (error) throw error;
       }
+      continue;
     }
+    const { data, error } = await sb.from('rk_ship_boxes')
+      .insert({ order_number: orderNumber, box_no: no, box_size: size }).select('id').single();
+    if (error) throw error;
+    boxIdByNo.set(no, data.id);
+  }
 
-    // 박스 가상 표시 — 가상 수량이 있는 박스 true, 나머지 false (가상 분량을 지우거나 줄이면 자동 해제).
-    // 가상이 없어진 박스는 가상확정 기록도 지운다 (확정 상태는 "확정 당시 가상 합 == 현재 가상 합" 로 판단하므로 남겨 둘 이유가 없다)
-    const virtualBoxNos = new Set(list.filter(it => it.virtualQty > 0).map(it => it.boxNo));
-    const vTrue = [...allBoxNos].filter(no => virtualBoxNos.has(no)).map(no => boxIdByNo.get(no));
-    const vFalse = [...allBoxNos].filter(no => !virtualBoxNos.has(no)).map(no => boxIdByNo.get(no));
-    if (vTrue.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: true }).in('id', vTrue); if (error) throw error; }
-    if (vFalse.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: false, virtual_confirmed_qty: 0, virtual_confirmed_at: null }).in('id', vFalse); if (error) throw error; }
+  // 아이템 SET: 이 발주서의 기존 박스아이템 전부 삭제 후 현재 상태 삽입
+  const allBoxIds = [...boxIdByNo.values()];
+  if (allBoxIds.length) {
+    const { error } = await sb.from('rk_ship_box_items').delete().in('box_id', allBoxIds);
+    if (error) throw error;
+  }
+  if (list.length) {
+    const rows = list.map(it => ({
+      box_id: boxIdByNo.get(it.boxNo), order_number: orderNumber, barcode: it.barcode,
+      product_name: it.productName || name.get(it.barcode) || null, qty: it.qty, virtual_qty: it.virtualQty,
+    }));
+    const BATCH = 500;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const { error } = await sb.from('rk_ship_box_items').insert(rows.slice(i, i + BATCH));
+      if (error) throw error;
+    }
+  }
 
-    res.json({ ok: true, savedQty: list.reduce((s, i) => s + i.qty, 0), rows: list.length, virtualQty: list.reduce((s, i) => s + i.virtualQty, 0) });
+  // 박스 가상 표시 — 가상 수량이 있는 박스 true, 나머지 false (가상 분량을 지우거나 줄이면 자동 해제).
+  // 가상이 없어진 박스는 가상확정 기록도 지운다 (확정 상태는 "확정 당시 가상 합 == 현재 가상 합" 로 판단하므로 남겨 둘 이유가 없다)
+  const virtualBoxNos = new Set(list.filter(it => it.virtualQty > 0).map(it => it.boxNo));
+  const vTrue = [...allBoxNos].filter(no => virtualBoxNos.has(no)).map(no => boxIdByNo.get(no));
+  const vFalse = [...allBoxNos].filter(no => !virtualBoxNos.has(no)).map(no => boxIdByNo.get(no));
+  if (vTrue.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: true }).in('id', vTrue); if (error) throw error; }
+  if (vFalse.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: false, virtual_confirmed_qty: 0, virtual_confirmed_at: null }).in('id', vFalse); if (error) throw error; }
+
+  return { ok: true, savedQty: list.reduce((s, i) => s + i.qty, 0), rows: list.length, virtualQty: list.reduce((s, i) => s + i.virtualQty, 0) };
+}
+
+router.post('/api/ship-scan/save', async (req, res) => {
+  try {
+    res.json(await saveShipState(req.body.orderNumber, req.body.boxes, req.body.items));
   } catch (e) {
+    if (e.status) return res.status(e.status).json({ error: e.message });
     console.error('[rk] ship-scan/save:', e);
     res.status(500).json({ error: '출고스캔 저장 실패: ' + e.message });
+  }
+});
+
+// ── 일괄 가상스캔 (입고정리 /inboundArrange [가상스캔]) — 발주서 여러 건을 같은 옵션으로 한 번에 (docs/plan-virtual-scan.md §7-13) ──
+// body: { orderNumbers:[…], topUp:true|false, target:'all'|'입고'|'재고', inboundCode:'1011', confirm:false|true }
+//   · 계산 = 출고스캔 모달과 같은 VirtualPack.planVirtualScan (발주서마다 GET order 와 같은 상태를 읽어 계산)
+//   · 반영 = VirtualPack.applyPlan (모달 [확정] 규칙) → saveShipState (확정수량 한도·처리완료 검증 그대로)
+//   · confirm=false 는 읽기만(미리보기). confirm=true 는 발주서마다 계획을 **그 시점 DB 로 다시 계산**해서 저장한다 (미리보기 결과를 그대로 쓰지 않는다)
+//   · 같은 발주서를 다시 돌리면 남은 목표가 0 → '이미 완료' 로 건너뛴다 (중복 반영 없음)
+//   · 입고코드는 화면에서 고른 코드 하나로 고정 (대상 재고면 무관). 다른 코드의 입고분은 '다른 입고코드' 로 제외된다
+// 응답: { confirm, options, results:[{ orderNumber, center, arrivalDate, status:'ready'|'saved'|'skip'|'error', reason,
+//          qty, skus, L, kg, bySource, existingBoxes, newBoxes, topUpBoxes, upgradedBoxes, assumedCount,
+//          boxes:[{boxNo,size,sizeFrom,isNew,addQty,source,warnings}], warnings, excluded:{done,none,other:{사유:종수}}, saved?:{addQty,boxCnt,upCnt,savedQty,virtualQty} }],
+//        summary:{ orders, ready, saved, skipped, errors, qty, boxes, newBoxes } }
+const VirtualPack = require('../virtualPack');
+const VB_TARGETS = new Set(['all', '입고', '재고']);
+async function virtualBatchOne(orderNumber, opt, confirm) {
+  const st = await loadOrderScanState(orderNumber);
+  if (!st.ok) return { orderNumber, status: 'skip', reason: st.error, qty: 0, boxes: [], warnings: [], excluded: { done: 0, none: 0, other: {} } };
+  const d = st.payload;
+  // 출고스캔 화면이 loadOrder 에서 만드는 products 와 같은 모양: orderQty = 확정수량, scannedQty = 박스에 담긴 합
+  const scannedBy = new Map();
+  for (const it of d.items) scannedBy.set(it.barcode, (scannedBy.get(it.barcode) || 0) + (parseInt(it.qty, 10) || 0));
+  const products = d.products.map((p) => Object.assign({}, p, { orderQty: p.confirmedQty, scannedQty: scannedBy.get(p.barcode) || 0 }));
+  const boxSizeMap = new Map(d.boxes.map((b) => [b.boxNo, b.boxSize]));
+  const input = { products, boxItems: d.items, savedBoxes: d.boxes, boxSizeMap };
+  const plan = VirtualPack.planVirtualScan(input, {
+    topUpExisting: !!opt.topUp,
+    splitBySource: opt.target === 'all',
+    sourceFilter: opt.target === 'all' ? null : opt.target,
+    inboundCodes: opt.target === '재고' ? null : [opt.inboundCode],
+  });
+  const boxes = plan.boxes.filter((b) => b.items.length).map((b) => ({
+    boxNo: b.boxNo, size: b.size, sizeFrom: b.sizeFrom || null, isNew: !!b.isNew, addQty: b.addQty, source: b.source || null, warnings: b.warnings }));
+  const canApply = plan.ok && boxes.length > 0;
+  const t = plan.totals, a = plan.assumptions;
+  const other = {};
+  for (const e of plan.excluded) if (e.reason !== '이미 완료' && e.reason !== '배정 없음') other[e.reason] = (other[e.reason] || 0) + 1;
+  const row = {
+    orderNumber: d.orderNumber, center: d.center, arrivalDate: d.arrivalDate,
+    status: canApply ? 'ready' : 'skip', reason: canApply ? null : (plan.reason || '담을 상품이 없습니다.'),
+    qty: t.qty, skus: t.skus, L: Math.round(t.L * 10) / 10, kg: Math.round(t.kg * 10) / 10, bySource: t.bySource || {},
+    existingBoxes: d.boxes.length, newBoxes: t.newBoxes, topUpBoxes: t.topUpBoxes, upgradedBoxes: t.upgradedBoxes || 0, assumedCount: a.assumedCount,
+    boxes, warnings: plan.warnings,
+    excluded: { done: plan.excluded.filter((e) => e.reason === '이미 완료').length, none: plan.excluded.filter((e) => e.reason === '배정 없음').length, other },
+  };
+  if (confirm && canApply) {
+    const body = VirtualPack.applyPlan(input, plan);
+    const r = await saveShipState(d.orderNumber, body.boxes, body.items);
+    row.status = 'saved';
+    row.saved = { addQty: body.addQty, boxCnt: body.boxCnt, upCnt: body.upCnt, savedQty: r.savedQty, virtualQty: r.virtualQty };
+  }
+  return row;
+}
+router.post('/api/ship-scan/virtual-batch', async (req, res) => {
+  try {
+    const raw = Array.isArray(req.body.orderNumbers) ? req.body.orderNumbers : [];
+    const orderNumbers = [...new Set(raw.map((x) => String(x || '').trim()).filter(Boolean))];
+    if (!orderNumbers.length) return res.status(400).json({ error: '발주번호가 없습니다.' });
+    if (orderNumbers.length > 300) return res.status(400).json({ error: '한 번에 300건까지 처리할 수 있습니다.' });
+    const target = String(req.body.target || '');
+    if (!VB_TARGETS.has(target)) return res.status(400).json({ error: '대상(전체/입고/재고)을 선택하세요.' });
+    if (typeof req.body.topUp !== 'boolean') return res.status(400).json({ error: '기존 박스(채우기/새 박스만)를 선택하세요.' });
+    const inboundCode = String(req.body.inboundCode || '').trim();
+    if (target !== '재고' && !inboundCode) return res.status(400).json({ error: '입고코드가 없습니다.' });
+    const confirm = req.body.confirm === true;
+    const opt = { topUp: req.body.topUp, target, inboundCode: target === '재고' ? null : inboundCode };
+
+    // 발주서마다 조회 6~7회 왕복 → 3개씩 동시에. 한 건이 실패해도 나머지는 계속 (그 행만 error)
+    const results = await S.chunkedPool(orderNumbers, 1, async ([no]) => {
+      try { return [await virtualBatchOne(no, opt, confirm)]; }
+      catch (e) {
+        console.error('[rk] ship-scan/virtual-batch', no, e);
+        return [{ orderNumber: no, status: 'error', reason: e.message, qty: 0, boxes: [], warnings: [], excluded: { done: 0, none: 0, other: {} } }];
+      }
+    }, 3);
+    const cnt = (s) => results.filter((r) => r.status === s).length;
+    const applied = results.filter((r) => r.status === (confirm ? 'saved' : 'ready'));
+    const summary = {
+      orders: results.length, ready: cnt('ready'), saved: cnt('saved'), skipped: cnt('skip'), errors: cnt('error'),
+      qty: applied.reduce((s, r) => s + (r.saved ? r.saved.addQty : r.qty), 0),
+      boxes: applied.reduce((s, r) => s + r.boxes.length, 0),
+      newBoxes: applied.reduce((s, r) => s + (r.newBoxes || 0), 0),
+    };
+    res.json({ confirm, options: opt, results, summary });
+  } catch (e) {
+    console.error('[rk] ship-scan/virtual-batch:', e);
+    res.status(500).json({ error: '일괄 가상스캔 실패: ' + e.message });
   }
 });
 

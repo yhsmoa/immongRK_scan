@@ -1,9 +1,10 @@
 /**
- * 가상스캔 배정 알고리즘 — 출고스캔(/shipScan) [가상스캔] 버튼
+ * 가상스캔 배정 알고리즘 — 출고스캔(/shipScan) [가상스캔] 버튼 · 입고정리(/inboundArrange) [가상스캔] 일괄(서버에서 같은 함수)
  * 설계: docs/plan-virtual-scan.md
  *
  * 순수 함수 (DOM·네트워크 없음). 브라우저에서는 window.VirtualPack, node 에서는 require 로 쓴다.
  *   const plan = VirtualPack.planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap }, overrides);
+ *   const body = VirtualPack.applyPlan({ boxItems, savedBoxes, boxSizeMap }, plan);   // 저장 API body (서버 일괄 가상스캔이 사용)
  *
  * 핵심 규칙
  *  · 바코드별 목표 = min(출고예정 배정량(재고+입고), 확정수량) − 이미 스캔량
@@ -306,5 +307,47 @@
     return { ok: true, reason: null, assumptions, boxes: result, excluded, totals, warnings };
   }
 
-  return { CONFIG, planVirtualScan, capL, unitOf };
+  /**
+   * 계획을 저장 형식으로 반영 — 출고스캔 [확정](confirmVirtualScan) 과 같은 규칙. 순수 함수 (입력을 바꾸지 않는다)
+   *   · 박스 아이템: 같은 박스·바코드 행이 있으면 qty 와 virtualQty 에 담는 개수를 더하고, 없으면 새 행(qty = virtualQty = 담는 개수)
+   *   · 박스 크기: 신규 박스·크기 UP 박스는 계획의 크기, 나머지 기존 박스는 지금 크기(boxSizeMap → savedBoxes → '극소')
+   *   · 박스 목록: 아이템이 있는 박스 + 저장된(빈) 박스 전부 — 저장 API 가 SET 이라 빠뜨리면 그 박스가 사라진다
+   * @param {object} input  planVirtualScan 과 같은 { boxItems:[{boxNo,barcode,productName,qty,virtualQty}], savedBoxes, boxSizeMap }
+   * @param {object} plan   planVirtualScan 결과 (ok 인 것)
+   * @returns {{ boxes:[{boxNo,boxSize}], items:[{boxNo,barcode,productName,qty,virtualQty}], addQty, boxCnt, upCnt }}
+   *          — POST /api/ship-scan/save 의 body 그대로 + 반영 요약
+   */
+  function applyPlan(input, plan) {
+    const items = (Array.isArray(input.boxItems) ? input.boxItems : []).map((i) => ({
+      boxNo: Number(i.boxNo), barcode: String(i.barcode || '').trim(), productName: i.productName || '',
+      qty: Math.max(0, parseInt(i.qty, 10) || 0), virtualQty: Math.max(0, parseInt(i.virtualQty, 10) || 0) }));
+    const sizeByNo = new Map();
+    for (const b of (Array.isArray(input.savedBoxes) ? input.savedBoxes : [])) if (b && b.boxSize) sizeByNo.set(Number(b.boxNo), b.boxSize);
+    const m = input.boxSizeMap;
+    if (m) {
+      const entries = typeof m.entries === 'function' ? [...m.entries()] : Object.entries(m);
+      for (const [no, size] of entries) if (size) sizeByNo.set(Number(no), size);
+    }
+    let addQty = 0, boxCnt = 0, upCnt = 0;
+    for (const b of (plan && Array.isArray(plan.boxes)) ? plan.boxes : []) {
+      if (!b.items || !b.items.length) continue;
+      boxCnt++;
+      if (b.isNew || b.sizeFrom || !sizeByNo.has(b.boxNo)) sizeByNo.set(b.boxNo, b.size);
+      if (b.sizeFrom) upCnt++;
+      for (const it of b.items) {
+        const q = Math.max(0, parseInt(it.qty, 10) || 0);
+        if (!q) continue;
+        const x = items.find((r) => r.boxNo === b.boxNo && r.barcode === it.barcode);
+        if (x) { x.qty += q; x.virtualQty += q; }
+        else items.push({ boxNo: b.boxNo, barcode: it.barcode, productName: it.productName || '', qty: q, virtualQty: q });
+        addQty += q;
+      }
+    }
+    const boxNos = [...new Set([...items.map((i) => i.boxNo), ...sizeByNo.keys()])]
+      .filter((n) => Number.isFinite(n) && n >= 1).sort((a, b) => a - b);
+    const boxes = boxNos.map((no) => ({ boxNo: no, boxSize: sizeByNo.get(no) || '극소' }));
+    return { boxes, items, addQty, boxCnt, upCnt };
+  }
+
+  return { CONFIG, planVirtualScan, applyPlan, capL, unitOf };
 }));

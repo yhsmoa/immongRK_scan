@@ -147,6 +147,49 @@
         .modal-foot .btn{height:36px;}
         @media (max-width:560px){ .dir button{padding:0 7px;} .sort-rank{flex-basis:44px;} }
 
+        /* 일괄 가상스캔 모달 — 옵션 세그먼트는 출고스캔 모달(.vs-seg)과 같은 규칙, 본문은 발주서별 표 */
+        .vb-modal{width:900px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;}
+        .vb-modal .modal-head{padding:16px 20px 10px;}
+        .vb-sub{font-size:12.5px;color:#94a3b8;font-weight:500;margin-left:8px;}
+        .vb-opts{display:flex;flex-direction:column;gap:8px;padding:6px 20px 12px;border-bottom:1px solid var(--line);}
+        .vb-opt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;}
+        .vb-opt .lbl{flex:0 0 64px;font-weight:600;color:#475569;}
+        .vb-seg{display:inline-flex;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;}
+        .vb-seg button{height:32px;padding:0 12px;border:none;background:#fff;font-size:12.5px;color:#475569;cursor:pointer;}
+        .vb-seg button + button{border-left:1px solid #e2e8f0;}
+        .vb-seg button.on{background:var(--primary);color:#fff;font-weight:600;}
+        .vb-seg button:disabled{opacity:.45;cursor:not-allowed;}
+        .vb-opt .hint{font-size:12px;color:#94a3b8;}
+        .vb-opt .hint b.need{color:#dc2626;font-weight:700;}
+        .vb-opt .code{display:inline-flex;align-items:center;height:32px;padding:0 12px;border-radius:8px;background:#eef2ff;color:var(--primary);font-weight:700;font-size:13px;}
+        .vb-body{flex:1 1 auto;overflow:auto;padding:0 20px;min-height:120px;}
+        .vb-msg{padding:28px 0;text-align:center;color:#94a3b8;font-size:13.5px;}
+        .vb-tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0;}
+        .vb-tbl th,.vb-tbl td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;}
+        .vb-tbl th{position:sticky;top:0;background:#f8fafc;color:#64748b;font-weight:600;font-size:12px;white-space:nowrap;z-index:1;}
+        .vb-tbl td.chk,.vb-tbl th.chk{width:28px;text-align:center;}
+        .vb-tbl td.ord{white-space:nowrap;font-weight:600;color:#1e293b;}
+        .vb-tbl td.ord small{display:block;font-weight:400;color:#94a3b8;}
+        .vb-tbl td.num{white-space:nowrap;}
+        .vb-tbl tr.skip td{color:#94a3b8;background:#fafafa;}
+        .vb-tbl tr.error td{background:#fef2f2;}
+        .vb-tbl tr.saved td{background:#f0fdf4;}
+        .vb-bx{display:inline-flex;align-items:center;gap:4px;margin:1px 4px 1px 0;padding:1px 7px;border-radius:6px;font-size:11.5px;background:#f1f5f9;color:#334155;white-space:nowrap;}
+        .vb-bx.new{background:#eef2ff;color:#3730a3;}
+        .vb-bx.up{background:#fff7ed;color:#9a3412;}
+        .vb-bx b{font-weight:700;}
+        .vb-st{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;}
+        .vb-st.ready{background:#eef2ff;color:#4338ca;}
+        .vb-st.saved{background:#dcfce7;color:#166534;}
+        .vb-st.skip{background:#f1f5f9;color:#64748b;}
+        .vb-st.error{background:#fee2e2;color:#b91c1c;}
+        .vb-why{color:#64748b;font-size:12px;}
+        .vb-warn{cursor:help;color:#b45309;font-size:12px;margin-left:4px;}
+        .vb-note{font-size:12.5px;color:#64748b;flex:1;min-width:0;}
+        .vb-note.err{color:#dc2626;}
+        .vb-sum{display:flex;gap:14px;flex-wrap:wrap;padding:8px 0 2px;font-size:12.5px;color:#475569;}
+        .vb-sum b{color:var(--primary);}
+
         /* 박스라벨출력 — label-service 임베드 (쉽먼트 페이지와 같은 모달) */
         .label-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10004;}
         .label-back.show{display:flex;}
@@ -182,6 +225,8 @@
                     <select id="monthSel" onchange="onMonthChange()"></select>
                     <select id="codeSel" class="sel-code" onchange="onCodeChange()"></select>
                     <button class="btn primary" id="prepareBtn" onclick="openOrderPanel()">출고준비</button>
+                    <!-- 일괄 가상스캔: 체크한 행의 출고번호(=발주번호)마다 출고스캔의 [가상스캔]을 같은 옵션으로 돌려 박스를 잡는다 (출고준비 → 가상스캔 → 박스라벨출력 순) -->
+                    <button class="btn" id="vbBtn" onclick="openVirtualBatch()">가상스캔</button>
                     <!-- 임시: 체크한 행의 출고번호(=발주번호)로 쉽먼트와 같은 박스 라벨을 찍는다 (표 순서 = 인쇄 순서) -->
                     <button class="btn" id="boxLabelPrintBtn" onclick="openBoxLabelPrint()">박스라벨출력</button>
                 </div>
@@ -263,6 +308,22 @@
             <iframe id="labelPrintFrame" title="박스 라벨 출력"
                     allow="loopback-network; local-network; local-network-access"></iframe>
             <div class="label-status" id="labelPrintStatus"></div>
+        </div>
+    </div>
+
+    <!-- 일괄 가상스캔 — 옵션(기존 박스 · 대상 · 입고코드 고정) → 발주서별 예상 표 → [확정] → 결과. 계산·반영은 서버 /api/ship-scan/virtual-batch -->
+    <div class="modal-back" id="vbBack" onclick="if(event.target===this)closeVirtualBatch()">
+        <div class="modal vb-modal">
+            <div class="modal-head"><span>가상스캔 · 일괄 <span class="vb-sub" id="vbSub"></span></span><button class="x" onclick="closeVirtualBatch()" aria-label="닫기">✕</button></div>
+            <div class="vb-opts" id="vbOpts"></div>
+            <div class="vb-body" id="vbBody"></div>
+            <div class="modal-foot">
+                <span class="vb-note" id="vbNote"></span>
+                <div class="right">
+                    <button class="btn" id="vbCancelBtn" onclick="closeVirtualBatch()">취소</button>
+                    <button class="btn primary" id="vbConfirmBtn" onclick="confirmVirtualBatch()" disabled>확정 · 박스 반영 + 저장</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -731,7 +792,160 @@
                 document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨`:'✕ 박스 라벨 실패';   // 상세 사유는 임베드가 alert 로 띄운다
             }
         });
-        document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeLabelPrint(); });
+        document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeLabelPrint(); closeVirtualBatch(); } });
+
+        // ============================================================
+        // 가상스캔 · 일괄 — 체크한 행의 출고번호(=발주번호)마다 출고스캔의 [가상스캔]을 같은 옵션으로 돌린다
+        //   옵션: 기존 박스(채우기/새 박스만 — 매번 직접 고름) · 대상(전체/입고/재고 — 이 화면은 입고 작업이라 '입고' 기본)
+        //         · 입고코드 = 위 드롭박스에서 고른 코드 하나로 고정 (다른 코드의 입고분은 서버가 '다른 입고코드' 로 제외)
+        //   흐름: 옵션을 다 고르면 서버에 미리보기(confirm:false, 읽기만) → 발주서별 표 → [확정](confirm:true) → 결과 → 박스 열 갱신
+        //   확정은 서버가 그 시점 DB 로 계획을 다시 계산해 저장한다. 같은 발주서를 또 돌려도 남은 목표가 0 이라 더해지지 않는다.
+        // ============================================================
+        let vbOrders=[], vbCode='', vbTopUp=null, vbTarget='입고', vbPreview=null, vbReq=0, vbBusy=false, vbDone=false, vbOff=new Set();
+        function openVirtualBatch(){
+            const orders=checkedOrderNumbers();
+            if(!orders.length){ toast('가상스캔할 행(출고리스트)을 선택해주세요.'); return; }
+            const code=selectedCode();
+            if(!code){ toast('입고코드를 선택하세요.'); return; }
+            vbOrders=orders; vbCode=code; vbTopUp=null; vbTarget='입고'; vbPreview=null; vbBusy=false; vbDone=false; vbOff=new Set(); vbReq++;
+            document.getElementById('vbSub').textContent=`발주서 ${orders.length}건 · 입고코드 ${code}`;
+            const cancel=document.getElementById('vbCancelBtn'); cancel.textContent='취소'; cancel.disabled=false;
+            renderVbOpts(); renderVbBody();
+            document.getElementById('vbBack').classList.add('show');
+        }
+        function closeVirtualBatch(){
+            if(vbBusy) return;   // 확정 처리 중에는 닫지 않는다
+            document.getElementById('vbBack').classList.remove('show'); vbReq++; vbPreview=null;
+        }
+        function setVbTopUp(on){ if(vbBusy||vbDone) return; vbTopUp=!!on; renderVbOpts(); runVbPreview(); }
+        function setVbTarget(t){ if(vbBusy||vbDone) return; vbTarget=t; renderVbOpts(); runVbPreview(); }
+        function vbReady(){ return vbTopUp!=null && !!vbTarget; }
+        function renderVbOpts(){
+            const dis=(vbBusy||vbDone)?'disabled':'';
+            document.getElementById('vbOpts').innerHTML=`
+                <div class="vb-opt">
+                    <span class="lbl">기존 박스</span>
+                    <div class="vb-seg">
+                        <button type="button" class="${vbTopUp===true?'on':''}" ${dis} onclick="setVbTopUp(true)">기존 박스 채우기</button>
+                        <button type="button" class="${vbTopUp===false?'on':''}" ${dis} onclick="setVbTopUp(false)">새 박스만</button>
+                    </div>
+                    <span class="hint">${vbTopUp==null?'<b class="need">선택하세요</b> · 박스가 없는 발주서는 어느 쪽이든 새 박스'
+                        :vbTopUp?'발주서마다 마지막 박스부터 채움 · 앞 박스는 마감 · 박스 없으면 새 박스':'기존 박스는 그대로 두고 새 박스에만 담음'}</span>
+                </div>
+                <div class="vb-opt">
+                    <span class="lbl">대상</span>
+                    <div class="vb-seg">
+                        <button type="button" class="${vbTarget==='all'?'on':''}" ${dis} onclick="setVbTarget('all')">전체</button>
+                        <button type="button" class="${vbTarget==='입고'?'on':''}" ${dis} onclick="setVbTarget('입고')">입고</button>
+                        <button type="button" class="${vbTarget==='재고'?'on':''}" ${dis} onclick="setVbTarget('재고')">재고</button>
+                    </div>
+                    <span class="hint">${vbTarget==='all'?'입고분 먼저, 재고분은 새 박스':vbTarget==='입고'?'이 입고코드의 입고분만 (재고 제외)':'재고분만 (입고 제외)'}</span>
+                </div>
+                <div class="vb-opt">
+                    <span class="lbl">입고코드</span>
+                    <span class="code">${esc(vbCode)}</span>
+                    <span class="hint">${vbTarget==='재고'?'재고만 담으므로 입고코드는 쓰지 않음':'위 드롭박스에서 고른 코드 · 다른 입고코드의 입고분은 제외 (그 코드로 다시 돌리세요)'}</span>
+                </div>`;
+        }
+        async function runVbPreview(){
+            if(!vbReady()){ vbPreview=null; renderVbBody(); return; }
+            const my=++vbReq;
+            vbPreview=null; renderVbBody('loading');
+            try{
+                const res=await fetch('/api/ship-scan/virtual-batch',{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({orderNumbers:vbOrders, topUp:vbTopUp, target:vbTarget, inboundCode:vbCode, confirm:false})});
+                const j=await res.json().catch(()=>({}));
+                if(my!==vbReq) return;   // 그 사이 옵션이 바뀌었거나 닫힘
+                if(!res.ok) throw new Error(j.error||'미리보기 실패');
+                vbPreview=j; renderVbBody();
+            }catch(e){ if(my===vbReq){ vbPreview=null; renderVbBody('error', e.message); } }
+        }
+        function toggleVbOrder(no){ if(vbBusy||vbDone) return; if(vbOff.has(no)) vbOff.delete(no); else vbOff.add(no); renderVbBody(); }
+        function toggleVbAll(on){ if(vbBusy||vbDone) return; vbOff=new Set(); if(!on) for(const r of vbPreview.results) if(r.status==='ready') vbOff.add(r.orderNumber); renderVbBody(); }
+        function vbPicked(){ return vbPreview?vbPreview.results.filter(r=>r.status==='ready'&&!vbOff.has(r.orderNumber)):[]; }
+        const vbBoxChip=b=>`<span class="vb-bx ${b.isNew?'new':''} ${b.sizeFrom?'up':''}" title="${esc((b.warnings||[]).join(' · '))}">📦${b.boxNo} ${b.sizeFrom?esc(b.sizeFrom)+'→':''}${esc(b.size)}${b.isNew?'':' 기존'}${b.source?' · '+esc(b.source):''} <b>+${b.addQty}</b></span>`;
+        function renderVbBody(state, msg){
+            const body=document.getElementById('vbBody'), note=document.getElementById('vbNote'), btn=document.getElementById('vbConfirmBtn');
+            note.className='vb-note';
+            if(!vbPreview){
+                body.innerHTML=`<div class="vb-msg">${state==='loading'?'발주서별 예상 박스를 계산하는 중…'
+                    :state==='error'?'미리보기 실패: '+esc(msg)
+                    :'위에서 <b>기존 박스</b>를 고르면 발주서별 예상 박스를 계산합니다.'}</div>`;
+                note.textContent=state==='loading'?'':'아직 계산 전입니다.';
+                btn.disabled=true; btn.textContent='확정 · 박스 반영 + 저장';
+                return;
+            }
+            // 표는 반영 가능(또는 저장됨) → 오류 → 건너뜀 순으로 (같은 상태끼리는 체크한 행 순서 유지)
+            const rank={ready:0,saved:0,error:1,skip:2};
+            const rs=vbPreview.results.map((r,i)=>[r,i]).sort((a,b)=>((rank[a[0].status]??3)-(rank[b[0].status]??3))||(a[1]-b[1])).map(x=>x[0]);
+            const stLabel={ready:'반영 가능',saved:'저장됨',skip:'건너뜀',error:'오류'};
+            const exTxt=r=>{ const e=r.excluded||{}; const parts=[]; if(e.done) parts.push(`이미 완료 ${e.done}종`); if(e.none) parts.push(`배정 없음 ${e.none}종`); for(const [k,v] of Object.entries(e.other||{})) parts.push(`${k} ${v}종`); return parts.join(' · '); };
+            const rows=rs.map(r=>{
+                const on=r.status==='ready'&&!vbOff.has(r.orderNumber);
+                const chk=vbDone?'':(r.status==='ready'?`<input type="checkbox" ${on?'checked':''} onchange="toggleVbOrder('${esc(r.orderNumber)}')">`:'');
+                const tgt=r.status==='skip'||r.status==='error'?'<span class="dash">-</span>'
+                    :`${r.qty}개 · ${r.skus}종${Object.keys(r.bySource||{}).length>1?` <small class="vb-why">(${Object.entries(r.bySource).map(([k,v])=>k+' '+v).join(' · ')})</small>`:''}`;
+                const boxes=(r.boxes||[]).length?r.boxes.map(vbBoxChip).join(''):'<span class="dash">-</span>';
+                const warn=(r.warnings||[]).length?`<span class="vb-warn" title="${esc(r.warnings.join('\n'))}">⚠ ${r.warnings.length}</span>`:'';
+                const why=r.status==='skip'||r.status==='error'?`<span class="vb-why">${esc(r.reason||'')}</span>`
+                    :r.status==='saved'?`<span class="vb-why">${r.saved.addQty}개 → 박스 ${r.saved.boxCnt}개${r.saved.upCnt?` · 크기 변경 ${r.saved.upCnt}`:''}</span>`
+                    :`<span class="vb-why">${exTxt(r)}</span>`;
+                return `<tr class="${r.status}${on||r.status==='saved'?'':' skip'}">
+                    <td class="chk">${chk}</td>
+                    <td class="ord">${esc(r.orderNumber)}<small>${esc([r.arrivalDate,r.center].filter(Boolean).join(' '))}</small></td>
+                    <td><span class="vb-st ${r.status}">${stLabel[r.status]||r.status}</span>${warn}</td>
+                    <td class="num">${tgt}</td>
+                    <td>${boxes}</td>
+                    <td>${why}</td>
+                </tr>`;
+            }).join('');
+            const ready=rs.filter(r=>r.status==='ready').length, picked=vbPicked();
+            const allOn=ready>0&&picked.length===ready;
+            const sumQty=picked.reduce((s,r)=>s+r.qty,0), sumBox=picked.reduce((s,r)=>s+(r.boxes||[]).length,0), sumNew=picked.reduce((s,r)=>s+(r.newBoxes||0),0);
+            const s=vbPreview.summary||{};
+            const sum=vbDone
+                ?`<div class="vb-sum"><span>저장 <b>${s.saved||0}</b>건</span><span>상품 <b>${s.qty||0}</b>개</span><span>박스 <b>${s.boxes||0}</b>개 (신규 ${s.newBoxes||0})</span><span>건너뜀 ${s.skipped||0} · 오류 ${s.errors||0}</span></div>`
+                :`<div class="vb-sum"><span>반영 <b>${picked.length}</b> / ${rs.length}건</span><span>상품 <b>${sumQty}</b>개</span><span>박스 <b>${sumBox}</b>개 (신규 ${sumNew})</span><span>건너뜀 ${rs.length-ready}</span></div>`;
+            body.innerHTML=sum+`<table class="vb-tbl"><thead><tr>
+                <th class="chk">${vbDone||!ready?'':`<input type="checkbox" ${allOn?'checked':''} onchange="toggleVbAll(this.checked)" title="전체">`}</th>
+                <th>발주서</th><th>상태</th><th>대상</th><th>예상 박스</th><th>비고</th></tr></thead><tbody>${rows}</tbody></table>`;
+            if(vbDone){
+                note.textContent=s.errors?'일부 발주서는 저장하지 못했습니다. 표의 오류 사유를 확인하세요.':'저장했습니다. 표의 박스 열에 가상 박스가 표시됩니다.';
+                if(s.errors) note.className='vb-note err';
+                btn.disabled=true; btn.textContent='저장 완료';
+                return;
+            }
+            note.textContent=picked.length?'확정하면 체크한 발주서마다 지금 DB 기준으로 다시 계산해 박스를 잡고 바로 저장합니다.':'반영할 발주서가 없습니다.';
+            btn.disabled=!picked.length; btn.textContent=`확정 · ${picked.length}건 박스 반영 + 저장`;
+        }
+        async function confirmVirtualBatch(){
+            const picked=vbPicked();
+            if(!picked.length||vbBusy||vbDone) return;
+            const btn=document.getElementById('vbConfirmBtn'), cancel=document.getElementById('vbCancelBtn'), note=document.getElementById('vbNote');
+            vbBusy=true; btn.disabled=true; cancel.disabled=true; btn.textContent='반영 중…'; note.className='vb-note'; note.textContent=`발주서 ${picked.length}건 저장 중… 창을 닫지 마세요.`;
+            renderVbOpts();
+            try{
+                const res=await fetch('/api/ship-scan/virtual-batch',{method:'POST',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({orderNumbers:picked.map(r=>r.orderNumber), topUp:vbTopUp, target:vbTarget, inboundCode:vbCode, confirm:true})});
+                const j=await res.json().catch(()=>({}));
+                if(!res.ok) throw new Error(j.error||'확정 실패');
+                vbPreview=j; vbDone=true; vbBusy=false;
+                cancel.disabled=false; cancel.textContent='닫기';
+                renderVbOpts(); renderVbBody();
+                const s=j.summary||{};
+                toast(`가상스캔 ${s.saved||0}건 저장 · 상품 ${s.qty||0}개 → 박스 ${s.boxes||0}개${s.errors?` · 오류 ${s.errors}건`:''}`);
+                // 표의 박스 열 갱신 — 체크 상태는 유지해서 바로 [박스라벨출력]으로 이어갈 수 있게
+                const keep=new Set([...document.querySelectorAll('.rowchk:checked')].map(c=>c.dataset.allocid));
+                await loadArranged();
+                document.querySelectorAll('.rowchk').forEach(c=>{ if(keep.has(c.dataset.allocid)) c.checked=true; });
+                updateCancelBtn();
+            }catch(e){
+                vbBusy=false; cancel.disabled=false;
+                renderVbOpts();
+                note.className='vb-note err'; note.textContent='확정 실패: '+e.message+' — 저장된 발주서가 있을 수 있으니 다시 미리보기로 확인하세요.';
+                btn.disabled=false; btn.textContent=`확정 · ${picked.length}건 박스 반영 + 저장`;
+            }
+        }
 
         let toastTimer;
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}

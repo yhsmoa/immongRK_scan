@@ -6,7 +6,7 @@
  *   (2026-10-13 overfill 10% → 5% 로 보수적으로 바꾸면서 기대값 갱신: 이전 극소 39.6/중 132/대2 308)
  */
 const assert = require('assert');
-const { planVirtualScan, CONFIG, capL, unitOf } = require('../virtualPack');
+const { planVirtualScan, applyPlan, CONFIG, capL, unitOf } = require('../virtualPack');
 
 const SIZE10 = { w: 1000, l: 1000, h: 10, g: 500 };
 const prod = (barcode, alloc, { conf = alloc, scanned = 0, size = SIZE10, name = barcode } = {}) =>
@@ -289,6 +289,44 @@ test('출처 분리: 출처 정보가 없는 상품은 예전과 같다', () => 
   const p = run([prod('A', 5), prod('B', 3)]);
   assert.deepStrictEqual(shape(p), '1:중:8');
   assert.strictEqual(p.boxes[0].source, null);
+});
+
+// ── applyPlan: 계획 → 저장 body (출고스캔 [확정] 과 같은 반영 규칙) ──
+test('applyPlan: 새 박스 — 아이템 qty=virtualQty, 박스 크기는 계획대로', () => {
+  const plan = run([prod('A', 5), prod('B', 3)]);
+  const r = applyPlan({ boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, plan);
+  assert.deepStrictEqual(r.boxes, [{ boxNo: 1, boxSize: '중' }]);
+  assert.deepStrictEqual(r.items.map((i) => `${i.boxNo}:${i.barcode}:${i.qty}/${i.virtualQty}`), ['1:A:5/5', '1:B:3/3']);
+  assert.strictEqual(r.addQty, 8); assert.strictEqual(r.boxCnt, 1); assert.strictEqual(r.upCnt, 0);
+});
+
+test('applyPlan: 기존 박스 채우기 — 같은 행에 더하고(virtual 만 증가) 빈 기존 박스도 목록에 남긴다', () => {
+  const boxItems = [{ boxNo: 2, barcode: 'A', productName: 'A', qty: 1, virtualQty: 0 }];
+  const savedBoxes = [{ boxNo: 1, boxSize: '극소' }, { boxNo: 2, boxSize: '중' }];
+  const plan = run([prod('A', 3, { scanned: 1 }), prod('B', 2)], { boxItems, savedBoxes }, { topUpExisting: true });
+  assert.deepStrictEqual(shape(plan), '2:중:4');
+  const r = applyPlan({ boxItems, savedBoxes, boxSizeMap: new Map(savedBoxes.map((b) => [b.boxNo, b.boxSize])) }, plan);
+  assert.deepStrictEqual(r.boxes, [{ boxNo: 1, boxSize: '극소' }, { boxNo: 2, boxSize: '중' }]);
+  assert.deepStrictEqual(r.items.map((i) => `${i.boxNo}:${i.barcode}:${i.qty}/${i.virtualQty}`), ['2:A:3/2', '2:B:2/2']);
+  assert.strictEqual(boxItems[0].qty, 1);   // 입력은 그대로
+});
+
+test('applyPlan: 크기 UP — 마지막 기존 박스의 크기가 계획 크기로 바뀐다', () => {
+  const boxItems = [{ boxNo: 1, barcode: 'A', qty: 2, virtualQty: 0 }];
+  const savedBoxes = [{ boxNo: 1, boxSize: '극소' }];
+  const plan = run([prod('A', 8, { scanned: 2 })], { boxItems, savedBoxes }, { topUpExisting: true });
+  assert.strictEqual(plan.boxes[0].sizeFrom, '극소');
+  const r = applyPlan({ boxItems, savedBoxes, boxSizeMap: new Map([[1, '극소']]) }, plan);
+  assert.strictEqual(r.boxes[0].boxSize, plan.boxes[0].size);
+  assert.strictEqual(r.upCnt, 1);
+});
+
+test('applyPlan: 출처 분리로 같은 바코드가 두 박스에 나뉘어도 박스별 행으로', () => {
+  const p = { barcode: 'A', productName: 'A', orderQty: 6, allocQty: 6, allocInbound: 4, allocStock: 2, allocInboundByCode: { '1011': 4 }, scannedQty: 0, size: SIZE10, location: '' };
+  const plan = run([p], {}, { splitBySource: true, inboundCodes: ['1011'] });
+  const r = applyPlan({ boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, plan);
+  assert.deepStrictEqual(r.items.map((i) => `${i.boxNo}:${i.qty}/${i.virtualQty}`), ['1:4/4', '2:2/2']);
+  assert.strictEqual(r.boxes.length, 2);
 });
 
 console.log(`\n${n} tests passed`);

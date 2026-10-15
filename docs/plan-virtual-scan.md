@@ -206,12 +206,22 @@ planVirtualScan({ products, boxItems, savedBoxes, boxSizeMap }, CONFIG) → plan
     고른 코드의 입고분만 담고 나머지는 "다른 입고코드" 로 제외(경고에 개수). 이미 담긴 개수에는 코드 표시가 없어 **오래된 입고코드부터
     담은 것으로 보고 뺀다**(입고코드 순서대로 돌리는 운영 전제, 코드가 여럿이면 경고 문구). 입고정리 화면의 '출고코드' 표기는 '입고코드' 로
     바꿈(데이터 키·API 파라미터는 그대로).
+13. **입고정리 [가상스캔] 일괄** (2026-10-15 추가): 입고정리(/inboundArrange)의 [출고준비]와 [박스라벨출력] 사이에 [가상스캔] 버튼.
+    체크한 행의 출고번호(=발주번호)마다 출고스캔의 가상스캔을 **같은 옵션으로** 돌린다 (출고준비 → 가상스캔 → 박스라벨출력 순서가 한 화면에서 이어짐).
+    옵션은 모달 상단에서 **기존 박스(채우기/새 박스만, 매번 직접 고름)** · **대상(전체/입고/재고, 이 화면만 '입고' 기본 선택)** ·
+    **입고코드 = 드롭박스에서 고른 코드로 고정**. 옵션을 다 고르면 서버 `POST /api/ship-scan/virtual-batch` (confirm:false, 읽기만)로
+    발주서별 한 줄 요약(상태 · 대상 개수/종수 · 예상 박스 칩 · 제외 사유 · 경고)을 표로 보여 주고, 발주서 단위로 빼고 [확정](confirm:true).
+    확정은 서버가 발주서마다 **그 시점 DB 로 계획을 다시 계산**해 `applyPlan` → `saveShipState` 로 저장한다(확정수량 한도·처리완료 검증 그대로).
+    남은 목표가 "배정량 − 이미 담긴 개수" 라 같은 발주서를 또 돌려도 더해지지 않는다. 저장 뒤 표의 박스 열(📦 가상)을 다시 불러오고
+    체크 상태는 유지해 바로 [박스라벨출력]으로 이어간다. 운영 전제: 출고스캔 페이지에 발주서를 열어 둔 채로 일괄을 돌리지 않는다
+    (출고스캔 [저장]은 화면 상태 SET 이라 나중에 저장하는 쪽이 이긴다).
 
 ## 8. 구현 파일
 
 | 파일 | 내용 |
 |---|---|
-| `virtualPack.js` (루트, numpad.js 와 같은 정적 파일) | `VirtualPack.planVirtualScan()` 순수 함수 + `CONFIG` (용량·무게·가정값 한 곳) |
+| `virtualPack.js` (루트, numpad.js 와 같은 정적 파일) | `VirtualPack.planVirtualScan()` 순수 함수 + `CONFIG` (용량·무게·가정값 한 곳) · `applyPlan()` 계획 → 저장 body (서버 일괄이 사용) |
 | `tests/virtualPack.test.js` | `node tests/virtualPack.test.js` — 크기 결정·기존 박스 채우기·무게 분할·제외·한도 |
-| `routes/rkShipScan.js` | `GET /api/ship-scan/order/:no` 의 `products[]` 에 `allocQty`, `size` 추가 (쓰기 API 추가 없음) |
+| `routes/rkShipScan.js` | `GET /api/ship-scan/order/:no` 의 `products[]` 에 `allocQty`, `size` 추가 · `loadOrderScanState`/`saveShipState` 로 분리 · `POST /api/ship-scan/virtual-batch` 일괄(미리보기/확정) |
+| `inboundArrange.html` | [가상스캔] 버튼 · 일괄 모달 (옵션 → 발주서별 표 → 확정 → 결과) |
 | `shipScan.html` | [가상스캔] 버튼 · 예상 모달 · 확정 → 반영 + 기존 `saveShip()` · 기록의 `가상` 태그 |
