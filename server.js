@@ -3498,6 +3498,144 @@ app.delete('/api/shortage/save-temp', async (req, res) => {
     }
 });
 
+// ==================== 상품부족 스냅샷 API ====================
+//   화면에 불러와 있던 행 전체 + 입력 수량 + 조회 조건을 이름을 붙여 통째로 보관한다.
+//   테이블: rk_shortage_snapshots(헤더) / rk_shortage_snapshot_items(행, row jsonb 원본)
+//   정의 사본: supabase/rk_shortage_snapshots.sql
+const SNAPSHOT_PAGE = 1000;   // Supabase 1회 조회 상한
+const SNAPSHOT_INSERT_CHUNK = 500;
+const snapInt = v => (v == null || v === '' || isNaN(Number(v))) ? null : Math.round(Number(v));
+const snapNum = v => (v == null || v === '' || isNaN(Number(v))) ? null : Number(v);
+
+// GET: 스냅샷 목록 (최신순)
+app.get('/api/shortage/snapshots', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('rk_shortage_snapshots')
+            .select('id, name, mode, start_date, end_date, row_count, input_count, created_at')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (error) {
+        console.error('스냅샷 목록 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// POST: 스냅샷 저장  { name, mode, startDate, endDate, overwrite, rows:[{ row, inputQty }] }
+//   같은 이름이 있으면 409 { exists:true } — overwrite:true 로 다시 보내면 기존 것을 지우고 새로 저장
+app.post('/api/shortage/snapshots', async (req, res) => {
+    try {
+        const { name, mode, startDate, endDate, overwrite, rows } = req.body || {};
+        const snapName = String(name || '').trim();
+        if (!snapName) return res.status(400).json({ error: '스냅샷 이름이 없습니다.' });
+        if (!Array.isArray(rows) || rows.length === 0) return res.status(400).json({ error: '저장할 행이 없습니다.' });
+
+        const { data: existing, error: findErr } = await supabase
+            .from('rk_shortage_snapshots').select('id').eq('name', snapName).maybeSingle();
+        if (findErr) throw findErr;
+        if (existing) {
+            if (!overwrite) return res.status(409).json({ exists: true, error: '같은 이름의 스냅샷이 있습니다.' });
+            const { error: delErr } = await supabase.from('rk_shortage_snapshots').delete().eq('id', existing.id);
+            if (delErr) throw delErr;
+        }
+
+        const inputCount = rows.filter(r => snapInt(r.inputQty) > 0).length;
+        const { data: head, error: headErr } = await supabase
+            .from('rk_shortage_snapshots')
+            .insert({
+                name: snapName,
+                mode: mode || null,
+                start_date: startDate || null,
+                end_date: endDate || null,
+                row_count: rows.length,
+                input_count: inputCount,
+            })
+            .select('id').single();
+        if (headErr) throw headErr;
+
+        const items = rows.map((r, i) => {
+            const row = r.row || {};
+            return {
+                snapshot_id: head.id,
+                seq: i,
+                sku_id: row.skuId || null,
+                barcode: row.상품바코드 || null,
+                product_name: row.상품이름 || null,
+                img: row.img || null,
+                order_qty: snapInt(row.총발주수량),
+                scan_qty: snapInt(row.총스캔수량),
+                shortage_qty: snapInt(row.부족수량),
+                input_qty: snapInt(r.inputQty),
+                remain_qty: snapInt(row.remainQty),
+                yiwu_qty: snapInt(row.yiwuTotalQty),
+                stock_qty: snapInt(row.재고),
+                c_forecast: snapNum(row.cForecast),
+                c_forecast_2w: snapNum(row.cForecast2W),
+                w78: snapInt(row.w78),
+                w56: snapInt(row.w56),
+                w34: snapInt(row.w34),
+                w12: snapInt(row.w12),
+                row,
+            };
+        });
+        for (let i = 0; i < items.length; i += SNAPSHOT_INSERT_CHUNK) {
+            const { error: insErr } = await supabase
+                .from('rk_shortage_snapshot_items').insert(items.slice(i, i + SNAPSHOT_INSERT_CHUNK));
+            if (insErr) {
+                // 절반만 들어간 스냅샷은 남기지 않는다 (cascade 로 행도 함께 삭제)
+                await supabase.from('rk_shortage_snapshots').delete().eq('id', head.id);
+                throw insErr;
+            }
+        }
+        res.json({ success: true, id: head.id, name: snapName, count: rows.length, inputCount });
+    } catch (error) {
+        console.error('스냅샷 저장 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// GET: 스냅샷 하나 불러오기 → { snapshot, rows:[{ row, inputQty }] }  (저장 순서대로 전부)
+app.get('/api/shortage/snapshots/:id', async (req, res) => {
+    try {
+        const { data: snapshot, error: headErr } = await supabase
+            .from('rk_shortage_snapshots')
+            .select('id, name, mode, start_date, end_date, row_count, input_count, created_at')
+            .eq('id', req.params.id).maybeSingle();
+        if (headErr) throw headErr;
+        if (!snapshot) return res.status(404).json({ error: '스냅샷이 없습니다.' });
+
+        const rows = [];
+        for (let from = 0; ; from += SNAPSHOT_PAGE) {
+            const { data, error } = await supabase
+                .from('rk_shortage_snapshot_items')
+                .select('row, input_qty')
+                .eq('snapshot_id', snapshot.id)
+                .order('seq', { ascending: true })
+                .range(from, from + SNAPSHOT_PAGE - 1);
+            if (error) throw error;
+            (data || []).forEach(d => rows.push({ row: d.row, inputQty: d.input_qty }));
+            if (!data || data.length < SNAPSHOT_PAGE) break;
+        }
+        res.json({ snapshot, rows });
+    } catch (error) {
+        console.error('스냅샷 불러오기 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// DELETE: 스냅샷 삭제 (행은 cascade)
+app.delete('/api/shortage/snapshots/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('rk_shortage_snapshots').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (error) {
+        console.error('스냅샷 삭제 오류:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 server.listen(PORT, () => {
   console.log(`서버 실행 중 👉 http://localhost:${PORT}`);
 });
