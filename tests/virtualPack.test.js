@@ -4,7 +4,7 @@
  *
  * 단위: 상품 1개 = 10 L (1000×1000×10 mm), 0.5 kg.
  * 알고리즘 테스트는 **고정 보정값(TEST_CAL)** 으로 돈다: 용량(overfill 5% 포함) 극소 37.8 → 3개 · 중 126 → 12개 · 대2 294 → 29개, 무게 25 kg 미만.
- *   (운영 CONFIG 는 2026-10-15 에 실제 박스 표본 용량 100/200/480 · 무게 제한 없음으로 바뀌었다 — 기본값 자체는 맨 아래 'CONFIG 기본값' 테스트로 본다)
+ *   (운영 CONFIG 는 2026-10-15 에 실제 박스 표본 용량 100/200/480 으로 바뀌었다(무게 25 kg 은 그대로) — 기본값 자체는 맨 아래 'CONFIG 기본값' 테스트로 본다)
  */
 const assert = require('assert');
 const { planVirtualScan: planRaw, applyPlan, CONFIG, capL, unitOf } = require('../virtualPack');
@@ -335,22 +335,23 @@ test('applyPlan: 출처 분리로 같은 바코드가 두 박스에 나뉘어도
 });
 
 // ── 운영 기본값 (CONFIG) — 통계 용량 · 무게 제한 없음 (2026-10-15) ──
-test('CONFIG 기본값: 용량은 실제 박스 상위 10개 표본 최솟값(극소 100 · 중 200 · 대2 480), 가산 0, 무게 제한 없음', () => {
+test('CONFIG 기본값: 용량은 실제 박스 상위 10개 표본 최솟값(극소 100 · 중 200 · 대2 480), 가산 0, 무게 25 kg 미만', () => {
   assert.deepStrictEqual(CONFIG.baseCapL, { '극소': 100, '중': 200, '대2': 480 });
   assert.strictEqual(CONFIG.overfill, 0);
-  assert.strictEqual(CONFIG.maxKg, null);
+  assert.strictEqual(CONFIG.maxKg, 25);
   assert.strictEqual(capL('중', CONFIG), 200);
 });
 
-test('기본값으로는 무게 때문에 박스를 나누지 않는다 (부피로만) · 무게 경고 없음', () => {
-  // 1개 10 L · 5 kg × 17 = 170 L · 85 kg → 중(200) 하나 (TEST_CAL 이면 25 kg 에 걸려 4개씩 나뉜다)
+test('기본값: 무게 25 kg 미만으로 나눈다 · maxKg null 이면 부피로만', () => {
+  // 1개 10 L · 5 kg × 17 = 170 L · 85 kg → 기본값(25 kg)이면 4개씩(20 kg) 나뉜다. null 이면 중(200) 하나
   const heavy = { w: 1000, l: 1000, h: 10, g: 5000 };
   const p = planRaw({ products: [prod('A', 17, { size: heavy })], boxItems: [], savedBoxes: [], boxSizeMap: new Map() });
-  assert.deepStrictEqual(p.boxes.map((b) => `${b.size}:${b.addQty}`), ['중:17']);
-  assert.ok(!p.boxes[0].warnings.some((w) => w.includes('무게')));
-  assert.strictEqual(p.assumptions.maxKg, null);
-  const q = planRaw({ products: [prod('A', 17, { size: heavy })], boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, { maxKg: 25 });
-  assert.deepStrictEqual(q.boxes.map((b) => b.addQty), [4, 4, 4, 4, 1]);   // 값을 주면 예전처럼 무게로 나눈다
+  assert.deepStrictEqual(p.boxes.map((b) => b.addQty), [4, 4, 4, 4, 1]);
+  assert.ok(p.boxes.every((b) => b.usedKg < 25));
+  assert.strictEqual(p.assumptions.maxKg, 25);
+  const q = planRaw({ products: [prod('A', 17, { size: heavy })], boxItems: [], savedBoxes: [], boxSizeMap: new Map() }, { maxKg: null });
+  assert.deepStrictEqual(q.boxes.map((b) => `${b.size}:${b.addQty}`), ['중:17']);
+  assert.ok(!q.boxes[0].warnings.some((w) => w.includes('무게')));
 });
 
 console.log(`\n${n} tests passed`);
