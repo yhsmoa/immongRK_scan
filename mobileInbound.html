@@ -92,6 +92,7 @@
         .orow .no{font-size:19px;font-weight:900;letter-spacing:.01em;color:var(--ink);}
         .orow.done .no,.orow.miss .no{color:var(--ink2);}
         .orow .meta{font-size:12.5px;color:var(--muted);font-weight:500;}
+        .orow .no .dash{margin:0 1px;color:var(--ink2);}
         .orow .no .bx{display:inline-block;margin-left:7px;padding:2px 9px;border-radius:999px;background:#EEEDFE;color:#3C3489;font-size:13.5px;font-weight:800;vertical-align:middle;letter-spacing:0;}
         .orow .no .bx.none{background:var(--fill);color:var(--muted);}
         .orow .prog{font-size:14px;font-weight:800;padding:6px 12px;border-radius:999px;background:var(--fill);color:var(--muted);white-space:nowrap;display:inline-flex;align-items:center;gap:5px;}
@@ -395,15 +396,29 @@
                 const pill=done
                     ? (o.missing?`<span class="prog miss">찾음 ${o.found} · 없음 ${o.missing}</span>`:`<span class="prog ok">${ICON('i-check',15,3)}완료</span>`)
                     : `<span class="prog ${n>0?'part':''}">${n} / ${o.total}</span>`;
-                const bx=o.boxNo!=null?`<span class="bx">📦${o.boxNo}${o.boxSize?' '+esc(o.boxSize):''}</span>`:'<span class="bx none">박스 미정</span>';
+                // 큰 글자 = 박스 라벨에 찍힌 그대로 "발주번호-박스번호" (라벨과 같은 모양이어야 찾기 쉽다, 2026-10-15). 배지는 박스 크기
+                const bx=o.boxNo!=null?`<span class="bx">📦 ${esc(o.boxSize||'')}</span>`:'<span class="bx none">박스 미정</span>';
                 return `<div class="orow ${rowCls}" onclick="startOrder('${esc(orderKey(o))}')">
-                    <div class="body"><div class="no">${esc(o.orderNumber)}${bx}</div>
+                    <div class="body"><div class="no">${esc(o.orderNumber)}${o.boxNo!=null?`<span class="dash">-</span>${o.boxNo}`:''}${bx}</div>
                     <div class="meta">${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}</div></div>${pill}</div>`;
             }).join('');
         }
         // "144287071-1" (박스 라벨) → 발주번호 + 박스번호 / "144287071" → 발주번호만(전체) / "144287071-0" → 박스 미정(가상 박스에 안 잡힌 행만)
         //   박스번호가 있으면 그 박스에 가상으로 담긴 상품 카드만 본다 (2026-10-15 — 박스 번호를 존중, 이미 찾은 분량은 찾을 필요 없음)
-        function parseOrderCode(raw){ const m=String(raw||'').replace(/\s+/g,'').match(/^(\d{5,})(?:-(\d+))?$/); return m?{no:m[1], boxNo:m[2]!=null?Number(m[2]):null}:null; }
+        //   하이픈 없이 "발주번호박스번호" 로 쳐도 된다 (예 1445426222 → 144542622-2, 2026-10-15 현장 요청):
+        //     목록(orders)의 발주번호가 앞부분과 같고 뒤에 1~2자리가 남으면 그걸 박스번호로 본다. 목록에 없으면 발주번호를 9자리(쿠팡 발주번호)로 보고 자른다
+        function parseOrderCode(raw){
+            const s=String(raw||'').replace(/\s+/g,'');
+            const m=s.match(/^(\d{5,})-(\d+)$/);
+            if(m) return {no:m[1], boxNo:Number(m[2])};
+            if(!/^\d{5,}$/.test(s)) return null;
+            const known=[...new Set((orders||[]).map(o=>String(o.orderNumber)))];
+            if(known.includes(s)) return {no:s, boxNo:null};
+            const hit=known.filter(no=>s.startsWith(no) && s.length>no.length && s.length-no.length<=2).sort((a,b)=>b.length-a.length);
+            if(hit.length) return {no:hit[0], boxNo:Number(s.slice(hit[0].length))};
+            if(s.length>9 && s.length<=11) return {no:s.slice(0,9), boxNo:Number(s.slice(9))};
+            return {no:s, boxNo:null};
+        }
         function parseOrderNo(raw){ const p=parseOrderCode(raw); return p?p.no:null; }
         let curBox=null;   // 박스 라벨로 들어온 경우의 박스번호 (발주번호만이면 null = 전체 · 0 = 박스 미정)
         const boxTag=()=>curBox==null?'':curBox===0?' · 박스 미정':` · 📦${curBox}`;
@@ -556,6 +571,16 @@
         //   둘 다 HTTPS + 카메라 권한 필요. 인식한 값은 발주번호 또는 박스 라벨(발주번호-박스번호)이라 startOrder 에 그대로 넘긴다.
         let camStream=null, camTimer=null, zxReader=null, zxLoading=null;
         const CAM_FORMATS=['code_128','code_39','ean_13','qr_code','itf'];
+        // 뒷카메라 + 높은 해상도 — 1D(code128) 바코드는 저해상도 프레임에서 잘 안 읽힌다 (아이폰에서 인식 안 되던 문제, 2026-10-15)
+        const CAM_VIDEO={facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}};
+        // 내장 BarcodeDetector 를 믿어도 되는지 — 있고, code_128 을 지원한다고 답해야 한다. (WebKit 은 API 만 있고 1D 를 못 읽는 경우가 있다)
+        async function nativeDetectorOk(){
+            try{
+                if(!('BarcodeDetector' in window)) return false;
+                const fm=await BarcodeDetector.getSupportedFormats();
+                return Array.isArray(fm) && fm.includes('code_128');
+            }catch(_){ return false; }
+        }
         function loadZXing(){
             if(window.ZXing) return Promise.resolve();
             if(zxLoading) return zxLoading;
@@ -574,16 +599,24 @@
         async function openCam(){
             const v=$('camVideo');
             try{
-                if('BarcodeDetector' in window){
-                    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+                if(await nativeDetectorOk()){
+                    camStream=await navigator.mediaDevices.getUserMedia({video:CAM_VIDEO,audio:false});
                     v.srcObject=camStream; $('camBack').classList.add('show'); $('camHint').textContent='발주서 바코드를 맞춰 주세요'; await v.play();
                     const det=new BarcodeDetector({formats:CAM_FORMATS});
+                    let fails=0;
                     camTimer=setInterval(async()=>{
-                        try{ const codes=await det.detect(v); for(const c of codes){ if(onCamCode(c.rawValue)) return; } }catch(_){}
+                        try{ const codes=await det.detect(v); fails=0; for(const c of codes){ if(onCamCode(c.rawValue)) return; } }
+                        catch(_){ if(++fails>=5){ clearInterval(camTimer); camTimer=null; openCamZXing(v); } }   // detect 가 계속 실패 → ZXing 으로 넘어간다
                     },300);
                     return;
                 }
-                // 아이폰 등: ZXing
+                await openCamZXing(v);
+            }catch(e){ stopCam(); toast('카메라를 열 수 없습니다: '+(e&&e.message||e)); }
+        }
+        // 아이폰(WebKit) 등 내장 인식기가 없거나 1D 를 못 읽는 경우: ZXing
+        async function openCamZXing(v){
+            try{
+                if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; v.srcObject=null; }
                 $('camBack').classList.add('show'); $('camHint').textContent='인식 모듈 준비 중…';
                 await loadZXing();
                 const Z=window.ZXing;
@@ -591,8 +624,8 @@
                 hints.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.CODE_128,Z.BarcodeFormat.CODE_39,Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.QR_CODE,Z.BarcodeFormat.ITF]);
                 hints.set(Z.DecodeHintType.TRY_HARDER,true);
                 zxReader=new Z.BrowserMultiFormatReader(hints, 250);
-                $('camHint').textContent='발주서 바코드를 맞춰 주세요';
-                await zxReader.decodeFromConstraints({video:{facingMode:{ideal:'environment'}},audio:false}, v, (result,err)=>{
+                $('camHint').textContent='바코드를 화면 가운데에 가로로 맞춰 주세요';
+                await zxReader.decodeFromConstraints({video:CAM_VIDEO,audio:false}, v, (result,err)=>{
                     if(result && zxReader) onCamCode(result.getText());
                     // err 는 "이 프레임엔 바코드 없음" 이 대부분 — 무시하고 계속
                 });
