@@ -149,6 +149,7 @@
         .vs-tag.sz-xl{background:#efe3d8;color:#7a4b1d;}   /* 대2 = 갈색 */
         .vs-tag.from{text-decoration:line-through;opacity:.55;}
         .vs-opt .hint b.need{color:#dc2626;}                /* 아직 안 고른 옵션 */
+        .vs-opt .hint{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}   /* 설명은 한 줄, 넘치면 말줄임 */
         .vs-seg button:disabled{opacity:.4;cursor:not-allowed;}
         .vs-seg button small{font-weight:500;opacity:.75;margin-left:3px;}   /* 입고코드 칩의 개수 */
         .vs-pick{padding:44px 20px;text-align:center;color:#6b7280;font-size:14.5px;}
@@ -947,10 +948,10 @@
                     <button type="button" class="${vsTopUp===true?'on':''}" ${needTopUp?'':'disabled'} onclick="setVsTopUp(true)">기존 박스 채우기</button>
                     <button type="button" class="${vsTopUp===false?'on':''}" ${needTopUp?'':'disabled'} onclick="setVsTopUp(false)">새 박스만</button>
                 </div>
-                <span class="hint">${!needTopUp?'아직 박스가 없어 새 박스에 담습니다 (고를 것 없음).'
-                    :vsTopUp==null?`<b class="need">선택하세요</b> — 이 발주서에 박스 ${existCnt}개(📦${existNos.join(', 📦')})가 있습니다.`
-                    :vsTopUp?(existCnt>1?`마지막 박스(📦${lastNo})만 남은 용량부터 채우고, 앞 박스는 마감으로 봅니다.`:`📦${lastNo}의 남은 용량부터 채웁니다.`)
-                    :'기존 박스는 그대로 두고 새 박스에만 담습니다.'}</span>
+                <span class="hint">${!needTopUp?'박스 없음 → 새 박스'
+                    :vsTopUp==null?`<b class="need">선택하세요</b> · 박스 ${existCnt}개 (📦${existNos.join(', 📦')})`
+                    :vsTopUp?(existCnt>1?`📦${lastNo}부터 채움 · 앞 박스는 마감`:`📦${lastNo}부터 채움`)
+                    :'새 박스에만 담음'}</span>
             </div>`;
             // 대상 — 전체(입고분 먼저, 재고분은 새 박스부터) / 입고만 / 재고만 (입고 작업대와 재고 선반에서 따로 돌릴 수 있게, 2026-10-15)
             top+=`<div class="vs-opt">
@@ -960,9 +961,9 @@
                     <button type="button" class="${vsTarget==='입고'?'on':''}" onclick="setVsTarget('입고')">입고</button>
                     <button type="button" class="${vsTarget==='재고'?'on':''}" onclick="setVsTarget('재고')">재고</button>
                 </div>
-                <span class="hint">${vsTarget==null?'<b class="need">선택하세요</b> — 전체는 입고분을 먼저 담고 재고분은 새 박스부터, 입고/재고는 그 배정분만 담습니다.'
-                    :vsTarget==='all'?'배정 전체를 담습니다. 입고분을 먼저 담고 박스를 마감한 뒤 재고분은 새 박스부터 담아 한 박스는 한 곳에서 끝납니다.'
-                    :`${vsTarget} 배정분만 담습니다. 다른 출처 분량은 제외되고 나중에 따로 돌릴 수 있습니다.`}</span>
+                <span class="hint">${vsTarget==null?'<b class="need">선택하세요</b>'
+                    :vsTarget==='all'?'입고분 먼저, 재고분은 새 박스'
+                    :`${vsTarget}분만 (${vsTarget==='입고'?'재고':'입고'} 제외)`}</span>
             </div>`;
             // 입고코드 — 대상이 전체/입고일 때 어느 입고건(입고정리의 입고코드)의 입고분인지 고른다. 여러 개 고를 수 있고 하나 이상 필수
             if(vsTarget==='all'||vsTarget==='입고'){
@@ -970,9 +971,9 @@
                 top+=`<div class="vs-opt">
                     <span class="lbl">입고코드</span>
                     ${codes.length?`<div class="vs-seg">${codes.map(([c,q])=>`<button type="button" class="${vsCodes.has(c)?'on':''}" onclick="toggleVsCode(${JSON.stringify(c)})">${esc(c)} <small>${q}개</small></button>`).join('')}</div>`:''}
-                    <span class="hint">${!codes.length?'이 발주서에는 입고 배정이 없습니다.'+(vsTarget==='all'?' 재고분만 담습니다.':'')
-                        :vsCodes.size===0?'<b class="need">선택하세요</b> — 고른 입고코드의 입고분만 담습니다. 여러 개를 고를 수 있습니다.'
-                        :`입고코드 ${[...vsCodes].join(', ')} 의 입고분만 담습니다.${codes.length>vsCodes.size?' 나머지 코드의 입고분은 제외됩니다.':''}`}</span>
+                    <span class="hint">${!codes.length?'입고 배정 없음'+(vsTarget==='all'?' · 재고분만':'')
+                        :vsCodes.size===0?'<b class="need">선택하세요</b> (여러 개 가능)'
+                        :`${[...vsCodes].join(', ')} 입고분만${codes.length>vsCodes.size?' · 나머지 코드 제외':''}`}</span>
                 </div>`;
             }
             const btn=document.getElementById('vsConfirmBtn'), note=document.getElementById('vsNote');
