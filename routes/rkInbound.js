@@ -207,7 +207,8 @@ function buildArranged(items, allocs) {
     const list = byItem.get(it.id) || [];
     let allocated = 0;
     for (const a of list) {
-      shipping.push({ ...base, allocId: a.id, 수량: total, 출고번호: a.order_number, 센터: a.center, 출고개수: a.ship_qty, 출고예정일: a.shipping_date || '', 회차: a.batch_no || 1, preparedAt: a.prepared_at });
+      shipping.push({ ...base, allocId: a.id, 수량: total, 출고번호: a.order_number, 센터: a.center, 출고개수: a.ship_qty, 출고예정일: a.shipping_date || '', 회차: a.batch_no || 1, preparedAt: a.prepared_at,
+        모바일: a.mobile_status || null, 모바일처리자: a.mobile_by || null, 모바일시각: a.mobile_at || null });   // 모바일 입고 찾음/없음 표시
       allocated += a.ship_qty || 0;
     }
     const leftover = total - allocated;
@@ -230,6 +231,109 @@ router.get('/api/inbound/arranged', async (req, res) => {
   } catch (e) {
     console.error('[rk] inbound/arranged:', e);
     res.status(500).json({ error: '출고배정 조회 중 오류가 발생했습니다: ' + e.message });
+  }
+});
+
+// ============================================================
+// 모바일 입고 (/mobileInbound) — 종이 [인쇄] 대신 폰으로 출고리스트를 한 줄씩 넘기며 [스캔](찾음)/[없음] 표시
+//   저장 단위 = rk_cn_shipping 행 (mobile_status/mobile_at/mobile_by). 출고개수·배정·박스는 건드리지 않는다.
+//   순서 = 입고정리 기본 정렬(회차 › 출고예정일 › 센터 › 출고번호) 안에서 박스명 › id
+// ============================================================
+const mobileCmp = (a, b) =>
+  ((Number(a.회차) || 0) - (Number(b.회차) || 0))
+  || String(a.출고예정일 || '').localeCompare(String(b.출고예정일 || ''), 'ko', { numeric: true })
+  || String(a.센터 || '').localeCompare(String(b.센터 || ''), 'ko', { numeric: true })
+  || String(a.출고번호 || '').localeCompare(String(b.출고번호 || ''), 'ko', { numeric: true })
+  || String(a.박스명 || '').localeCompare(String(b.박스명 || ''), 'ko', { numeric: true })
+  || ((a.allocId || 0) - (b.allocId || 0));
+
+// 출고코드의 발주서 목록 + 진행 (?shipmentCode=)
+// 응답: [{ orderNumber, center, shippingDate, batch, total, found, missing }] — 기본 정렬 순
+router.get('/api/inbound/mobile-orders', async (req, res) => {
+  try {
+    const code = String(req.query.shipmentCode || '').trim();
+    if (!code) return res.status(400).json({ error: '출고코드가 필요합니다.' });
+    const ids = await shipmentIdsFromQuery({ shipmentCode: code });
+    if (!ids.length) return res.json([]);
+    const allocs = await pageAll('rk_cn_shipping', 'id, order_number, center, shipping_date, batch_no, mobile_status', q => q.in('shipment_id', ids));
+    const byOrder = new Map();
+    for (const a of allocs) {
+      const no = String(a.order_number || '');
+      if (!no) continue;
+      if (!byOrder.has(no)) byOrder.set(no, { orderNumber: no, center: a.center || '', shippingDate: a.shipping_date || '', batch: a.batch_no || 1, total: 0, found: 0, missing: 0 });
+      const o = byOrder.get(no);
+      o.total++;
+      if (a.mobile_status === 'found') o.found++;
+      else if (a.mobile_status === 'missing') o.missing++;
+      o.batch = Math.min(o.batch, a.batch_no || 1);
+    }
+    const list = [...byOrder.values()].sort((a, b) => mobileCmp(
+      { 회차: a.batch, 출고예정일: a.shippingDate, 센터: a.center, 출고번호: a.orderNumber },
+      { 회차: b.batch, 출고예정일: b.shippingDate, 센터: b.center, 출고번호: b.orderNumber }));
+    res.json(list);
+  } catch (e) {
+    console.error('[rk] inbound/mobile-orders:', e);
+    res.status(500).json({ error: '발주서 목록 조회 실패: ' + e.message });
+  }
+});
+
+// 발주서 1건의 출고리스트 행 (?shipmentCode=&orderNumber=) — 카드 순서대로, 이미지·가상 박스 포함
+// 응답: { rows:[{ allocId, 회차, 출고코드, 출고번호, 센터, 출고예정일, 박스명, 중국번호, 상품명, 바코드, 출고개수, 모바일, 모바일처리자, 모바일시각, img, boxes:[{boxNo,boxSize,qty,virtualQty}] }] }
+router.get('/api/inbound/mobile-list', async (req, res) => {
+  try {
+    const code = String(req.query.shipmentCode || '').trim();
+    const orderNumber = String(req.query.orderNumber || '').trim();
+    if (!code || !orderNumber) return res.status(400).json({ error: '출고코드와 발주번호가 필요합니다.' });
+    const ids = await shipmentIdsFromQuery({ shipmentCode: code });
+    if (!ids.length) return res.status(404).json({ error: `출고코드 ${code} 를 찾을 수 없습니다.` });
+    const allocs = await pageAll('rk_cn_shipping', '*', q => q.in('shipment_id', ids).eq('order_number', orderNumber));
+    if (!allocs.length) return res.json({ rows: [] });
+    const itemIds = [...new Set(allocs.map(a => a.shipment_item_id))];
+    const items = await S.chunked(itemIds, 200, (part) => pageAll('rk_cn_shipment_items', '*, rk_cn_shipments(shipment_code, status)', q => q.in('id', part)));
+    const rows = buildArranged(items, allocs).shipping.sort(mobileCmp);
+    const barcodes = [...new Set(rows.map(r => r.바코드).filter(Boolean))];
+    // 이미지(rk_inventories.img) + 이 발주서의 출고스캔 박스 (가상 박스에 잡힌 상품은 어느 박스에 몇 개인지 카드에 보여준다)
+    const [imgRows, boxes] = await Promise.all([
+      S.chunked(barcodes, 200, async (part) => { const { data, error } = await sb.from('rk_inventories').select('barcode, img').in('barcode', part); if (error) throw error; return data || []; }),
+      S.pageAll(() => sb.from('rk_ship_boxes').select('id, box_no, box_size').eq('order_number', orderNumber).order('id', { ascending: true })),
+    ]);
+    const img = {};
+    for (const r of imgRows) { const u = String(r.img || '').trim(); if (r.barcode && u && !img[r.barcode]) img[r.barcode] = u; }
+    const boxById = new Map(boxes.map(b => [b.id, b]));
+    const boxesByBc = {};
+    if (boxes.length) {
+      const bItems = await S.pageAll(() => sb.from('rk_ship_box_items').select('box_id, barcode, qty, virtual_qty').eq('order_number', orderNumber).order('id', { ascending: true }));
+      for (const it of bItems) {
+        const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0;
+        if (!b || !it.barcode || qty <= 0) continue;
+        (boxesByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, qty, virtualQty: parseInt(it.virtual_qty, 10) || 0 });
+      }
+      for (const l of Object.values(boxesByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
+    }
+    res.json({ rows: rows.map(r => ({ ...r, img: img[r.바코드] || null, boxes: boxesByBc[r.바코드] || [] })) });
+  } catch (e) {
+    console.error('[rk] inbound/mobile-list:', e);
+    res.status(500).json({ error: '출고리스트 조회 실패: ' + e.message });
+  }
+});
+
+// 찾음/없음 저장 — body: { allocId, status: 'found' | 'missing' | null, worker }
+router.post('/api/inbound/mobile-check', async (req, res) => {
+  try {
+    const allocId = parseInt(req.body.allocId, 10);
+    const status = req.body.status == null || req.body.status === '' ? null : String(req.body.status);
+    const worker = String(req.body.worker || '').trim().slice(0, 40);
+    if (!Number.isFinite(allocId)) return res.status(400).json({ error: 'allocId 가 필요합니다.' });
+    if (status !== null && status !== 'found' && status !== 'missing') return res.status(400).json({ error: 'status 는 found / missing / null 이어야 합니다.' });
+    const patch = status ? { mobile_status: status, mobile_at: new Date().toISOString(), mobile_by: worker || null } : { mobile_status: null, mobile_at: null, mobile_by: null };
+    const { data, error } = await sb.from('rk_cn_shipping').update(patch).eq('id', allocId).select('id, mobile_status, mobile_at, mobile_by');
+    if (error) throw error;
+    if (!data || !data.length) return res.status(404).json({ error: '출고리스트 행을 찾을 수 없습니다 (취소됐을 수 있음).' });
+    const r = data[0];
+    res.json({ ok: true, allocId: r.id, 모바일: r.mobile_status, 모바일처리자: r.mobile_by, 모바일시각: r.mobile_at });
+  } catch (e) {
+    console.error('[rk] inbound/mobile-check:', e);
+    res.status(500).json({ error: '저장 실패: ' + e.message });
   }
 });
 

@@ -204,7 +204,7 @@
             <div class="table-scroll">
                 <table id="tbl">
                     <thead id="thead"></thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="13">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="14">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -291,7 +291,7 @@
                 if(shipments[0]) selectShipment(shipments[0]);   // 처음에는 가장 최근 출고코드를 기본으로 (목록은 created_at 내림차순)
                 await loadArranged();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="13">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="14">데이터를 불러오지 못했습니다: ${esc(e.message||e)}</td></tr>`;
             }
         }
 
@@ -356,6 +356,14 @@
             return html||'';
         }
 
+        // 모바일 입고 표시 — 이모지만, 처리자·시각은 title(마우스 올리면)
+        function mobileCell(r){
+            if(!r.모바일) return '';
+            const who=r.모바일처리자?esc(r.모바일처리자):'', at=r.모바일시각?new Date(r.모바일시각).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+            const tip=(r.모바일==='found'?'모바일 찾음':'모바일 없음')+(who?' · '+who:'')+(at?' · '+at:'');
+            return `<span title="${tip}" style="cursor:default">${r.모바일==='found'?'✅':'❌'}</span>`;
+        }
+
         function switchTab(t){
             activeTab=t;
             document.getElementById('tab-shipping').classList.toggle('active',t==='shipping');
@@ -401,13 +409,13 @@
             const thead=document.getElementById('thead'), tb=document.getElementById('tbody');
             // 헤더에 정렬 순위 표시 (예: 출고예정일 1↑)
             const ind=k=>{ const i=sortRules.findIndex(r=>r.k===k); return i<0?'':`<span class="sort-ind">${i+1}${sortRules[i].dir>0?'↑':'↓'}</span>`; };
-            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차${ind('회차')}</th><th>출고코드${ind('출고코드')}</th><th>박스명${ind('박스명')}</th><th>중국번호${ind('중국번호')}</th><th>상품명${ind('상품명')}</th><th class="ctr">수량${ind('수량')}</th><th>바코드${ind('바코드')}</th><th>출고번호${ind('출고번호')}</th><th style="width:96px">박스</th><th>센터${ind('센터')}</th><th class="ctr">출고개수${ind('출고개수')}</th><th>출고예정일${ind('출고예정일')}</th></tr>`;
+            thead.innerHTML=`<tr><th class="chk"><input type="checkbox" id="checkAll" onchange="toggleAllRows(this)"></th><th style="width:88px">회차${ind('회차')}</th><th>출고코드${ind('출고코드')}</th><th>박스명${ind('박스명')}</th><th>중국번호${ind('중국번호')}</th><th>상품명${ind('상품명')}</th><th class="ctr">수량${ind('수량')}</th><th>바코드${ind('바코드')}</th><th>출고번호${ind('출고번호')}</th><th style="width:96px">박스</th><th>센터${ind('센터')}</th><th class="ctr">출고개수${ind('출고개수')}</th><th>출고예정일${ind('출고예정일')}</th><th class="ctr" style="width:58px" title="모바일 입고 — ✅ 찾음 · ❌ 없음 (마우스를 올리면 처리자)">모바일</th></tr>`;
             if(rows.length===0){
                 let msg;
                 if(!selectedCode()) msg='연도 · 월 · 출고코드를 선택하세요.';
                 else if(activeTab==='shipping') msg=prepared?'출고 배정된 항목이 없습니다.':'‘출고준비’ 버튼으로 발주서를 선택해 정리하세요.';
                 else msg='남은상품이 없습니다.';
-                tb.innerHTML=`<tr class="state-row"><td colspan="13">${msg}</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="14">${msg}</td></tr>`;
             }else{
                 tb.innerHTML=rows.map((r,idx)=>{
                     // 출고번호 그룹 끝(마지막 행 또는 다음 행의 출고번호가 다름) → 인쇄 시 굵은 구분선
@@ -422,7 +430,7 @@
                         <td class="ctr">${batchCell}</td>
                         <td class="code">${esc(r.출고코드)}</td><td>${esc(r.박스명)}</td><td>${esc(r.중국번호)}</td>
                         <td class="pname">${modelBadge(r.상품명)}</td><td class="ctr">${dashCell(r.수량)}</td><td>${esc(r.바코드)}</td>
-                        <td class="ord">${dashCell(r.출고번호)}</td><td>${boxCell(r)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td>
+                        <td class="ord">${dashCell(r.출고번호)}</td><td>${boxCell(r)}</td><td>${dashCell(r.센터)}</td><td class="ctr">${dashCell(r.출고개수)}</td><td>${dashCell(r.출고예정일)}</td><td class="ctr">${mobileCell(r)}</td>
                     </tr>`;
                 }).join('');
             }

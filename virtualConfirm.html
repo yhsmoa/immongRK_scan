@@ -218,19 +218,20 @@
             const st=stateOf(cur);
             document.getElementById('bxTitle').textContent=`📦 ${cur.orderNumber} - ${cur.boxNo}`;
             document.getElementById('bxMeta').textContent=[cur.boxSize, cur.center, cur.arrivalDate, cur.done?'처리완료 발주서':''].filter(Boolean).join(' · ');
-            const se=document.getElementById('bxState'); se.className='state '+st; se.textContent=STATE_LABEL[st];
+            const se=document.getElementById('bxState'); se.className='state '+st; se.textContent=(st==='ok'&&!cur.labelConfirmed)?'✅ 모바일 입고로 다 찾음':STATE_LABEL[st];
             document.getElementById('bxQty').textContent=cur.qty;
             document.getElementById('bxVirtual').textContent=cur.virtualQty;
             document.getElementById('bxReal').textContent=cur.qty-cur.virtualQty;
             document.getElementById('bxItems').textContent=cur.items.length;
             document.getElementById('bxBody').innerHTML=cur.items.length?cur.items.map(it=>{
-                const ist=it.virtualQty<=0?'':cur.confirmed?'ok':(it.virtualQty>=it.qty?'all':'part');
+                const ist=it.virtualQty<=0?'':(cur.confirmed||it.mobileFound)?'ok':(it.virtualQty>=it.qty?'all':'part');   // 상품 단위: 모바일 입고로 찾은 것도 ✅
                 return `<tr><td class="bc">${esc(it.barcode)}</td><td class="pname">${esc(it.productName)||'<span class="dash">-</span>'}</td>
                     <td class="ctr">${it.qty}</td><td class="ctr">${it.virtualQty>0?`<span class="vtag ${ist}">${ist==='ok'?'✅':ist==='all'?'👾':'🔀'} ${it.virtualQty}</span>`:'<span class="dash">-</span>'}</td></tr>`;
             }).join(''):'<tr class="state-row"><td colspan="4">담긴 상품이 없습니다.</td></tr>';
-            document.getElementById('confirmBtn').disabled=cur.virtualQty<=0||cur.confirmed||cur.done;
-            document.getElementById('undoBtn').style.display=cur.confirmed?'':'none';
-            document.getElementById('bxConfirmedAt').textContent=cur.confirmed?`확정 ${fmtTs(cur.confirmedAt)}`:(cur.confirmedQty>0?`이전 확정(가상 ${cur.confirmedQty}개) 뒤 가상이 바뀌어 다시 확인이 필요합니다`:'');
+            // confirmed = 통합(라벨 확정 또는 모바일 입고로 가상 상품 전부 찾음) · labelConfirmed = 이 화면에서 한 박스 라벨 확정만
+            document.getElementById('confirmBtn').disabled=cur.virtualQty<=0||cur.labelConfirmed||cur.done;
+            document.getElementById('undoBtn').style.display=cur.labelConfirmed?'':'none';
+            document.getElementById('bxConfirmedAt').textContent=cur.labelConfirmed?`확정 ${fmtTs(cur.confirmedAt)}`:(cur.confirmedQty>0?`이전 확정(가상 ${cur.confirmedQty}개) 뒤 가상이 바뀌어 다시 확인이 필요합니다`:'');
         }
         async function confirmBox(undo){
             if(!cur) return;

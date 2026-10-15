@@ -297,8 +297,55 @@ async function insertKoreanOrders(headerTable, itemTable, koreanOrders, prefix) 
   return { added, duplicates };
 }
 
+// ── 모바일 입고([스캔]) 찾음 합 — "발주번호|바코드" → 찾았다고 표시된 출고개수 합 (rk_cn_shipping.mobile_status='found') ──
+// 가상스캔 분량이 이 합으로 다 채워지면 박스 라벨 가상확정과 같은 ✅(준비완료)로 본다. rkShipScan·rkOrdersExtra 공용.
+async function mobileFoundByKey(orderNumbers) {
+  const out = new Map();
+  const nos = [...new Set((orderNumbers || []).map((v) => String(v == null ? '' : v)).filter(Boolean))];
+  if (!nos.length) return out;
+  const rows = await chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_cn_shipping')
+    .select('order_number, barcode, ship_qty').eq('mobile_status', 'found').in('order_number', part).order('id', { ascending: true })));
+  for (const r of rows) {
+    if (!r.order_number || !r.barcode) continue;
+    const k = `${r.order_number}|${r.barcode}`;
+    out.set(k, (out.get(k) || 0) + (parseInt(r.ship_qty, 10) || 0));
+  }
+  return out;
+}
+
+// ── 가상 준비완료 판정 (가상확정 ✅ 통합 규칙) ──
+//   keyOk  : "발주번호|바코드" 의 가상 합 ≤ 모바일 찾음 합 → 그 상품은 다 찾아온 것
+//   boxOk  : 박스 라벨 가상확정(virtual_confirmed_qty == 지금 가상 합) 이거나, 박스 안 가상 상품이 전부 keyOk
+//   items: [{ box_id, order_number, barcode, virtual_qty }], found: mobileFoundByKey() 결과
+function virtualReadiness(items, found) {
+  const virtualSumByBox = new Map();   // box_id → 가상 합
+  const virtualByKey = new Map();      // key → 가상 합 (박스 무관)
+  const vKeysByBox = new Map();        // box_id → Set(key)  (가상 수량이 있는 상품만)
+  for (const it of items) {
+    const vq = parseInt(it.virtual_qty, 10) || 0;
+    if (vq <= 0) continue;
+    const k = `${it.order_number}|${it.barcode}`;
+    virtualSumByBox.set(it.box_id, (virtualSumByBox.get(it.box_id) || 0) + vq);
+    virtualByKey.set(k, (virtualByKey.get(k) || 0) + vq);
+    if (!vKeysByBox.has(it.box_id)) vKeysByBox.set(it.box_id, new Set());
+    vKeysByBox.get(it.box_id).add(k);
+  }
+  const keyOk = new Set();
+  for (const [k, v] of virtualByKey) if (((found && found.get(k)) || 0) >= v) keyOk.add(k);
+  const boxConfirmed = (box) => { const v = virtualSumByBox.get(box.id) || 0; return v > 0 && (parseInt(box.virtual_confirmed_qty, 10) || 0) === v; };
+  const boxOk = (box) => {
+    if (boxConfirmed(box)) return true;
+    const ks = vKeysByBox.get(box.id);
+    if (!ks || !ks.size) return false;
+    for (const k of ks) if (!keyOk.has(k)) return false;
+    return true;
+  };
+  return { virtualSumByBox, virtualByKey, keyOk, boxConfirmed, boxOk };
+}
+
 module.exports = {
   supabase,
+  mobileFoundByKey, virtualReadiness,
   insertKoreanOrders,
   dateToYmd, tsToKst, dash, str, ymdToDate, kstToTs,
   emptyToNull, placeholderToNull, toInt, toNum,

@@ -40,6 +40,8 @@
         <div class="site-menu">
             <!-- 홈 옆 전체화면 토글 (헤더는 innerHTML 로 주입돼 <script> 가 안 돌아가므로 inline onclick 사용)
                  켜둔 상태를 localStorage 에 기억해, 메뉴 이동으로 풀려도 다음 페이지 첫 터치에 되살린다. -->
+            <!-- 모바일 입고 (/mobileInbound) — 폰 전용 화면이라 드롭다운 없이 바로 이동 -->
+            <a href="/mobileInbound" class="fs-btn" data-path="/mobileInbound" title="모바일 입고" aria-label="모바일 입고" style="text-decoration:none">📱</a>
             <button type="button" class="fs-btn" id="fsBtn" title="전체화면 켜기/끄기" aria-label="전체화면"
                 onclick="(function(){var d=document;var on=d.fullscreenElement||d.webkitFullscreenElement;
                     try{ if(on){ (d.exitFullscreen||d.webkitExitFullscreen).call(d); localStorage.removeItem('fsWanted'); }

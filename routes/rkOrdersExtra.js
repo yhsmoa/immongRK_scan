@@ -22,7 +22,7 @@ async function shipScanOrders(orderNumbers) {
   if (!orderNos.length) return [];
 
   // 1000행씩 나눠 읽으므로 반드시 id 순 정렬 — 정렬 없이 range 를 넘기면 행이 빠지거나 중복될 수 있다
-  const [boxes, boxItems, seqRows] = await Promise.all([
+  const [boxes, boxItems, seqRows, found] = await Promise.all([
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
       .select('id, order_number, box_no, box_size, virtual_confirmed_qty').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
@@ -30,6 +30,7 @@ async function shipScanOrders(orderNumbers) {
     // 출고 순서(rk_ship_seq, [순서저장] 스캔 순서) — 발주서 순서 = 그 발주서 행들의 최소 seq, 박스 순서 = (발주번호, 박스번호) 행의 seq
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_seq')
       .select('order_number, box_no, seq').in('order_number', nos).order('id', { ascending: true }))),
+    S.mobileFoundByKey(orderNos),   // 모바일 입고([스캔]) 찾음 합 — 가상확정 ✅ 통합 판정용
   ]);
   const orderSeq = new Map();   // order_number → min seq
   const boxSeq = new Map();     // `${order_number}|${box_no}` → seq
@@ -41,10 +42,8 @@ async function shipScanOrders(orderNumbers) {
 
   // 박스 헤더: box_id → { order_number, box_no, box_size }
   const boxById = new Map(boxes.map((b) => [b.id, b]));
-  // 박스별 가상 합 → 가상확정 여부 (확정 당시 가상 합 == 지금 가상 합 일 때만 확정, rkShipScan.boxConfirmed 와 같은 규칙)
-  const virtualSumByBox = new Map();
-  for (const it of boxItems) virtualSumByBox.set(it.box_id, (virtualSumByBox.get(it.box_id) || 0) + (parseInt(it.virtual_qty, 10) || 0));
-  const boxConfirmed = (b) => { const v = virtualSumByBox.get(b.id) || 0; return v > 0 && (parseInt(b.virtual_confirmed_qty, 10) || 0) === v; };
+  // 가상확정 여부 — 통합 규칙(S.virtualReadiness): 박스 라벨 가상확정 OR 모바일 입고로 그 상품(발주번호|바코드)의 가상 분량을 다 찾음
+  const { keyOk, boxOk } = S.virtualReadiness(boxItems, found);
 
   // 박스 아이템: order_number → [{ box_id, barcode, qty, product_name }]
   const itemsByOrder = new Map();
@@ -78,7 +77,7 @@ async function shipScanOrders(orderNumbers) {
         확정수량: meta.확정수량 || 0,
         스캔수량: qty,
         가상수량: parseInt(it.virtual_qty, 10) || 0,   // 이 중 [가상스캔]으로 들어온 개수 (쉽먼트 화면 '가상' 태그)
-        가상확정: boxConfirmed(box),                      // 박스 단위 가상확정 (상품을 다 찾아왔다고 확인됨)
+        가상확정: boxOk(box) || keyOk.has(`${order.발주번호}|${it.barcode}`),   // 박스 라벨 가상확정 또는 모바일 입고로 다 찾음
         박스정보: `${box.box_no}-${box.box_size}`,
         박스순서: boxSeq.get(`${order.발주번호}|${box.box_no}`) ?? null,   // 박스 단위로 스캔했을 때만 값이 있다
       });

@@ -1248,6 +1248,11 @@ app.get('/inboundArrange', (req, res) => {
     res.sendFile(path.join(__dirname, 'inboundArrange.html'));
 });
 
+// 모바일 입고 — 폰으로 출고리스트를 한 장씩 넘기며 [스캔]/[없음] (헤더 📱)
+app.get('/mobileInbound', (req, res) => {
+    res.sendFile(path.join(__dirname, 'mobileInbound.html'));
+});
+
 // CN입고 > 재고정리
 app.get('/stockArrange', (req, res) => {
     res.sendFile(path.join(__dirname, 'stockArrange.html'));
