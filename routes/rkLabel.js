@@ -128,6 +128,28 @@ router.post('/api/label/items', async (req, res) => {
 //   가상확정된 박스(라벨 확정 또는 모바일 입고로 다 찾음 = 라벨을 이미 붙이고 찾은 것). 아직 미확정인 가상 박스만 남는다.
 //   모달의 체크박스를 풀면 skipPrinted:false 로 전부 만든다.
 const mmdd = (ymd) => { const m = String(ymd || '').match(/^\d{4}(\d{2})(\d{2})$/); return m ? m[1] + m[2] : ''; };
+// ── 찾아야 할 곳 (2026-10-20, 신규 발주서 가상버전 세로 박스 라벨) ──
+//   박스 안 가상 분량의 출처 = rk_ship_box_items.virtual_codes 키 ('재고' | 입고코드). 실제 스캔 분량은 출처 기록이 없어 세지 않는다.
+//   bx_source_count 2 · bx_source_badge ❷ · bx_sources "재고 · 1011" · bx_sources_qty "재고 8 · 1011 4" · bx_sources_line "❷ 재고 · 1011"
+//   bx_inbound_boxes "1011-BR3 · 1011-BR7" — 그 박스의 입고 분량이 배정된 입고 박스(rk_cn_shipping → 아이템 박스명)
+const CIRCLED = ['❶', '❷', '❸', '❹', '❺', '❻', '❼', '❽', '❾', '❿', '⓫', '⓬', '⓭', '⓮', '⓯', '⓰', '⓱', '⓲', '⓳', '⓴'];
+const circled = (n) => (n > 0 ? (CIRCLED[n - 1] || `(${n})`) : '');
+const STOCK_KEY = '재고';
+function sourceFields(codeQty, inboundBoxes) {
+  const keys = Object.keys(codeQty).filter((k) => codeQty[k] > 0)
+    .sort((a, b) => ((a === STOCK_KEY ? 0 : 1) - (b === STOCK_KEY ? 0 : 1)) || a.localeCompare(b, 'ko', { numeric: true }));
+  const n = keys.length;
+  const names = keys.join(' · ');
+  return {
+    bx_source_count: n ? n : '',
+    bx_source_badge: circled(n),
+    bx_sources: names,
+    bx_sources_qty: keys.map((k) => `${k} ${codeQty[k]}`).join(' · '),
+    bx_sources_line: n ? `${circled(n)} ${names}` : '',
+    bx_inbound_boxes: (inboundBoxes || []).join(' · '),
+  };
+}
+const EMPTY_SOURCES = sourceFields({}, []);
 const orderBoxDate = (no, boxNo, ymd) => { const d = mmdd(ymd); return `${no}-${boxNo}${d ? ` (${d})` : ''}`; };
 router.post('/api/label/order-boxes', async (req, res) => {
   try {
@@ -143,7 +165,7 @@ router.post('/api/label/order-boxes', async (req, res) => {
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
         .select('id, order_number, box_no, box_size, virtual_confirmed_qty').in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
-        .select('box_id, order_number, barcode, qty, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
+        .select('box_id, order_number, barcode, qty, virtual_qty, virtual_codes').in('order_number', nos).order('id', { ascending: true }))),
       skipPrinted ? S.mobileFoundByKey(orderNumbers) : Promise.resolve(new Map()),
     ]);
     // 가상 준비완료 판정(가상확정 ✅ 통합 규칙) — 라벨 확정 또는 모바일 입고로 그 박스의 가상 상품을 다 찾음
@@ -157,6 +179,53 @@ router.post('/api/label/order-boxes', async (req, res) => {
 
     const headerByNo = new Map();
     for (const h of headers) { const k = String(h.order_number); if (!headerByNo.has(k)) headerByNo.set(k, h); }
+    // 찾아야 할 곳 — 박스별 출처 개수({코드: n}) + 입고 분량의 입고코드-박스명
+    const codeQtyByBox = new Map();   // box_id → {코드: n}
+    const inbBcByBox = new Map();     // box_id → [{barcode, code}]
+    for (const it of boxItems) {
+      const vq = parseInt(it.virtual_qty, 10) || 0;
+      const codes = it.virtual_codes && typeof it.virtual_codes === 'object' ? it.virtual_codes : null;
+      if (vq <= 0 || !codes) continue;
+      let left = vq;   // 합이 가상 분량을 넘는 기록은 넘는 만큼 무시 (저장 시 trimCodes 로 맞춰 두지만 방어)
+      const m = codeQtyByBox.get(it.box_id) || {};
+      for (const k of Object.keys(codes)) {
+        const q = Math.min(left, Math.max(0, parseInt(codes[k], 10) || 0));
+        if (q <= 0) continue;
+        m[k] = (m[k] || 0) + q; left -= q;
+        if (k !== STOCK_KEY) (inbBcByBox.get(it.box_id) || inbBcByBox.set(it.box_id, []).get(it.box_id)).push({ barcode: it.barcode, code: k });
+      }
+      codeQtyByBox.set(it.box_id, m);
+    }
+    // 입고 박스명: 발주번호+바코드+입고코드 → 배정된 rk_cn_shipping 의 아이템 박스명 (실패해도 이 필드만 빈다)
+    const inbBoxNames = new Map();   // `${no}|${bc}|${code}` → Set(박스명)
+    if (inbBcByBox.size) {
+      try {
+        const allocs = await S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_cn_shipping')
+          .select('order_number, barcode, shipment_item_id, shipment_id').in('order_number', nos).order('id', { ascending: true })));
+        const itemIds = [...new Set(allocs.map((a) => a.shipment_item_id).filter(Boolean))];
+        const shipIds = [...new Set(allocs.map((a) => a.shipment_id).filter(Boolean))];
+        const [its, shs] = await Promise.all([
+          S.chunked(itemIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipment_items').select('id, box_name').in('id', part); if (error) throw error; return data || []; }),
+          S.chunked(shipIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipments').select('id, shipment_code').in('id', part); if (error) throw error; return data || []; }),
+        ]);
+        const boxName = new Map(its.map((i) => [i.id, i.box_name]));
+        const code = new Map(shs.map((x) => [x.id, String(x.shipment_code)]));
+        for (const a of allocs) {
+          const c = code.get(a.shipment_id), bn = boxName.get(a.shipment_item_id);
+          if (!c || !bn) continue;
+          const k = `${a.order_number}|${a.barcode}|${c}`;
+          (inbBoxNames.get(k) || inbBoxNames.set(k, new Set()).get(k)).add(bn);
+        }
+      } catch (e) { console.error('[rk] label/order-boxes 입고 박스명 조회 실패(이 필드만 빈다):', e.message); }
+    }
+    const sourcesOf = (b) => {
+      const list = [];
+      for (const x of (inbBcByBox.get(b.id) || [])) for (const bn of (inbBoxNames.get(`${b.order_number}|${x.barcode}|${x.code}`) || [])) {
+        const v = `${x.code}-${bn}`; if (!list.includes(v)) list.push(v);
+      }
+      list.sort((p, q) => p.localeCompare(q, 'ko', { numeric: true }));
+      return sourceFields(codeQtyByBox.get(b.id) || {}, list);
+    };
     // 박스별 상품 합계 — box_id → { qty, barcodes }
     const sumByBox = new Map();
     for (const it of boxItems) {
@@ -213,6 +282,7 @@ router.post('/api/label/order-boxes', async (req, res) => {
             bx_seq: '1/1',
             bx_qty: '',
             bx_item_count: '',
+            ...EMPTY_SOURCES,
           },
         });
         continue;
@@ -238,6 +308,7 @@ router.post('/api/label/order-boxes', async (req, res) => {
             bx_seq: `${i + 1}/${full.length}`,
             bx_qty: sum.qty,
             bx_item_count: sum.barcodes.size,
+            ...sourcesOf(b),
           },
         });
       }

@@ -303,12 +303,23 @@ async function mobileFoundByKey(orderNumbers) {
   const out = new Map();
   const nos = [...new Set((orderNumbers || []).map((v) => String(v == null ? '' : v)).filter(Boolean))];
   if (!nos.length) return out;
-  const rows = await chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_cn_shipping')
-    .select('order_number, barcode, ship_qty').eq('mobile_status', 'found').in('order_number', part).order('id', { ascending: true })));
+  // 입고 = rk_cn_shipping(원본) · 재고 = rk_shipping_list source='재고' (모바일 [전체] 모드, 2026-10-20).
+  //   입고 행은 rk_shipping_list 미러에도 같은 표시가 있지만 원본에서만 센다 (두 번 세지 않게)
+  const [rows, stockRows] = await Promise.all([
+    chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_cn_shipping')
+      .select('order_number, barcode, ship_qty').eq('mobile_status', 'found').in('order_number', part).order('id', { ascending: true }))),
+    chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_shipping_list')
+      .select('order_number, barcode, qty').eq('source', '재고').eq('status', '출고예정').eq('mobile_status', 'found').in('order_number', part).order('id', { ascending: true }))),
+  ]);
   for (const r of rows) {
     if (!r.order_number || !r.barcode) continue;
     const k = `${r.order_number}|${r.barcode}`;
     out.set(k, (out.get(k) || 0) + (parseInt(r.ship_qty, 10) || 0));
+  }
+  for (const r of stockRows) {
+    if (!r.order_number || !r.barcode) continue;
+    const k = `${r.order_number}|${r.barcode}`;
+    out.set(k, (out.get(k) || 0) + (parseInt(r.qty, 10) || 0));
   }
   return out;
 }

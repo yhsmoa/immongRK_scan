@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>신규 발주서 가상버전</title>
+    <!-- 설계: docs/plan-neworder-virtual.md — 등록 → [배정](재고+입고) → [가상스캔](다중) → [박스라벨](세로) -->
+    <style>
+        :root{
+            --bg:#f3f4f6; --card:#fff; --ink:#0f172a; --ink-soft:#374151; --muted:#94a3b8;
+            --line:#eef2f7; --line-soft:#f1f5f9; --primary:#4f46e5; --primary-dark:#4338ca;
+            --blue:#2563eb; --hover:#f8fafc;
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink-soft);font-size:13.5px;-webkit-font-smoothing:antialiased;}
+        .page{max-width:1720px;width:96%;margin:22px auto;}
+        .card{background:var(--card);border:1px solid #edeff3;border-radius:16px;box-shadow:0 1px 3px rgba(15,23,42,.05),0 10px 30px rgba(15,23,42,.035);padding:22px 24px 10px;}
+        .head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .title-wrap{display:flex;align-items:baseline;gap:12px;}
+        .title{font-size:20px;font-weight:700;color:var(--ink);margin:0;letter-spacing:-.3px;}
+        .title .tag{display:inline-block;margin-left:6px;font-size:12px;font-weight:700;color:#534AB7;background:#EEEDFE;border-radius:6px;padding:2px 8px;vertical-align:middle;}
+        .subtitle{font-size:13px;color:var(--muted);font-weight:500;}
+        .subtitle b{color:var(--primary);font-weight:600;}
+        .actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .btn{height:38px;padding:0 15px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s;white-space:nowrap;}
+        .btn:hover{background:var(--hover);border-color:#cbd5e1;}
+        .btn:active{background:#f1f5f9;}
+        .btn:disabled{opacity:.45;background:#f1f5f9;color:#94a3b8;border-color:#e2e8f0;cursor:not-allowed;}
+        .btn.danger:hover{color:#dc2626;border-color:#fecaca;background:#fef2f2;}
+        .btn.primary{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;box-shadow:0 1px 2px rgba(79,70,229,.25);}
+        .btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);}
+        .btn.primary:disabled{background:#c7d2fe;border-color:#c7d2fe;color:#fff;}
+        .btn.strong{border-color:#c7d2fe;color:var(--primary);font-weight:600;}
+        .sep{width:1px;height:22px;background:#e2e8f0;margin:0 2px;}
+
+        .upload-area{border:2px dashed #d7dee8;border-radius:12px;padding:16px 20px;text-align:center;margin-bottom:16px;background:#fafbfc;color:var(--muted);transition:border-color .15s,background .15s;cursor:pointer;}
+        .upload-area:hover{border-color:#c7d2fe;background:#f8faff;}
+        .upload-area.drag{border-color:var(--primary);background:#eef2ff;}
+        .upload-area .up-main{font-size:14px;font-weight:600;color:var(--ink-soft);}
+        .upload-area .up-sub{font-size:12.5px;color:var(--muted);margin-top:3px;}
+        .flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;color:#64748b;margin:-6px 0 14px;}
+        .flow b{color:#334155;}
+        .flow .arr{color:#cbd5e1;}
+
+        .search{position:relative;margin:0 auto 16px;width:66.67%;}
+        .search svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);color:var(--muted);}
+        .search input{width:100%;height:44px;padding:0 16px 0 46px;border:1px solid #e5e9f0;border-radius:10px;background:#fff;font-size:14px;color:var(--ink);outline:none;}
+        .search input:focus{border-color:#c7d2fe;box-shadow:0 0 0 4px rgba(99,102,241,.10);}
+        .tabletop{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:10px;flex-wrap:wrap;}
+        .page-size select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
+        .legend{font-size:12px;color:#94a3b8;display:flex;gap:12px;flex-wrap:wrap;}
+        .legend .src-stock,.legend .src-inb{font-weight:700;}
+        .pagination{display:flex;justify-content:center;align-items:center;gap:4px;padding:16px 0 8px;flex-wrap:wrap;}
+        .pagination button{min-width:34px;height:34px;padding:0 10px;border:1px solid #e2e8f0;background:#fff;color:#475569;border-radius:8px;font-size:13px;cursor:pointer;}
+        .pagination button.active{background:var(--primary);color:#fff;border-color:var(--primary);font-weight:600;}
+        .pagination button:disabled{opacity:.4;cursor:default;}
+        .pagination .ellipsis{padding:0 4px;color:#94a3b8;}
+        tbody tr.group-end td{border-bottom:1px solid #111827;}
+
+        .side-back{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:10001;}
+        .side-back.show{opacity:1;pointer-events:auto;}
+        .side-panel{position:fixed;top:0;right:0;height:100vh;width:540px;max-width:92vw;background:#fff;box-shadow:-8px 0 30px rgba(15,23,42,.15);transform:translateX(100%);transition:transform .25s ease;z-index:10002;display:flex;flex-direction:column;}
+        .side-panel.show{transform:translateX(0);}
+        .side-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid #eef2f7;font-size:15px;font-weight:600;color:#0f172a;}
+        .side-head .sub{font-size:12px;font-weight:500;color:#94a3b8;margin-left:8px;}
+        .side-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .side-list{overflow-y:auto;padding:4px 4px 16px;flex:1;}
+        .side-date{display:inline-block;background:#2563eb;color:#fff;font-size:12.5px;font-weight:600;padding:4px 11px;border-radius:6px;margin:14px 6px 9px;cursor:pointer;user-select:none;}
+        .side-date.sel{background:#1e3a8a;box-shadow:0 0 0 2px rgba(37,99,235,.35);}
+        .side-orders{display:flex;flex-wrap:wrap;gap:8px;padding:0 8px 8px;}
+        .side-order{padding:8px 12px;border:1px solid #e5e9f0;border-radius:8px;cursor:pointer;}
+        .side-order:hover{background:#f8fafc;}
+        .side-order.sel{background:#eef2ff;border-color:#c7d2fe;}
+        .so-no{font-size:13px;font-weight:600;color:#1e293b;white-space:nowrap;}
+        .so-cnt{color:#94a3b8;font-weight:500;font-size:12px;}
+        .so-center{font-size:12px;color:#1e293b;margin-top:2px;}
+
+        .table-scroll{overflow-x:auto;}
+        table.main{width:100%;border-collapse:collapse;min-width:1320px;table-layout:fixed;}
+        table.main thead th{position:sticky;top:0;z-index:2;background:#f1f3f6;text-align:left;font-size:12px;font-weight:600;color:#8b94a3;padding:9px 8px;border:1px solid #dfe3ea;white-space:nowrap;overflow:hidden;}
+        table.main thead th.num,table.main thead th.ctr{text-align:center;}
+        table.main tbody td{padding:8px 8px;border:1px solid #e8ebf1;color:var(--ink-soft);font-size:12px;white-space:nowrap;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;}
+        table.main tbody tr:hover td{background:var(--hover);}
+        td.num,td.ctr{text-align:center;font-variant-numeric:tabular-nums;}
+        th.num,td.num,th.ctr,td.ctr{padding-left:4px;padding-right:4px;}
+        td.order-no{font-weight:600;color:#1e293b;}
+        td.pname{white-space:normal;color:#334155;}
+        .name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:6px;padding:0 6px;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+        .reg{display:inline-block;margin-left:5px;font-size:10.5px;font-weight:700;border-radius:5px;padding:0 5px;line-height:17px;vertical-align:1px;}
+        .reg.registered{background:#dcfce7;color:#166534;}
+        .reg.unregistered{background:#f1f5f9;color:#64748b;}
+        .reg.done{background:#e2e8f0;color:#475569;}
+        .scan-zero{color:#cbd5e1;}
+        .scan-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;font-size:12px;font-weight:500;line-height:1;}
+        .scan-green{background:#dcfce7;color:#16a34a;}
+        .scan-orange{background:#ffedd5;color:#ea580c;}
+        .dash{color:#cbd5e1;}
+        .q-stock{color:#111827;font-weight:600;}
+        .q-inb{color:#2563eb;font-weight:600;}
+        .src-stock{color:#111827;}
+        .src-inb{color:#2563eb;}
+        td.loc{cursor:default;}
+        td.loc .lc{font-weight:600;}
+        td.loc .more{color:#94a3b8;font-weight:500;}
+        .vbox{display:inline-block;margin-right:4px;font-size:11.5px;font-weight:700;border-radius:5px;padding:1px 6px;white-space:nowrap;line-height:1.5;font-variant-numeric:tabular-nums;}
+        .vbox.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
+        .vbox.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
+        .vbox.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}
+        .vbox.real{background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;}
+        th.chk,td.chk{width:40px;text-align:center;padding-left:0;padding-right:0;}
+        input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
+        .state-row td{text-align:center;padding:48px 12px;color:var(--muted);}
+
+        /* 위치 hover 팝오버 — 위치마다 개수 + 배정 취소 */
+        .pop{position:fixed;z-index:10020;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 10px 30px rgba(15,23,42,.18);padding:10px 12px;min-width:240px;max-width:380px;font-size:12.5px;display:none;}
+        .pop.show{display:block;}
+        .pop h4{margin:0 0 6px;font-size:12.5px;color:#0f172a;}
+        .pop h4 small{color:#94a3b8;font-weight:500;margin-left:4px;}
+        .pop .ln{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f1f5f9;}
+        .pop .ln:last-of-type{border-bottom:none;}
+        .pop .ln .src{flex:0 0 30px;font-size:11px;font-weight:700;}
+        .pop .ln .place{flex:1;font-weight:600;color:#1e293b;}
+        .pop .ln .q{font-variant-numeric:tabular-nums;font-weight:700;}
+        .pop .ln .b{color:#94a3b8;font-size:11px;}
+        .pop .ln button{border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:6px;font-size:11px;padding:1px 6px;cursor:pointer;}
+        .pop .foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;}
+        .pop .foot .hint{color:#94a3b8;font-size:11.5px;}
+        .pop .foot button{border:1px solid #fecaca;background:#fef2f2;color:#dc2626;border-radius:7px;font-size:12px;padding:4px 10px;cursor:pointer;font-weight:600;}
+        .pop .virt{margin-top:6px;color:#534AB7;font-size:11.5px;}
+
+        #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10030;max-width:90vw;white-space:pre-line;text-align:center;}
+        #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+        .modal-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10010;padding:16px;}
+        .modal-back.show{display:flex;}
+        .modal{background:#fff;border-radius:14px;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .modal.small{padding:22px 22px 18px;width:380px;max-width:92vw;}
+        .modal.small h3{margin:0 0 6px;font-size:16px;color:var(--ink);}
+        .modal.small p{margin:0 0 14px;font-size:13px;color:var(--muted);}
+        .modal.small input{width:100%;height:42px;padding:0 12px;border:1px solid #e2e8f0;border-radius:9px;font-size:14px;outline:none;margin-bottom:16px;}
+        .modal-btns{display:flex;justify-content:flex-end;gap:8px;}
+        .modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px 10px;font-size:16px;font-weight:700;color:var(--ink);}
+        .modal-head button.x{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .modal-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:14px 20px;border-top:1px solid #eef2f7;}
+        .modal-foot .right{display:flex;gap:8px;}
+        .modal-foot .btn{height:36px;}
+        .note{font-size:12.5px;color:#64748b;flex:1;min-width:0;}
+        .note.err{color:#dc2626;}
+
+        /* 배정 모달 */
+        .al-modal{width:1180px;max-width:97vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;}
+        .al-sub{font-size:12.5px;color:#94a3b8;font-weight:500;margin-left:8px;}
+        .al-top{display:flex;gap:0;border-bottom:1px solid var(--line);min-height:0;max-height:42vh;}
+        .al-orders{flex:1 1 55%;overflow:auto;padding:4px 16px 12px 20px;border-right:1px solid var(--line);}
+        .al-src{flex:1 1 45%;overflow:auto;padding:10px 20px 12px 16px;display:flex;flex-direction:column;gap:12px;}
+        .al-sec{font-size:12px;font-weight:700;color:#64748b;margin:8px 0 6px;display:flex;align-items:center;gap:8px;justify-content:space-between;}
+        .al-sec label{font-weight:500;display:flex;align-items:center;gap:6px;cursor:pointer;}
+        .al-date{font-size:12px;font-weight:700;color:#2563eb;margin:10px 0 6px;}
+        .al-olist{display:flex;flex-wrap:wrap;gap:6px;}
+        .al-o{display:flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid #e5e9f0;border-radius:8px;font-size:12.5px;cursor:pointer;user-select:none;}
+        .al-o.sel{background:#eef2ff;border-color:#c7d2fe;}
+        .al-o.off{opacity:.6;cursor:not-allowed;background:#f8fafc;}
+        .al-o small{color:#94a3b8;}
+        .al-reg-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:9px;padding:7px 10px;font-size:12.5px;margin-top:8px;}
+        .al-reg-bar .btn{height:30px;font-size:12.5px;}
+        .al-box{border:1px solid #e5e9f0;border-radius:10px;padding:10px 12px;}
+        .al-box .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+        .al-box .ttl{font-weight:700;color:#334155;font-size:13px;display:flex;align-items:center;gap:8px;}
+        .al-box .meta{font-size:12px;color:#94a3b8;}
+        .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+        .chip{border:1px solid #e2e8f0;background:#fff;border-radius:999px;padding:4px 11px;font-size:12.5px;cursor:pointer;color:#334155;}
+        .chip small{color:#94a3b8;margin-left:4px;}
+        .chip.on{background:#2563eb;border-color:#2563eb;color:#fff;font-weight:600;}
+        .chip.on small{color:#dbeafe;}
+        .chip.zero{opacity:.55;}
+        .chip:disabled{cursor:not-allowed;opacity:.4;}
+        .seg{display:inline-flex;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;}
+        .seg button{height:32px;padding:0 12px;border:none;background:#fff;font-size:12.5px;color:#475569;cursor:pointer;}
+        .seg button + button{border-left:1px solid #e2e8f0;}
+        .seg button.on{background:var(--primary);color:#fff;font-weight:600;}
+        .seg button:disabled{opacity:.45;cursor:not-allowed;}
+        .need{color:#dc2626;font-weight:700;font-size:12px;}
+        .hint{font-size:12px;color:#94a3b8;}
+        .al-body{flex:1 1 auto;overflow:auto;padding:0 20px;min-height:140px;}
+        .msg{padding:28px 0;text-align:center;color:#94a3b8;font-size:13.5px;}
+        .sum{display:flex;gap:14px;flex-wrap:wrap;padding:10px 0 2px;font-size:12.5px;color:#475569;}
+        .sum b{color:var(--primary);}
+        .sum .bad{color:#dc2626;}
+        .rtbl{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0 12px;}
+        .rtbl th,.rtbl td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;}
+        .rtbl th{position:sticky;top:0;background:#f8fafc;color:#64748b;font-weight:600;font-size:12px;white-space:nowrap;z-index:1;}
+        .rtbl td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+        .rtbl td.o{white-space:nowrap;font-weight:600;color:#1e293b;}
+        .rtbl td.pn{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .rtbl tr.short td{background:#fff7ed;}
+        .rtbl tr.none td{color:#94a3b8;}
+        .al-chip{display:inline-block;margin:1px 4px 1px 0;padding:1px 7px;border-radius:6px;font-size:11.5px;white-space:nowrap;font-weight:600;}
+        .al-chip.stock{background:#f1f5f9;color:#111827;}
+        .al-chip.inb{background:#eff6ff;color:#1d4ed8;}
+        .filters{display:flex;gap:6px;align-items:center;font-size:12px;color:#64748b;padding-top:6px;}
+
+        /* 일괄 가상스캔 모달 (입고정리와 같은 규칙) */
+        .vb-modal{width:960px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;}
+        .vb-opts{display:flex;flex-direction:column;gap:8px;padding:6px 20px 12px;border-bottom:1px solid var(--line);}
+        .vb-opt{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;}
+        .vb-opt .lbl{flex:0 0 64px;font-weight:600;color:#475569;}
+        .vb-body{flex:1 1 auto;overflow:auto;padding:0 20px;min-height:120px;}
+        .vb-tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin:10px 0;}
+        .vb-tbl th,.vb-tbl td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;}
+        .vb-tbl th{position:sticky;top:0;background:#f8fafc;color:#64748b;font-weight:600;font-size:12px;white-space:nowrap;z-index:1;}
+        .vb-tbl td.chk,.vb-tbl th.chk{width:28px;text-align:center;}
+        .vb-tbl td.ord{white-space:nowrap;font-weight:600;color:#1e293b;}
+        .vb-tbl td.ord small{display:block;font-weight:400;color:#94a3b8;}
+        .vb-tbl td.num{white-space:nowrap;}
+        .vb-tbl tr.skip td{color:#94a3b8;background:#fafafa;}
+        .vb-tbl tr.error td{background:#fef2f2;}
+        .vb-tbl tr.saved td{background:#f0fdf4;}
+        .vb-bx{display:inline-flex;align-items:center;gap:4px;margin:1px 4px 1px 0;padding:1px 7px;border-radius:6px;font-size:11.5px;background:#f1f5f9;color:#334155;white-space:nowrap;}
+        .vb-bx.new{background:#eef2ff;color:#3730a3;}
+        .vb-bx.up{background:#fff7ed;color:#9a3412;}
+        .vb-bx b{font-weight:700;}
+        .vb-st{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;}
+        .vb-st.ready{background:#eef2ff;color:#4338ca;}
+        .vb-st.saved{background:#dcfce7;color:#166534;}
+        .vb-st.skip{background:#f1f5f9;color:#64748b;}
+        .vb-st.error{background:#fee2e2;color:#b91c1c;}
+        .vb-why{color:#64748b;font-size:12px;}
+        .vb-warn{cursor:help;color:#b45309;font-size:12px;margin-left:4px;}
+
+        /* 박스라벨 — label-service 임베드 */
+        .label-back{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;z-index:10012;}
+        .label-back.show{display:flex;}
+        .label-modal{background:#fff;border-radius:14px;width:560px;max-width:94vw;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.3);}
+        .label-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #eef2f7;}
+        .label-head h3{margin:0;font-size:16px;color:var(--ink);}
+        .label-head .sub{font-size:12.5px;color:#94a3b8;font-weight:500;margin-left:8px;}
+        .label-head button{border:none;background:transparent;font-size:18px;cursor:pointer;color:#94a3b8;line-height:1;}
+        .label-modal iframe{display:block;width:100%;height:520px;min-height:300px;flex:1 1 auto;border:0;background:#fff;}
+        .label-status{padding:8px 18px;font-size:13px;color:#15803d;border-top:1px solid #eef2f7;}
+        .label-status:empty{display:none;}
+        .label-opts{padding:10px 18px;border-bottom:1px solid #eef2f7;font-size:13.5px;color:#1e293b;}
+        .label-opts label{display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap;}
+        .label-opts small{color:#94a3b8;font-size:12px;}
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <div class="page">
+        <div class="card">
+            <div class="head">
+                <div class="title-wrap">
+                    <h1 class="title">신규 발주서 <span class="tag">가상버전</span></h1>
+                    <span class="subtitle">전체 <b id="rowCount">0</b>행 · <span id="selCount">0</span>개 선택</span>
+                </div>
+                <div class="actions">
+                    <button class="btn" onclick="openOrderPanel()">전체보기</button>
+                    <button class="btn strong" onclick="openAlloc()">배정</button>
+                    <button class="btn strong" onclick="openVirtualBatch()">가상스캔</button>
+                    <button class="btn strong" id="boxLabelPrintBtn" onclick="openBoxLabelPrint()">박스라벨</button>
+                    <button class="btn" onclick="exportSelectedOrders()">엑셀</button>
+                    <button class="btn" onclick="printRows()">인쇄</button>
+                    <button class="btn danger" onclick="deleteRows()">삭제</button>
+                    <span class="sep"></span>
+                    <button class="btn primary" onclick="registerOrders()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>
+                        발주서등록
+                    </button>
+                </div>
+            </div>
+            <div class="flow"><b>순서</b> 엑셀 업로드 <span class="arr">→</span> <b>발주서등록</b> <span class="arr">→</span> <b>배정</b>(재고·입고) <span class="arr">→</span> <b>가상스캔</b> <span class="arr">→</span> <b>박스라벨</b> <span class="arr">→</span> 모바일 입고로 찾기 <span class="arr">·</span> 대상 = 체크한 행 (없으면 보이는 행 전체)</div>
+
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <input type="file" id="fileInput" accept=".xlsx" style="display:none">
+                <div class="up-main">Excel 파일 업로드 (신규 발주서)</div>
+                <div class="up-sub">클릭하거나 파일을 여기에 끌어다 놓으세요 (.xlsx)</div>
+            </div>
+
+            <div class="search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="searchInput" type="text" placeholder="발주번호 · 물류센터 · 상품명 · 상품바코드 · 위치 검색 후 Enter (콤마로 여러 개)" onkeydown="if(event.key==='Enter')applySearch()">
+            </div>
+
+            <div class="tabletop">
+                <div class="page-size">
+                    <select id="pageSize" onchange="changePageSize()">
+                        <option value="100">100개씩</option>
+                        <option value="200">200개씩</option>
+                        <option value="500" selected>500개씩</option>
+                    </select>
+                </div>
+                <div class="legend"><span><span class="src-stock">검정</span> 재고 위치</span><span><span class="src-inb">파랑</span> 입고코드-박스명</span><span>위치에 마우스를 올리면 위치별 개수 · 배정 취소</span></div>
+            </div>
+
+            <div class="table-scroll">
+                <table class="main">
+                    <colgroup>
+                        <col style="width:40px"><col style="width:118px"><col style="width:74px"><col style="width:118px"><col><col style="width:44px"><col style="width:44px"><col style="width:48px"><col style="width:48px"><col style="width:48px"><col style="width:150px"><col style="width:118px"><col style="width:78px">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
+                            <th>발주번호</th><th>물류센터</th><th>상품바코드</th><th>상품명</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th>박스</th><th>입고예정일</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="13">데이터를 불러오는 중…</td></tr></tbody>
+                </table>
+            </div>
+            <div class="pagination" id="pagination"></div>
+        </div>
+    </div>
+
+    <div class="side-back" id="sideBack" onclick="closeOrderPanel()"></div>
+    <div class="side-panel" id="sidePanel">
+        <div class="side-head">
+            <span>신규 발주서 전체 <span class="sub" id="sideCount"></span></span>
+            <button onclick="closeOrderPanel()">✕</button>
+        </div>
+        <div class="side-list" id="sideList"></div>
+    </div>
+
+    <!-- 위치 hover 팝오버 -->
+    <div class="pop" id="pop" onmouseenter="popKeep()" onmouseleave="popHideSoon()"></div>
+
+    <!-- 비밀번호 입력 (삭제) -->
+    <div class="modal-back" id="modalBack">
+        <div class="modal small">
+            <h3 id="mTitle"></h3>
+            <p id="mDesc"></p>
+            <input id="mInput" type="text">
+            <div class="modal-btns">
+                <button class="btn" onclick="modalResolve(null)">취소</button>
+                <button class="btn primary" onclick="modalConfirm()">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 배정 — 발주서 선택 · 출처(재고 / 입고코드) · 순서 → [계산] → [확정 — 저장] -->
+    <div class="modal-back" id="alBack" onclick="if(event.target===this)closeAlloc()">
+        <div class="modal al-modal">
+            <div class="modal-head"><span>배정 <span class="al-sub" id="alSub"></span></span><button class="x" onclick="closeAlloc()" aria-label="닫기">✕</button></div>
+            <div class="al-top">
+                <div class="al-orders" id="alOrders"></div>
+                <div class="al-src" id="alSrc"></div>
+            </div>
+            <div class="al-body" id="alBody"></div>
+            <div class="modal-foot">
+                <span class="note" id="alNote"></span>
+                <div class="right">
+                    <button class="btn" id="alCancelBtn" onclick="closeAlloc()">취소</button>
+                    <button class="btn strong" id="alCalcBtn" onclick="runAlloc(false)" disabled>계산</button>
+                    <button class="btn primary" id="alSaveBtn" onclick="runAlloc(true)" disabled>확정 — 저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 일괄 가상스캔 — 옵션(기존 박스 · 대상 · 입고코드 여럿) → 발주서별 예상 표 → [확정]. 계산·반영은 서버 /api/ship-scan/virtual-batch -->
+    <div class="modal-back" id="vbBack" onclick="if(event.target===this)closeVirtualBatch()">
+        <div class="modal vb-modal">
+            <div class="modal-head"><span>가상스캔 · 일괄 <span class="al-sub" id="vbSub"></span></span><button class="x" onclick="closeVirtualBatch()" aria-label="닫기">✕</button></div>
+            <div class="vb-opts" id="vbOpts"></div>
+            <div class="vb-body" id="vbBody"></div>
+            <div class="modal-foot">
+                <span class="note" id="vbNote"></span>
+                <div class="right">
+                    <button class="btn" id="vbCancelBtn" onclick="closeVirtualBatch()">취소</button>
+                    <button class="btn primary" id="vbConfirmBtn" onclick="confirmVirtualBatch()" disabled>확정 · 박스 반영 + 저장</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 박스라벨 — label-service 임베드 (labelType 'box') -->
+    <div class="label-back" id="labelBack" onclick="if(event.target.id==='labelBack')closeLabelPrint()">
+        <div class="label-modal">
+            <div class="label-head">
+                <h3>박스 라벨출력<span class="sub" id="labelPrintSub"></span></h3>
+                <button onclick="closeLabelPrint()">✕</button>
+            </div>
+            <div class="label-opts"><label><input type="checkbox" id="labelSkipPrinted" checked onchange="reloadBoxLabels()"> 이미 뽑힌 박스 라벨 제외 <small>실제 스캔됐거나 가상확정(모바일로 다 찾음)된 박스는 빼고 뽑습니다 · 풀면 전부</small></label></div>
+            <iframe id="labelPrintFrame" title="박스 라벨 출력" allow="loopback-network; local-network; local-network-access"></iframe>
+            <div class="label-status" id="labelPrintStatus"></div>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="/allocPlan.js"></script>
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+
+        let allRows=[], viewRows=[];
+        let pageSize=500, currentPage=1;
+        // 저장된 배정·등록 상태·스캔 (/api/allocate/status) + 출고스캔 박스 (/api/ship-scan/box-map)
+        let st={ orders:{}, allocs:{}, scanned:{}, virtual:{} }, boxMap={};
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const cmpKo=(a,b)=>String(a==null?'':a).localeCompare(String(b==null?'':b),'ko',{numeric:true});
+        const keyOf=r=>`${r.발주번호}|${r.상품바코드}`;
+        function modelBadge(name){
+            const s=String(name==null?'':name); const ci=s.indexOf(',');
+            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
+                if(m){ const t=m[1];
+                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                        const before=prefix.slice(0, prefix.length-m[0].length);
+                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
+            return esc(s);
+        }
+        async function postJson(url, body){
+            const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            const j=await res.json().catch(()=>({}));
+            if(!res.ok) throw new Error(j.error||j.message||('HTTP '+res.status));
+            return j;
+        }
+
+        // ── 데이터 ──
+        async function loadData(){
+            try{
+                const res=await fetch('/api/neworders');
+                if(!res.ok) throw new Error('HTTP '+res.status);
+                const orders=await res.json();
+                allRows=[];
+                for(const o of orders){
+                    for(const p of (o.상품정보||[])){
+                        if(p.박스정보) continue;
+                        allRows.push({발주번호:o.발주번호,물류센터:o.물류센터,입고예정일:o.입고예정일,
+                            상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
+                            발주수량:p.발주수량,확정수량:p.확정수량,created_at:o.created_at});
+                    }
+                }
+                await loadStatus();
+                applySearch(true);
+            }catch(e){
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="13">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+            }
+        }
+        // 저장된 배정·등록 상태 — 발주번호 100건씩 나눠 조회 (URL 길이)
+        async function loadStatus(){
+            const nos=[...new Set(allRows.map(r=>r.발주번호))];
+            const out={ orders:{}, allocs:{}, scanned:{}, virtual:{} };
+            for(let i=0;i<nos.length;i+=100){
+                const part=nos.slice(i,i+100);
+                const r=await fetch('/api/allocate/status?orderNumbers='+encodeURIComponent(part.join(',')));
+                const j=await r.json(); if(!r.ok) throw new Error(j.error||'배정 현황 조회 실패');
+                for(const k of ['orders','allocs','scanned','virtual']) Object.assign(out[k], j[k]||{});
+            }
+            st=out;
+            try{
+                boxMap={};
+                for(let i=0;i<nos.length;i+=100){
+                    const r=await fetch('/api/ship-scan/box-map?orders='+encodeURIComponent(nos.slice(i,i+100).join(',')));
+                    if(r.ok) Object.assign(boxMap, await r.json());
+                }
+            }catch(e){ /* 박스 열만 빈다 */ }
+        }
+        // 행의 저장된 배정 — 입고 먼저(가상스캔이 담는 순서) › 입고코드-박스명 / 재고 위치 순
+        function rowAllocs(r){
+            const list=(st.allocs[keyOf(r)]||[]).slice();
+            list.sort((a,b)=>((a.source==='입고'?0:1)-(b.source==='입고'?0:1))||cmpKo(a.source==='입고'?a.code+'-'+a.boxName:a.location, b.source==='입고'?b.code+'-'+b.boxName:b.location)||(a.listId-b.listId));
+            return list;
+        }
+        const sumSrc=(list,src)=>list.filter(a=>a.source===src).reduce((s,a)=>s+(Number(a.qty)||0),0);
+        function locHtml(r){
+            const list=rowAllocs(r);
+            if(!list.length) return '<span class="dash">-</span>';
+            const s=AllocPlan.allocSummary(list);
+            const cls=list[0].source==='입고'?'src-inb':'src-stock';
+            const m=s.short.match(/^(.*?)( 외 \d+건)$/);
+            return m?`<span class="lc ${cls}">${esc(m[1])}</span><span class="more">${esc(m[2])}</span>`:`<span class="lc ${cls}">${esc(s.short)}</span>`;
+        }
+        function boxCell(r){
+            const list=boxMap[keyOf(r)]||[];
+            return list.map(b=>{
+                if(!(b.virtualQty>0)) return `<span class="vbox real" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 실제 스캔 ${b.qty}">📦${b.boxNo}</span>`;
+                const cls=b.confirmed?'virtual-ok':(b.virtualQty>=b.qty?'virtual-all':'virtual-part');
+                return `<span class="vbox ${cls}" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}">📦${b.boxNo} ${cls==='virtual-ok'?'✅':cls==='virtual-all'?'👾':'🔀'}</span>`;
+            }).join('');
+        }
+        const regLabel={registered:'등록',unregistered:'미등록',done:'완료'};
+        function regBadge(no){ const s=st.orders[no]||'unregistered'; return `<span class="reg ${s}">${regLabel[s]}</span>`; }
+
+        function render(){
+            const tb=document.getElementById('tbody');
+            const totalPages=Math.max(1,Math.ceil(viewRows.length/pageSize));
+            if(currentPage>totalPages)currentPage=totalPages;
+            const start=(currentPage-1)*pageSize;
+            const pageRows=viewRows.slice(start,start+pageSize);
+            if(!pageRows.length){
+                tb.innerHTML=`<tr class="state-row"><td colspan="13">표시할 발주 상품이 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
+            }else{
+                tb.innerHTML=pageRows.map((r,li)=>{
+                    const i=start+li;
+                    const scanN=Number(st.scanned[keyOf(r)])||0, conf=Number(r.확정수량)||0;
+                    const scanHtml=(scanN>0&&conf===scanN)?`<span class="scan-badge scan-green">${scanN}</span>`
+                        :(scanN>0&&conf>scanN)?`<span class="scan-badge scan-orange">${scanN}</span>`:`<span class="scan-zero">${scanN}</span>`;
+                    const list=st.allocs[keyOf(r)]||[];
+                    const sq=sumSrc(list,'재고'), iq=sumSrc(list,'입고');
+                    const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
+                    return `<tr data-i="${i}" class="${ge}">
+                        <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
+                        <td class="order-no">${esc(r.발주번호)}${regBadge(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
+                        <td>${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
+                        <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
+                        <td class="num">${scanHtml}</td>
+                        <td class="ctr">${sq?`<span class="q-stock">${sq}</span>`:'<span class="dash">-</span>'}</td>
+                        <td class="ctr">${iq?`<span class="q-inb">${iq}</span>`:'<span class="dash">-</span>'}</td>
+                        <td class="loc" data-i="${i}" onmouseenter="popShow(this)" onmouseleave="popHideSoon()">${locHtml(r)}</td>
+                        <td>${boxCell(r)}</td><td>${esc(r.입고예정일)}</td>
+                    </tr>`;
+                }).join('');
+            }
+            document.getElementById('rowCount').textContent=viewRows.length;
+            document.getElementById('checkAll').checked=false;
+            renderPagination(totalPages);
+            updateSel();
+        }
+        function renderPagination(totalPages){
+            const el=document.getElementById('pagination');
+            if(!viewRows.length){el.innerHTML='';return;}
+            let html=`<button ${currentPage===1?'disabled':''} onclick="gotoPage(${currentPage-1})">이전</button>`;
+            for(const p of pageWindow(currentPage,totalPages)) html+=p==='...'?`<span class="ellipsis">…</span>`:`<button class="${p===currentPage?'active':''}" onclick="gotoPage(${p})">${p}</button>`;
+            html+=`<button ${currentPage===totalPages?'disabled':''} onclick="gotoPage(${currentPage+1})">다음</button>`;
+            el.innerHTML=html;
+        }
+        function pageWindow(cur,total){
+            const out=[]; if(total<=7){for(let i=1;i<=total;i++)out.push(i);return out;}
+            out.push(1); if(cur>3)out.push('...');
+            for(let i=Math.max(2,cur-1);i<=Math.min(total-1,cur+1);i++)out.push(i);
+            if(cur<total-2)out.push('...'); out.push(total); return out;
+        }
+        function gotoPage(p){ const total=Math.max(1,Math.ceil(viewRows.length/pageSize)); if(p<1||p>total)return; currentPage=p; render(); }
+        function changePageSize(){ pageSize=Number(document.getElementById('pageSize').value)||100; currentPage=1; render(); }
+        function applySearch(keepPage){
+            const terms=document.getElementById('searchInput').value.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
+            viewRows=!terms.length?allRows.slice():allRows.filter(r=>{
+                const locs=(st.allocs[keyOf(r)]||[]).map(a=>a.source==='입고'?`${a.code}-${a.boxName}`:a.location);
+                const hay=[r.발주번호,r.물류센터,r.상품명,r.상품바코드,...locs].map(v=>String(v||'').toLowerCase());
+                return terms.some(t=>hay.some(h=>h.includes(t)));
+            });
+            if(keepPage!==true) currentPage=1;
+            if(document.getElementById('sidePanel').classList.contains('show')) renderOrderPanel();
+            render();
+        }
+        function toggleAll(el){document.querySelectorAll('.rowchk').forEach(c=>c.checked=el.checked);updateSel();}
+        function updateSel(){
+            const checks=[...document.querySelectorAll('.rowchk')]; const n=checks.filter(c=>c.checked).length;
+            document.getElementById('selCount').textContent=n;
+            const all=document.getElementById('checkAll'); all.checked=checks.length>0&&n===checks.length; all.indeterminate=n>0&&n<checks.length;
+        }
+        function selectedRows(){
+            const out=[];
+            document.querySelectorAll('#tbody tr').forEach(tr=>{const c=tr.querySelector('.rowchk');if(c&&c.checked)out.push(viewRows[Number(tr.dataset.i)]);});
+            return out;
+        }
+        function selectedOrderNumbers(){return [...new Set(selectedRows().map(r=>r.발주번호))];}
+        // 버튼 대상: 체크한 행이 있으면 그 행, 없으면 보이는 행 전체 → 발주번호 (표 순서, 중복 제거)
+        function targetOrderNumbers(){ const rows=selectedRows().length?selectedRows():viewRows; return [...new Set(rows.map(r=>r.발주번호))]; }
+
+        // ── 전체보기 패널 ──
+        function uniqueOrders(rows){
+            const m=new Map();
+            for(const r of (rows||allRows)){
+                if(!m.has(r.발주번호)) m.set(r.발주번호,{발주번호:r.발주번호,물류센터:r.물류센터,입고예정일:r.입고예정일,count:0});
+                m.get(r.발주번호).count++;
+            }
+            return [...m.values()];
+        }
+        function currentSearchTerms(){ return document.getElementById('searchInput').value.split(',').map(t=>t.trim()).filter(Boolean); }
+        function renderOrderPanel(){
+            const orders=uniqueOrders(), terms=currentSearchTerms();
+            document.getElementById('sideCount').textContent=`${orders.length}건`;
+            const byDate=new Map();
+            for(const o of orders){ const d=o.입고예정일||'(미정)'; if(!byDate.has(d)) byDate.set(d,[]); byDate.get(d).push(o); }
+            let html='';
+            for(const [date,list] of byDate){
+                const dateSel=list.length>0&&list.every(o=>terms.includes(o.발주번호))?'sel':'';
+                html+=`<div class="side-date ${dateSel}" onclick="toggleDateInSearch('${esc(date)}')">${esc(date)}</div><div class="side-orders">`;
+                html+=list.map(o=>`<div class="side-order ${terms.includes(o.발주번호)?'sel':''}" onclick="toggleOrderInSearch('${esc(o.발주번호)}')">
+                    <div class="so-no">${esc(o.발주번호)} <span class="so-cnt">(${o.count})</span>${regBadge(o.발주번호)}</div><div class="so-center">${esc(o.물류센터)}</div></div>`).join('');
+                html+='</div>';
+            }
+            document.getElementById('sideList').innerHTML=html;
+        }
+        function openOrderPanel(){ renderOrderPanel(); document.getElementById('sideBack').classList.add('show'); document.getElementById('sidePanel').classList.add('show'); }
+        function closeOrderPanel(){ document.getElementById('sideBack').classList.remove('show'); document.getElementById('sidePanel').classList.remove('show'); }
+        function toggleOrderInSearch(no){
+            const inp=document.getElementById('searchInput'); const terms=currentSearchTerms();
+            const idx=terms.indexOf(no); if(idx===-1) terms.push(no); else terms.splice(idx,1);
+            inp.value=terms.join(', '); applySearch();
+        }
+        function toggleDateInSearch(date){
+            const nos=uniqueOrders().filter(o=>(o.입고예정일||'(미정)')===date).map(o=>o.발주번호);
+            const inp=document.getElementById('searchInput'); let terms=currentSearchTerms();
+            const allSel=nos.length>0&&nos.every(n=>terms.includes(n));
+            if(allSel) terms=terms.filter(t=>!nos.includes(t)); else for(const n of nos) if(!terms.includes(n)) terms.push(n);
+            inp.value=terms.join(', '); applySearch();
+        }
+
+        let toastTimer;
+        function toast(msg,ms){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),ms||3200);}
+        let _modalResolve=null;
+        function openModal({title,desc,value='',password=false}){
+            document.getElementById('mTitle').textContent=title; document.getElementById('mDesc').textContent=desc||'';
+            const inp=document.getElementById('mInput'); inp.type=password?'password':'text'; inp.value=value;
+            document.getElementById('modalBack').classList.add('show'); setTimeout(()=>inp.focus(),50);
+            return new Promise(res=>{_modalResolve=res;});
+        }
+        function modalResolve(v){document.getElementById('modalBack').classList.remove('show');if(_modalResolve){_modalResolve(v);_modalResolve=null;}}
+        function modalConfirm(){modalResolve(document.getElementById('mInput').value);}
+        document.getElementById('mInput').addEventListener('keydown',e=>{if(e.key==='Enter')modalConfirm();if(e.key==='Escape')modalResolve(null);});
+
+        // ── 업로드 · 등록 · 엑셀 · 삭제 (신규 발주서 페이지와 같은 API) ──
+        document.getElementById('fileInput').addEventListener('change',function(){ if(this.files[0]) uploadExcel(this.files[0]); this.value=''; });
+        const uploadArea=document.getElementById('uploadArea');
+        uploadArea.addEventListener('dragover',e=>{e.preventDefault();uploadArea.classList.add('drag');});
+        uploadArea.addEventListener('dragleave',e=>{e.preventDefault();uploadArea.classList.remove('drag');});
+        uploadArea.addEventListener('drop',e=>{e.preventDefault();uploadArea.classList.remove('drag');if(e.dataTransfer.files[0])uploadExcel(e.dataTransfer.files[0]);});
+        async function uploadExcel(file){
+            if(!file.name.endsWith('.xlsx')){toast('Excel(.xlsx) 파일만 업로드 가능합니다.');return;}
+            const fd=new FormData(); fd.append('file',file); toast('업로드 중…');
+            try{ const res=await fetch('/api/neworder/upload',{method:'POST',body:fd}); const data=await res.json(); toast(data.message||data.error||'업로드 완료'); await loadData(); }
+            catch(e){toast('업로드 실패: '+e.message);}
+        }
+        async function registerOrders(){
+            let orderNumbers=selectedOrderNumbers(); const isAll=!orderNumbers.length;
+            if(isAll) orderNumbers=[...new Set(viewRows.map(r=>r.발주번호))];
+            if(!orderNumbers.length){toast('등록할 발주서가 없습니다.');return;}
+            if(!confirm(`${isAll?'테이블 전체':'선택한'} ${orderNumbers.length}개의 발주서를 기존 발주서 목록에 등록하시겠습니까?`))return;
+            try{ const data=await postJson('/api/neworders/register',{orderNumbers}); toast(data.message||'등록 완료'); await loadStatus(); render(); }
+            catch(e){toast(e.message);}
+        }
+        async function exportSelectedOrders(){
+            const orderNumbers=selectedOrderNumbers();
+            if(!orderNumbers.length){toast('저장할 발주서를 선택해주세요.');return;}
+            try{
+                const res=await fetch('/api/neworders/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers})});
+                if(!res.ok)throw new Error('HTTP '+res.status);
+                const blob=await res.blob(); const cd=res.headers.get('Content-Disposition')||'';
+                const m=cd.match(/filename\*?=(?:UTF-8'')?["']?([^"';]+)/i); const fname=m?decodeURIComponent(m[1]):'신규발주리스트.xlsx';
+                const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fname; a.click(); URL.revokeObjectURL(a.href);
+                toast(`엑셀 저장 완료 (${orderNumbers.length}건)`);
+            }catch(e){toast('저장 실패: '+e.message);}
+        }
+        async function deleteRows(){
+            const orderNumbers=selectedOrderNumbers();
+            if(!orderNumbers.length){toast('삭제할 발주서를 선택해주세요.');return;}
+            const password=await openModal({title:'발주서 삭제',desc:`${orderNumbers.length}건 삭제 (신규 발주서 목록에서만). 비밀번호를 입력하세요.`,password:true});
+            if(password===null)return;
+            try{ const res=await fetch('/api/neworders/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers,password})});
+                const data=await res.json(); if(!res.ok){toast(data.error||'삭제 실패');return;} toast(data.message||'삭제되었습니다.'); await loadData(); }
+            catch(e){toast('삭제 실패: '+e.message);}
+        }
+
+        // ── 위치 hover 팝오버 (위치별 개수 + 배정 취소) ──
+        let popTimer=null, popRow=null;
+        function popKeep(){ clearTimeout(popTimer); }
+        function popHideSoon(){ clearTimeout(popTimer); popTimer=setTimeout(()=>{ document.getElementById('pop').classList.remove('show'); popRow=null; },220); }
+        function popShow(td){
+            clearTimeout(popTimer);
+            const r=viewRows[Number(td.dataset.i)]; if(!r) return;
+            const list=rowAllocs(r); if(!list.length){ popHideSoon(); return; }
+            popRow=r;
+            const v=Number(st.virtual[keyOf(r)])||0;
+            const pop=document.getElementById('pop');
+            const ln=a=>`<div class="ln"><span class="src ${a.source==='입고'?'src-inb':'src-stock'}">${a.source}</span>
+                <span class="place">${esc(AllocPlan.allocPlace(a))}</span><span class="q">×${a.qty}</span>
+                <span class="b">${a.batchNo?a.batchNo+'회차':''}${a.mobile==='found'?' ✓찾음':a.mobile==='missing'?' ✕없음':''}</span>
+                <button onclick="cancelAlloc([${a.listId}])" title="이 배정만 취소">취소</button></div>`;
+            pop.innerHTML=`<h4>${esc(r.발주번호)} · ${esc(r.상품바코드)}<small>배정 ${list.reduce((s,a)=>s+a.qty,0)}개 · ${list.length}곳</small></h4>
+                ${list.map(ln).join('')}
+                ${v?`<div class="virt">👾 가상스캔으로 박스에 담긴 ${v}개 — 그보다 적게 남게는 취소할 수 없습니다</div>`:''}
+                <div class="foot"><span class="hint">재고 취소 = 재고 복원 · 입고 취소 = 남은상품으로</span><button onclick="cancelAlloc(null)">전체 취소</button></div>`;
+            const rc=td.getBoundingClientRect();
+            pop.classList.add('show');
+            const pw=pop.offsetWidth, ph=pop.offsetHeight;
+            let left=Math.min(rc.left, window.innerWidth-pw-12), top=rc.bottom+4;
+            if(top+ph>window.innerHeight-8) top=Math.max(8, rc.top-ph-4);
+            pop.style.left=Math.max(8,left)+'px'; pop.style.top=top+'px';
+        }
+        async function cancelAlloc(listIds){
+            const r=popRow; if(!r) return;
+            const list=rowAllocs(r).filter(a=>!listIds||listIds.includes(a.listId));
+            const qty=list.reduce((s,a)=>s+a.qty,0);
+            if(!confirm(`${r.발주번호} · ${r.상품바코드}\n배정 ${list.length}건 (${qty}개)을 취소할까요?\n재고는 위치로 복원되고, 입고는 남은상품으로 돌아갑니다.`)) return;
+            try{
+                const j=await postJson('/api/allocate/cancel',{orderNumber:r.발주번호, barcode:r.상품바코드, listIds:listIds||undefined});
+                document.getElementById('pop').classList.remove('show');
+                toast(`배정 취소 ${j.canceledQty}개 · 재고 복원 ${j.stock.restored||0} · 입고 ${j.inbound.deleted||0}건`);
+                await loadStatus(); render();
+            }catch(e){ toast('배정 취소 실패: '+e.message, 5000); }
+        }
+
+        // ============================================================
+        // 배정 — 발주서 선택 · 출처(재고 체크 / 입고코드 여러 개) · 순서(입고 → 재고 / 재고 → 입고, 기본값 없음)
+        //   [계산] = 서버 미리보기(저장 안 함) · [확정 — 저장] = 서버가 그 시점 DB 로 다시 계산해 한 트랜잭션으로 저장
+        // ============================================================
+        let al={ orders:[], picked:new Set(), useStock:false, codes:new Set(), order:null, sources:null, preview:null, busy:false, req:0, filter:'alloc' };
+        function openAlloc(){
+            const nos=targetOrderNumbers();
+            if(!nos.length){ toast('배정할 발주서가 없습니다.'); return; }
+            const info=new Map(uniqueOrders().map(o=>[o.발주번호,o]));
+            al={ orders:nos.map(no=>info.get(no)||{발주번호:no,물류센터:'',입고예정일:'',count:0}), picked:new Set(nos.filter(no=>st.orders[no]==='registered')),
+                useStock:false, codes:new Set(), order:null, sources:null, preview:null, busy:false, req:0, filter:'alloc' };
+            document.getElementById('alSub').textContent=`발주서 ${nos.length}건`;
+            document.getElementById('alCancelBtn').textContent='취소';
+            renderAlOrders(); renderAlSrc(); renderAlBody();
+            document.getElementById('alBack').classList.add('show');
+            loadAlSources();
+        }
+        function closeAlloc(){ if(al.busy) return; document.getElementById('alBack').classList.remove('show'); al.req++; }
+        function alInvalidate(){ al.preview=null; al.req++; renderAlBody(); }
+        function renderAlOrders(){
+            const byDate=new Map();
+            for(const o of al.orders){ const d=o.입고예정일||'(미정)'; if(!byDate.has(d)) byDate.set(d,[]); byDate.get(d).push(o); }
+            const reg=al.orders.filter(o=>st.orders[o.발주번호]==='registered');
+            const unreg=al.orders.filter(o=>(st.orders[o.발주번호]||'unregistered')==='unregistered');
+            const done=al.orders.filter(o=>st.orders[o.발주번호]==='done');
+            const allOn=reg.length>0&&reg.every(o=>al.picked.has(o.발주번호));
+            let html=`<div class="al-sec"><span>발주서 · 선택 ${al.picked.size} / 등록 ${reg.length}</span>
+                <label><input type="checkbox" ${allOn?'checked':''} ${al.busy?'disabled':''} onchange="alPickAll(this.checked)"> 전체</label></div>`;
+            if(unreg.length) html+=`<div class="al-reg-bar">미등록 ${unreg.length}건은 배정할 수 없습니다 (등록 → 배정 순서).
+                <button class="btn" ${al.busy?'disabled':''} onclick="alRegister()">미등록 ${unreg.length}건 등록 후 계속</button></div>`;
+            if(done.length) html+=`<div class="hint" style="margin-top:6px">처리완료 ${done.length}건은 제외됩니다.</div>`;
+            for(const [date,list] of byDate){
+                html+=`<div class="al-date">${esc(date)}</div><div class="al-olist">`;
+                html+=list.map(o=>{
+                    const s=st.orders[o.발주번호]||'unregistered', ok=s==='registered', sel=al.picked.has(o.발주번호);
+                    return `<div class="al-o ${sel?'sel':''} ${ok?'':'off'}" ${ok&&!al.busy?`onclick="alToggleOrder('${esc(o.발주번호)}')"`:''}>
+                        <input type="checkbox" ${sel?'checked':''} ${ok&&!al.busy?'':'disabled'} onclick="event.stopPropagation();alToggleOrder('${esc(o.발주번호)}')">
+                        <span><b>${esc(o.발주번호)}</b> <small>(${o.count}) ${esc(o.물류센터)}</small></span>${regBadge(o.발주번호)}</div>`;
+                }).join('');
+                html+='</div>';
+            }
+            document.getElementById('alOrders').innerHTML=html;
+        }
+        let alSrcTimer=null;
+        function alToggleOrder(no){ if(al.busy||st.orders[no]!=='registered') return; if(al.picked.has(no)) al.picked.delete(no); else al.picked.add(no); renderAlOrders(); alInvalidate(); clearTimeout(alSrcTimer); alSrcTimer=setTimeout(loadAlSources,350); }
+        function alPickAll(on){ if(al.busy) return; al.picked=new Set(on?al.orders.filter(o=>st.orders[o.발주번호]==='registered').map(o=>o.발주번호):[]); renderAlOrders(); alInvalidate(); loadAlSources(); }
+        async function alRegister(){
+            const unreg=al.orders.filter(o=>(st.orders[o.발주번호]||'unregistered')==='unregistered').map(o=>o.발주번호);
+            if(!unreg.length) return;
+            if(!confirm(`미등록 발주서 ${unreg.length}건을 기존 발주서 목록에 등록합니다.\n${unreg.join(', ')}`)) return;
+            try{
+                const j=await postJson('/api/neworders/register',{orderNumbers:unreg});
+                toast(j.message||'등록 완료');
+                await loadStatus(); render();
+                for(const no of unreg) if(st.orders[no]==='registered') al.picked.add(no);
+                renderAlOrders(); alInvalidate(); loadAlSources();
+            }catch(e){ toast('등록 실패: '+e.message); }
+        }
+        async function loadAlSources(){
+            const nos=[...al.picked];
+            const my=al.srcReq=(al.srcReq||0)+1;
+            al.sources=null; renderAlSrc();
+            if(!nos.length){ renderAlSrc(); return; }
+            try{
+                const r=await fetch('/api/allocate/sources?orderNumbers='+encodeURIComponent(nos.join(',')));
+                const j=await r.json(); if(my!==al.srcReq) return;
+                if(!r.ok) throw new Error(j.error||'출처 조회 실패');
+                al.sources=j; renderAlSrc();
+            }catch(e){ if(my===al.srcReq){ al.sources={error:e.message}; renderAlSrc(); } }
+        }
+        function alBoth(){ return al.useStock && al.codes.size>0; }
+        function alReady(){ return al.picked.size>0 && (al.useStock||al.codes.size>0) && (!alBoth()||!!al.order); }
+        function renderAlSrc(){
+            const s=al.sources, dis=al.busy?'disabled':'';
+            let stockMeta='', codes='';
+            if(!al.picked.size){ stockMeta='발주서를 고르세요'; }
+            else if(!s){ stockMeta='불러오는 중…'; }
+            else if(s.error){ stockMeta='조회 실패: '+esc(s.error); }
+            else {
+                stockMeta=`가용 ${s.stock.skus}종 ${s.stock.qty}개 (발주서 바코드 ${s.barcodes}종 중)`;
+                codes=s.inboundCodes.map(c=>`<button type="button" class="chip ${al.codes.has(c.code)?'on':''} ${c.qty?'':'zero'}" ${dis} onclick="alToggleCode('${esc(c.code)}')">${esc(c.code)}<small>남은 ${c.skus}종 ${c.qty}개</small></button>`).join('');
+            }
+            const both=alBoth();
+            document.getElementById('alSrc').innerHTML=`
+                <div class="al-box">
+                    <div class="ttl"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${al.useStock?'checked':''} ${dis} onchange="alSetStock(this.checked)"> 재고</label><span class="meta">${stockMeta}</span></div>
+                    <div class="hint" style="margin-top:4px">전체재고(rk_stocks) 위치에서 — 한 곳에서 다 채울 수 있는 위치 › 같은 구역 › 위치순</div>
+                </div>
+                <div class="al-box">
+                    <div class="ttl">입고 <span class="meta">입고코드를 하나 이상 고르면 그 코드의 남은 상품에서 배정 (오래된 코드 › 팔렛·박스 순)</span></div>
+                    <div class="chips">${codes||'<span class="hint">-</span>'}</div>
+                </div>
+                <div class="al-box">
+                    <div class="row"><span class="ttl">순서</span>
+                        <div class="seg">
+                            <button type="button" class="${al.order&&al.order[0]==='입고'?'on':''}" ${both&&!al.busy?'':'disabled'} onclick="alSetOrder(['입고','재고'])">입고 → 재고</button>
+                            <button type="button" class="${al.order&&al.order[0]==='재고'?'on':''}" ${both&&!al.busy?'':'disabled'} onclick="alSetOrder(['재고','입고'])">재고 → 입고</button>
+                        </div>
+                        <span class="hint">${!both?'재고와 입고를 둘 다 고르면 순서를 정합니다':(al.order?(al.order[0]==='입고'?'들어온 입고분을 먼저 쓰고 모자라면 재고':'선반 재고를 먼저 쓰고 모자라면 입고'):'<span class="need">선택하세요</span>')}</span>
+                    </div>
+                </div>`;
+            document.getElementById('alCalcBtn').disabled=!alReady()||al.busy;
+        }
+        function alSetStock(on){ if(al.busy) return; al.useStock=!!on; if(!alBoth()) al.order=null; renderAlSrc(); alInvalidate(); }
+        function alToggleCode(c){ if(al.busy) return; if(al.codes.has(c)) al.codes.delete(c); else al.codes.add(c); if(!alBoth()) al.order=null; renderAlSrc(); alInvalidate(); }
+        function alSetOrder(o){ if(al.busy) return; al.order=o; renderAlSrc(); alInvalidate(); }
+        function alBodyReq(save){
+            const body={ orderNumbers:[...al.picked], sources:{ stock:al.useStock, inboundCodes:[...al.codes] }, save };
+            if(alBoth()) body.sourceOrder=al.order;
+            if(save&&al.preview){ const e={}; for(const r of al.preview.rows) e[`${r.orderNumber}|${r.barcode}`]=`${r.stockQty}|${r.inboundQty}`; body.expect=e; }
+            return body;
+        }
+        async function runAlloc(save){
+            if(!alReady()||al.busy) return;
+            if(save){
+                if(!al.preview){ toast('먼저 [계산]으로 확인하세요.'); return; }
+                const s=al.preview.summary;
+                if(!(s.stock+s.inbound)){ toast('저장할 배정이 없습니다.'); return; }
+                if(!confirm(`배정을 저장합니다.\n재고 ${s.stock}개 (재고에서 바로 차감) · 입고 ${s.inbound}개 (입고정리 출고리스트에 새 회차)\n\n저장 시점의 DB 로 다시 계산해 저장합니다.`)) return;
+            }
+            const my=++al.req;
+            al.busy=save; if(save){ renderAlOrders(); renderAlSrc(); }
+            const calc=document.getElementById('alCalcBtn'), saveBtn=document.getElementById('alSaveBtn'), note=document.getElementById('alNote');
+            calc.disabled=true; saveBtn.disabled=true; note.className='note'; note.textContent=save?'저장 중… 창을 닫지 마세요.':'계산 중…';
+            if(!save){ al.preview=null; document.getElementById('alBody').innerHTML='<div class="msg">계산 중…</div>'; }
+            try{
+                const j=await postJson('/api/allocate/run', alBodyReq(save));
+                if(my!==al.req && !save) return;
+                al.preview=j;
+                if(save){
+                    al.busy=false;
+                    const sv=j.saved||{};
+                    const codes=Object.entries(sv.batchByCode||{}).map(([c,b])=>`${c} ${b}회차`).join(', ');
+                    toast(`배정 저장 · 재고 ${sv.savedStock||0}건${sv.batchStock?` (재고 ${sv.batchStock}회차)`:''} · 입고 ${sv.savedInbound||0}건${codes?` (${codes})`:''}${j.changed?`\n미리보기와 ${j.changed}행 달라져 지금 기준으로 저장했습니다.`:''}`, 5000);
+                    await loadStatus(); applySearch(true);
+                    document.getElementById('alBack').classList.remove('show');
+                    return;
+                }
+                renderAlBody();
+            }catch(e){
+                al.busy=false; renderAlOrders(); renderAlSrc();
+                note.className='note err'; note.textContent=(save?'저장 실패: ':'계산 실패: ')+e.message;
+                if(save) renderAlBody(true);
+                else document.getElementById('alBody').innerHTML=`<div class="msg">${esc(e.message)}</div>`;
+            }
+        }
+        function alSetFilter(f){ al.filter=f; renderAlBody(); }
+        function renderAlBody(keepNote){
+            const body=document.getElementById('alBody'), note=document.getElementById('alNote'), saveBtn=document.getElementById('alSaveBtn');
+            document.getElementById('alCalcBtn').disabled=!alReady()||al.busy;
+            if(!al.preview){
+                body.innerHTML=`<div class="msg">${!al.picked.size?'배정할 발주서를 고르세요.':!(al.useStock||al.codes.size)?'출처(재고 / 입고코드)를 고르세요.':(alBoth()&&!al.order)?'순서(입고 → 재고 / 재고 → 입고)를 고르세요.':'[계산]을 누르면 발주서별 배정을 미리 봅니다. (저장 안 함)'}</div>`;
+                if(!keepNote){ note.className='note'; note.textContent=''; }
+                saveBtn.disabled=true; return;
+            }
+            const p=al.preview, s=p.summary;
+            const rows=p.rows.filter(r=>al.filter==='all'?true:al.filter==='short'?r.shortage>0:(r.allocs.length>0||r.shortage>0));
+            const chip=a=>`<span class="al-chip ${a.source==='입고'?'inb':'stock'}">${esc(AllocPlan.allocPlace(a))} ×${a.qty}</span>`;
+            const ex=(p.excluded||[]).length?`<span>제외 ${p.excluded.map(e=>`${esc(e.orderNumber)}(${esc(e.reason)})`).join(', ')}</span>`:'';
+            body.innerHTML=`<div class="sum"><span>발주서 <b>${s.orders}</b>건</span><span>상품 ${s.rows}행 · 배정 <b>${s.allocRows}</b>행</span><span>필요 <b>${s.needed}</b></span>
+                    <span>재고 <b>${s.stock}</b></span><span>입고 <b>${s.inbound}</b></span><span class="${s.shortage?'bad':''}">부족 ${s.shortage}</span>${ex}</div>
+                <div class="filters">보기
+                    <div class="seg"><button class="${al.filter==='alloc'?'on':''}" onclick="alSetFilter('alloc')">배정·부족</button><button class="${al.filter==='short'?'on':''}" onclick="alSetFilter('short')">부족만</button><button class="${al.filter==='all'?'on':''}" onclick="alSetFilter('all')">전체</button></div></div>
+                <table class="rtbl"><thead><tr><th>발주번호</th><th>바코드</th><th>상품명</th><th>확정</th><th>기배정</th><th>스캔</th><th>필요</th><th>배정 (위치 / 입고코드-박스)</th><th>부족</th><th>비고</th></tr></thead><tbody>
+                ${rows.map(r=>`<tr class="${r.shortage>0?'short':''} ${!r.allocs.length&&!r.shortage?'none':''}"><td class="o">${esc(r.orderNumber)}</td><td>${esc(r.barcode)}</td><td class="pn" title="${esc(r.productName)}">${esc(r.productName)}</td>
+                    <td class="n">${r.confirmedQty}</td><td class="n">${r.reserved||''}</td><td class="n">${r.scanned||''}</td><td class="n"><b>${r.needed}</b></td>
+                    <td>${r.allocs.map(chip).join('')||'<span class="dash">-</span>'}</td><td class="n">${r.shortage||''}</td><td class="hint">${esc(r.reason||'')}</td></tr>`).join('')||'<tr><td colspan="10" class="hint">표시할 행이 없습니다.</td></tr>'}
+                </tbody></table>`;
+            const n=s.stock+s.inbound;
+            if(!keepNote){ note.className='note'; note.textContent=n?'확정하면 저장 시점의 DB 로 다시 계산해 한 번에 저장합니다 (재고 차감 · 입고 새 회차).':'저장할 배정이 없습니다.'; }
+            saveBtn.disabled=!n||al.busy;
+        }
+
+        // ============================================================
+        // 가상스캔 · 일괄 — 대상 발주서(등록·진행중)마다 출고스캔의 [가상스캔]을 같은 옵션으로 (입고정리 일괄 가상스캔과 같은 서버 API)
+        //   옵션은 매번 고른다 (기본값 없음): 기존 박스 · 대상(전체/입고/재고) · 입고코드(여럿 — 이 발주서들의 입고 배정에 있는 코드)
+        // ============================================================
+        let vbOrders=[], vbCodesAll=[], vbCodes=new Set(), vbTopUp=null, vbTarget=null, vbPreview=null, vbReq=0, vbBusy=false, vbDone=false, vbOff=new Set();
+        function openVirtualBatch(){
+            const nos=targetOrderNumbers();
+            const ok=nos.filter(no=>st.orders[no]==='registered');
+            if(!ok.length){ toast(nos.length?'등록된 진행중 발주서가 없습니다. 먼저 [발주서등록] → [배정]을 하세요.':'가상스캔할 발주서가 없습니다.'); return; }
+            if(ok.length<nos.length) toast(`미등록·처리완료 ${nos.length-ok.length}건은 빼고 진행합니다.`);
+            const codes=new Set();
+            for(const [k,list] of Object.entries(st.allocs)){ const no=k.split('|')[0]; if(!ok.includes(no)) continue; for(const a of list) if(a.source==='입고'&&a.code) codes.add(a.code); }
+            vbOrders=ok; vbCodesAll=[...codes].sort(cmpKo); vbCodes=new Set(); vbTopUp=null; vbTarget=null; vbPreview=null; vbBusy=false; vbDone=false; vbOff=new Set(); vbReq++;
+            document.getElementById('vbSub').textContent=`발주서 ${ok.length}건`;
+            const cancel=document.getElementById('vbCancelBtn'); cancel.textContent='취소'; cancel.disabled=false;
+            renderVbOpts(); renderVbBody();
+            document.getElementById('vbBack').classList.add('show');
+        }
+        function closeVirtualBatch(){ if(vbBusy) return; document.getElementById('vbBack').classList.remove('show'); vbReq++; vbPreview=null; }
+        function setVbTopUp(on){ if(vbBusy||vbDone) return; vbTopUp=!!on; renderVbOpts(); runVbPreview(); }
+        function setVbTarget(t){ if(vbBusy||vbDone) return; vbTarget=t; renderVbOpts(); runVbPreview(); }
+        function toggleVbCode(c){ if(vbBusy||vbDone) return; if(vbCodes.has(c)) vbCodes.delete(c); else vbCodes.add(c); renderVbOpts(); runVbPreview(); }
+        function vbReady(){ return vbTopUp!=null && !!vbTarget && (vbTarget==='재고'||vbCodes.size>0); }
+        function renderVbOpts(){
+            const dis=(vbBusy||vbDone)?'disabled':'';
+            const noInb=!vbCodesAll.length;
+            const codeHint=vbTarget==='재고'?'재고만 담으므로 입고코드는 쓰지 않음'
+                :noInb?'이 발주서들에는 입고 배정이 없습니다 — 대상 <b>재고</b>를 고르세요'
+                :vbCodes.size?'고른 코드의 입고분만 (다른 코드 분량은 제외)':'<span class="need">하나 이상 고르세요</span>';
+            document.getElementById('vbOpts').innerHTML=`
+                <div class="vb-opt"><span class="lbl">기존 박스</span>
+                    <div class="seg"><button type="button" class="${vbTopUp===true?'on':''}" ${dis} onclick="setVbTopUp(true)">기존 박스 채우기</button><button type="button" class="${vbTopUp===false?'on':''}" ${dis} onclick="setVbTopUp(false)">새 박스만</button></div>
+                    <span class="hint">${vbTopUp==null?'<span class="need">선택하세요</span> · 박스가 없는 발주서는 어느 쪽이든 새 박스':vbTopUp?'발주서마다 마지막 박스부터 채움 · 앞 박스는 마감':'기존 박스는 그대로 두고 새 박스에만 담음'}</span></div>
+                <div class="vb-opt"><span class="lbl">대상</span>
+                    <div class="seg"><button type="button" class="${vbTarget==='all'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('all')">전체</button><button type="button" class="${vbTarget==='입고'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('입고')">입고</button><button type="button" class="${vbTarget==='재고'?'on':''}" ${dis} onclick="setVbTarget('재고')">재고</button></div>
+                    <span class="hint">${!vbTarget?'<span class="need">선택하세요</span>':vbTarget==='all'?'입고분 먼저, 재고분은 새 박스부터 (한 박스는 한 작업대)':vbTarget==='입고'?'고른 입고코드의 입고분만':'재고분만'}</span></div>
+                <div class="vb-opt"><span class="lbl">입고코드</span>
+                    <div class="chips" style="margin:0">${vbCodesAll.map(c=>`<button type="button" class="chip ${vbCodes.has(c)?'on':''}" ${dis||(vbTarget==='재고'?'disabled':'')} onclick="toggleVbCode('${esc(c)}')">${esc(c)}</button>`).join('')||'<span class="hint">-</span>'}</div>
+                    <span class="hint">${codeHint}</span></div>`;
+        }
+        async function runVbPreview(){
+            if(!vbReady()){ vbPreview=null; renderVbBody(); return; }
+            const my=++vbReq; vbPreview=null; renderVbBody('loading');
+            try{
+                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:vbOrders, topUp:vbTopUp, target:vbTarget, inboundCodes:vbTarget==='재고'?[]:[...vbCodes], confirm:false});
+                if(my!==vbReq) return; vbPreview=j; renderVbBody();
+            }catch(e){ if(my===vbReq){ vbPreview=null; renderVbBody('error', e.message); } }
+        }
+        function toggleVbOrder(no){ if(vbBusy||vbDone) return; if(vbOff.has(no)) vbOff.delete(no); else vbOff.add(no); renderVbBody(); }
+        function toggleVbAll(on){ if(vbBusy||vbDone) return; vbOff=new Set(); if(!on) for(const r of vbPreview.results) if(r.status==='ready') vbOff.add(r.orderNumber); renderVbBody(); }
+        function vbPicked(){ return vbPreview?vbPreview.results.filter(r=>r.status==='ready'&&!vbOff.has(r.orderNumber)):[]; }
+        const vbBoxChip=b=>`<span class="vb-bx ${b.isNew?'new':''} ${b.sizeFrom?'up':''}" title="${esc((b.warnings||[]).join(' · '))}">📦${b.boxNo} ${b.sizeFrom?esc(b.sizeFrom)+'→':''}${esc(b.size)}${b.isNew?'':' 기존'}${b.source?' · '+esc(b.source):''} <b>+${b.addQty}</b></span>`;
+        function renderVbBody(state, msg){
+            const body=document.getElementById('vbBody'), note=document.getElementById('vbNote'), btn=document.getElementById('vbConfirmBtn');
+            note.className='note';
+            if(!vbPreview){
+                body.innerHTML=`<div class="msg">${state==='loading'?'발주서별 예상 박스를 계산하는 중…':state==='error'?'미리보기 실패: '+esc(msg):'위 옵션을 모두 고르면 발주서별 예상 박스를 계산합니다.'}</div>`;
+                note.textContent=state==='loading'?'':'아직 계산 전입니다.'; btn.disabled=true; btn.textContent='확정 · 박스 반영 + 저장'; return;
+            }
+            const rank={ready:0,saved:0,error:1,skip:2};
+            const rs=vbPreview.results.map((r,i)=>[r,i]).sort((a,b)=>((rank[a[0].status]??3)-(rank[b[0].status]??3))||(a[1]-b[1])).map(x=>x[0]);
+            const stLabel={ready:'반영 가능',saved:'저장됨',skip:'건너뜀',error:'오류'};
+            const exTxt=r=>{ const e=r.excluded||{}; const parts=[]; if(e.done) parts.push(`이미 완료 ${e.done}종`); if(e.none) parts.push(`배정 없음 ${e.none}종`); for(const [k,v] of Object.entries(e.other||{})) parts.push(`${k} ${v}종`); return parts.join(' · '); };
+            const rows=rs.map(r=>{
+                const on=r.status==='ready'&&!vbOff.has(r.orderNumber);
+                const chk=vbDone?'':(r.status==='ready'?`<input type="checkbox" ${on?'checked':''} onchange="toggleVbOrder('${esc(r.orderNumber)}')">`:'');
+                const tgt=r.status==='skip'||r.status==='error'?'<span class="dash">-</span>':`${r.qty}개 · ${r.skus}종${Object.keys(r.bySource||{}).length>1?` <small class="vb-why">(${Object.entries(r.bySource).map(([k,v])=>k+' '+v).join(' · ')})</small>`:''}`;
+                const boxes=(r.boxes||[]).length?r.boxes.map(vbBoxChip).join(''):'<span class="dash">-</span>';
+                const warn=(r.warnings||[]).length?`<span class="vb-warn" title="${esc(r.warnings.join('\n'))}">⚠ ${r.warnings.length}</span>`:'';
+                const why=r.status==='skip'||r.status==='error'?`<span class="vb-why">${esc(r.reason||'')}</span>`
+                    :r.status==='saved'?`<span class="vb-why">${r.saved.addQty}개 → 박스 ${r.saved.boxCnt}개${r.saved.upCnt?` · 크기 변경 ${r.saved.upCnt}`:''}</span>`:`<span class="vb-why">${exTxt(r)}</span>`;
+                return `<tr class="${r.status}${on||r.status==='saved'?'':' skip'}"><td class="chk">${chk}</td>
+                    <td class="ord">${esc(r.orderNumber)}<small>${esc([r.arrivalDate,r.center].filter(Boolean).join(' '))}</small></td>
+                    <td><span class="vb-st ${r.status}">${stLabel[r.status]||r.status}</span>${warn}</td><td class="num">${tgt}</td><td>${boxes}</td><td>${why}</td></tr>`;
+            }).join('');
+            const ready=rs.filter(r=>r.status==='ready').length, picked=vbPicked(), allOn=ready>0&&picked.length===ready;
+            const sumQty=picked.reduce((s,r)=>s+r.qty,0), sumBox=picked.reduce((s,r)=>s+(r.boxes||[]).length,0), sumNew=picked.reduce((s,r)=>s+(r.newBoxes||0),0);
+            const s=vbPreview.summary||{};
+            const sum=vbDone?`<div class="sum"><span>저장 <b>${s.saved||0}</b>건</span><span>상품 <b>${s.qty||0}</b>개</span><span>박스 <b>${s.boxes||0}</b>개 (신규 ${s.newBoxes||0})</span><span>건너뜀 ${s.skipped||0} · 오류 ${s.errors||0}</span></div>`
+                :`<div class="sum"><span>반영 <b>${picked.length}</b> / ${rs.length}건</span><span>상품 <b>${sumQty}</b>개</span><span>박스 <b>${sumBox}</b>개 (신규 ${sumNew})</span><span>건너뜀 ${rs.length-ready}</span></div>`;
+            body.innerHTML=sum+`<table class="vb-tbl"><thead><tr><th class="chk">${vbDone||!ready?'':`<input type="checkbox" ${allOn?'checked':''} onchange="toggleVbAll(this.checked)" title="전체">`}</th>
+                <th>발주서</th><th>상태</th><th>대상</th><th>예상 박스</th><th>비고</th></tr></thead><tbody>${rows}</tbody></table>`;
+            if(vbDone){
+                note.textContent=s.errors?'일부 발주서는 저장하지 못했습니다. 표의 오류 사유를 확인하세요.':'저장했습니다. 이어서 [박스라벨]로 라벨을 뽑으세요.';
+                if(s.errors) note.className='note err'; btn.disabled=true; btn.textContent='저장 완료'; return;
+            }
+            note.textContent=picked.length?'확정하면 체크한 발주서마다 지금 DB 기준으로 다시 계산해 박스를 잡고 바로 저장합니다.':'반영할 발주서가 없습니다.';
+            btn.disabled=!picked.length; btn.textContent=`확정 · ${picked.length}건 박스 반영 + 저장`;
+        }
+        async function confirmVirtualBatch(){
+            const picked=vbPicked(); if(!picked.length||vbBusy||vbDone) return;
+            const btn=document.getElementById('vbConfirmBtn'), cancel=document.getElementById('vbCancelBtn'), note=document.getElementById('vbNote');
+            vbBusy=true; btn.disabled=true; cancel.disabled=true; btn.textContent='반영 중…'; note.className='note'; note.textContent=`발주서 ${picked.length}건 저장 중… 창을 닫지 마세요.`;
+            renderVbOpts();
+            try{
+                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:picked.map(r=>r.orderNumber), topUp:vbTopUp, target:vbTarget, inboundCodes:vbTarget==='재고'?[]:[...vbCodes], confirm:true});
+                vbPreview=j; vbDone=true; vbBusy=false; cancel.disabled=false; cancel.textContent='닫기';
+                renderVbOpts(); renderVbBody();
+                const s=j.summary||{};
+                toast(`가상스캔 ${s.saved||0}건 저장 · 상품 ${s.qty||0}개 → 박스 ${s.boxes||0}개${s.errors?` · 오류 ${s.errors}건`:''}`);
+                const keep=new Set([...document.querySelectorAll('#tbody tr')].filter(tr=>{const c=tr.querySelector('.rowchk');return c&&c.checked;}).map(tr=>tr.dataset.i));
+                await loadStatus(); render();
+                document.querySelectorAll('#tbody tr').forEach(tr=>{ const c=tr.querySelector('.rowchk'); if(c&&keep.has(tr.dataset.i)) c.checked=true; }); updateSel();
+            }catch(e){
+                vbBusy=false; cancel.disabled=false; renderVbOpts();
+                note.className='note err'; note.textContent='확정 실패: '+e.message+' — 저장된 발주서가 있을 수 있으니 다시 미리보기로 확인하세요.';
+                btn.disabled=false; btn.textContent=`확정 · ${picked.length}건 박스 반영 + 저장`;
+            }
+        }
+
+        // ============================================================
+        // 박스라벨 — 대상 발주서의 출고 박스마다 1장 (label-service 임베드, labelType 'box'). 쉽먼트·입고정리와 같은 API·같은 프린터 저장 키
+        // ============================================================
+        let labelCfg=null, labelOrigin=null, labelPending=null;
+        const LABEL_PRINTER_KEY='label_printer_map_v1';
+        const labelDebug=new URLSearchParams(location.search).get('labeldebug')==='1';
+        function loadLabelPrinterMap(){ try{ const j=JSON.parse(localStorage.getItem(LABEL_PRINTER_KEY)||'{}'); return j&&typeof j==='object'&&!Array.isArray(j)?j:{}; }catch(_){ return {}; } }
+        function saveLabelPrinterMap(map){ try{ localStorage.setItem(LABEL_PRINTER_KEY, JSON.stringify(map||{})); }catch(_){} }
+        async function getLabelCfg(){
+            if(labelCfg) return labelCfg;
+            const res=await fetch('/api/label/config'); const j=await res.json();
+            if(!res.ok) throw new Error(j.error||'라벨 서비스 설정을 불러오지 못했습니다.');
+            labelCfg=j; labelOrigin=new URL(j.url).origin; return j;
+        }
+        function sendLabelPending(){
+            const frame=document.getElementById('labelPrintFrame');
+            if(!labelPending||!frame.contentWindow||frame.dataset.ready!=='1') return;
+            frame.contentWindow.postMessage(labelPending, labelOrigin); labelPending=null;
+        }
+        let boxLabelOrders=[];
+        function reloadBoxLabels(){ if(boxLabelOrders.length) loadBoxLabels(); }
+        async function openBoxLabelPrint(){
+            const nos=targetOrderNumbers();
+            const ok=nos.filter(no=>st.orders[no]==='registered');
+            if(!ok.length){ toast(nos.length?'등록된 진행중 발주서가 없습니다.':'박스 라벨을 출력할 발주서가 없습니다.'); return; }
+            if(ok.length<nos.length) toast(`미등록·처리완료 ${nos.length-ok.length}건은 빼고 진행합니다.`);
+            boxLabelOrders=ok; await loadBoxLabels();
+        }
+        async function loadBoxLabels(){
+            const orderNumbers=boxLabelOrders;
+            const btn=document.getElementById('boxLabelPrintBtn'); btn.disabled=true;
+            try{
+                const cfg=await getLabelCfg();
+                const skipPrinted=document.getElementById('labelSkipPrinted').checked;
+                const j=await postJson('/api/label/order-boxes',{orderNumbers, skipPrinted});
+                const skippedN=(j.skipped||[]).length, allPrintedN=(j.allPrinted||[]).length;
+                if(!j.items.length && !skippedN){ toast('선택한 발주번호를 발주서에서 찾지 못했습니다.'); return; }
+                if(j.noBox.length) toast(`가상스캔 전 발주서 ${j.noBox.length}건은 박스 정보 없이(박스 1/1) 발주번호 라벨 1장만 나갑니다.\n${j.noBox.join(', ')}`, 5000);
+                else if(skippedN) toast(`이미 뽑힌 박스 ${skippedN}개(실제 스캔·가상확정)는 제외했습니다.${allPrintedN?` 발주서 ${allPrintedN}건은 전부 제외.`:''}`);
+                labelPending={ type:'label-print:print', requestId:String(Date.now()), source:cfg.source, userId:cfg.userId, labelType:'box', autoPrint:false, printerMap:loadLabelPrinterMap(), items:j.items };
+                document.getElementById('labelPrintSub').textContent=`박스 ${j.items.length}개 · 발주서 ${j.orderCount}건${skippedN?` · 제외 ${skippedN}`:''}`;
+                document.getElementById('labelPrintStatus').textContent=(!j.items.length&&skippedN)?`선택한 발주서의 박스 라벨은 모두 이미 뽑힌 것으로 봅니다 (${skippedN}박스). 전부 뽑으려면 위 체크를 푸세요.`:'';
+                document.getElementById('labelBack').classList.add('show');
+                const frame=document.getElementById('labelPrintFrame');
+                if(frame.dataset.ready==='1') sendLabelPending();
+                else frame.src=cfg.url+'/print-embed'+(labelDebug?'?debug=1':'');
+            }catch(e){ toast('박스 라벨 출력 준비 실패: '+e.message); }
+            finally{ btn.disabled=false; }
+        }
+        function closeLabelPrint(){ document.getElementById('labelBack').classList.remove('show'); labelPending=null; }
+        window.addEventListener('message',function(e){
+            if(!labelOrigin||e.origin!==labelOrigin) return;
+            const d=e.data||{};
+            if(d.type==='label-print:ready'){ document.getElementById('labelPrintFrame').dataset.ready='1'; sendLabelPending(); }
+            else if(d.type==='label-print:printer-map'){ if(d.map&&typeof d.map==='object'&&!Array.isArray(d.map)) saveLabelPrinterMap(d.map); }
+            else if(d.type==='label-print:result'){ document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨`:'✕ 박스 라벨 실패'; }
+        });
+        document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeLabelPrint(); closeVirtualBatch(); closeAlloc(); document.getElementById('pop').classList.remove('show'); } });
+
+        // ── 인쇄 — 위치 열은 위치별 전부 (위치 순으로 찾기 좋게) ──
+        function printRows(){
+            let rows=selectedRows().length?selectedRows():viewRows;
+            if(!rows.length){toast('인쇄할 행이 없습니다.');return;}
+            const firstPlace=r=>{ const l=rowAllocs(r); return l.length?AllocPlan.allocPlace(l[0]):'~'; };
+            rows=rows.slice().sort((a,b)=>cmpKo(a.입고예정일,b.입고예정일)||cmpKo(a.물류센터,b.물류센터)||cmpKo(a.발주번호,b.발주번호)||cmpKo(firstPlace(a),firstPlace(b)));
+            const head=['발주번호','물류센터','상품바코드','상품명','확정','스캔','재고','입고','위치','입고예정일'];
+            const body=rows.map((r,idx)=>{
+                const ge=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
+                const list=rowAllocs(r);
+                const locs=list.map(a=>`<span class="${a.source==='입고'?'src-inb':'src-stock'}">${esc(AllocPlan.allocPlace(a))} ×${a.qty}</span>`).join('<br>')||'-';
+                const cells=[esc(r.발주번호),esc(r.물류센터),esc(r.상품바코드),modelBadge(r.상품명),esc(r.확정수량),esc(st.scanned[keyOf(r)]||0),sumSrc(list,'재고')||'-',sumSrc(list,'입고')||'-',locs,esc(r.입고예정일)];
+                return `<tr class="${ge?'ge':''}">${cells.map(v=>`<td>${v}</td>`).join('')}</tr>`;
+            }).join('');
+            const w=window.open('','_blank');
+            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}td:nth-child(9){white-space:nowrap;font-weight:600;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;}.src-inb{color:#2563eb;}.src-stock{color:#111827;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h2>신규 발주서 가상버전 (${rows.length}행)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.close();
+        }
+
+        loadData();
+    </script>
+</body>
+</html>

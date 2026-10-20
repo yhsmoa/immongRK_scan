@@ -314,7 +314,7 @@ router.post('/api/ship-scan/save', async (req, res) => {
 });
 
 // ── 일괄 가상스캔 (입고정리 /inboundArrange [가상스캔]) — 발주서 여러 건을 같은 옵션으로 한 번에 (docs/plan-virtual-scan.md §7-13) ──
-// body: { orderNumbers:[…], topUp:true|false, target:'all'|'입고'|'재고', inboundCode:'1011', confirm:false|true }
+// body: { orderNumbers:[…], topUp:true|false, target:'all'|'입고'|'재고', inboundCode:'1011' | inboundCodes:['1011','1014'], confirm:false|true }
 //   · 계산 = 출고스캔 모달과 같은 VirtualPack.planVirtualScan (발주서마다 GET order 와 같은 상태를 읽어 계산)
 //   · 반영 = VirtualPack.applyPlan (모달 [확정] 규칙) → saveShipState (확정수량 한도·처리완료 검증 그대로)
 //   · confirm=false 는 읽기만(미리보기). confirm=true 는 발주서마다 계획을 **그 시점 DB 로 다시 계산**해서 저장한다 (미리보기 결과를 그대로 쓰지 않는다)
@@ -339,7 +339,7 @@ async function virtualBatchOne(orderNumber, opt, confirm) {
     topUpExisting: !!opt.topUp,
     splitBySource: opt.target === 'all',
     sourceFilter: opt.target === 'all' ? null : opt.target,
-    inboundCodes: opt.target === '재고' ? null : [opt.inboundCode],
+    inboundCodes: opt.target === '재고' ? null : opt.inboundCodes,
   });
   const boxes = plan.boxes.filter((b) => b.items.length).map((b) => ({
     boxNo: b.boxNo, size: b.size, sizeFrom: b.sizeFrom || null, isNew: !!b.isNew, addQty: b.addQty, source: b.source || null, warnings: b.warnings }));
@@ -372,10 +372,13 @@ router.post('/api/ship-scan/virtual-batch', async (req, res) => {
     const target = String(req.body.target || '');
     if (!VB_TARGETS.has(target)) return res.status(400).json({ error: '대상(전체/입고/재고)을 선택하세요.' });
     if (typeof req.body.topUp !== 'boolean') return res.status(400).json({ error: '기존 박스(채우기/새 박스만)를 선택하세요.' });
+    // 입고코드: inboundCode(하나, 입고정리) 또는 inboundCodes(여럿, 신규 발주서 가상버전 2026-10-20). 계산기는 원래 배열을 받는다
     const inboundCode = String(req.body.inboundCode || '').trim();
-    if (target !== '재고' && !inboundCode) return res.status(400).json({ error: '입고코드가 없습니다.' });
+    const codeList = Array.isArray(req.body.inboundCodes) ? req.body.inboundCodes : [];
+    const inboundCodes = [...new Set([inboundCode, ...codeList.map((c) => String(c == null ? '' : c).trim())].filter(Boolean))];
+    if (target !== '재고' && !inboundCodes.length) return res.status(400).json({ error: '입고코드가 없습니다.' });
     const confirm = req.body.confirm === true;
-    const opt = { topUp: req.body.topUp, target, inboundCode: target === '재고' ? null : inboundCode };
+    const opt = { topUp: req.body.topUp, target, inboundCode: target === '재고' ? null : inboundCodes[0], inboundCodes: target === '재고' ? null : inboundCodes };
 
     // 발주서마다 조회 6~7회 왕복 → 3개씩 동시에. 한 건이 실패해도 나머지는 계속 (그 행만 error)
     const results = await S.chunkedPool(orderNumbers, 1, async ([no]) => {

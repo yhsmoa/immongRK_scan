@@ -10,7 +10,9 @@
     <style>
         /* ============================================================
            모바일 입고 — 폰(390px) 전용. 종이 [인쇄] 대신 출고리스트를 카드 1장씩 넘기며 [스캔](찾음) / [없음]
-           1화면 이름 + 연/월/입고코드 휠  →  2화면 발주서 입력·카메라·목록  →  3화면 카드 스와이프 (한 화면에 딱 맞춤)
+           0화면 이름 + [전체]/[입고] (2026-10-20)  →  [입고]: 1화면 연/월/입고코드 휠 → 2화면 · [전체]: 바로 2화면
+           2화면 발주서 입력·카메라·목록  →  3화면 카드 스와이프 (한 화면에 딱 맞춤)
+           [전체] = 발주서(박스) 하나의 재고 + 입고 배정을 전부 카드로 (신규 발주서 가상버전 배정분) · [입고] = 고른 입고코드의 입고분만 (예전 그대로)
            디자인: 클로드 디자인 시안(2026-10-15) — 따뜻한 회백 바탕 · 코랄 주색 · 검정 칩 · 파란 바코드
            사이트 헤더는 폭이 안 맞아 넣지 않는다 (홈 링크만)
            ============================================================ */
@@ -59,6 +61,19 @@
         .hintcard b{color:var(--ink);font-weight:700;font-size:13.5px;}
         .hintcard svg{color:var(--coral);}
         .setup-foot{flex:none;padding:12px 20px 28px;}
+
+        /* 0화면 — 이름 + 모드 선택 (2026-10-20) */
+        .modes{display:flex;flex-direction:column;gap:12px;}
+        .mode{display:flex;align-items:center;gap:14px;width:100%;padding:18px 18px;border:1.5px solid var(--line);background:#fff;border-radius:18px;cursor:pointer;text-align:left;font:inherit;color:var(--ink);}
+        .mode:active{background:#FBFAF8;}
+        .mode .ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none;background:var(--ink);color:#fff;}
+        .mode.inb .ic{background:var(--coral);}
+        .mode .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+        .mode .tx b{font-size:21px;font-weight:900;letter-spacing:-.01em;}
+        .mode .tx small{font-size:13px;color:var(--muted);font-weight:500;line-height:1.45;}
+        .mode .go{color:var(--muted2);}
+        .chip.src.stock{background:#fff;color:var(--ink);border:2px solid var(--ink);}
+        .chip.src .sub{font-size:13px;font-weight:700;opacity:.75;}
 
         /* 휠 피커 (아이폰 시계처럼 세로 스크롤 스냅) */
         .wheels{position:relative;display:flex;gap:4px;background:#fff;border:1.5px solid var(--line);border-radius:16px;padding:6px;height:calc(var(--wheel-h) * 5 + 12px);}
@@ -233,8 +248,8 @@
         </defs>
     </svg>
 
-    <!-- ───── 1화면: 이름 + 연/월/입고코드 ───── -->
-    <section class="screen on" id="s1">
+    <!-- ───── 0화면: 이름 + [전체] / [입고] (2026-10-20) ───── -->
+    <section class="screen on" id="s0">
         <div class="top" style="padding:0 16px;gap:10px">
             <a href="/" class="ico" title="홈" aria-label="홈" style="width:36px;height:36px"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"/></svg></a>
             <div class="ttl"><b style="font-size:17px;letter-spacing:-.02em">모바일 입고</b></div>
@@ -242,12 +257,38 @@
         </div>
         <div class="setup">
             <div class="hero">
-                <h1>오늘 찾을<br>입고코드를 고르세요</h1>
-                <p>이름과 입고코드는 이 폰에 기억됩니다.</p>
+                <h1>이름을 입력하고<br>작업을 고르세요</h1>
+                <p>이름은 이 폰에 기억됩니다.</p>
             </div>
             <div class="field">
                 <label for="worker">본인 이름</label>
                 <input id="worker" type="text" autocomplete="off" placeholder="예) 영희" maxlength="20" enterkeyhint="done">
+            </div>
+            <div class="modes">
+                <button class="mode all" onclick="goAll()">
+                    <span class="ic"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-scan"/></svg></span>
+                    <span class="tx"><b>전체</b><small>발주번호(박스 라벨)를 찍으면 재고 + 입고를 전부 찾습니다</small></span>
+                    <span class="go"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-r"/></svg></span>
+                </button>
+                <button class="mode inb" onclick="goInbound()">
+                    <span class="ic"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-box"/></svg></span>
+                    <span class="tx"><b>입고</b><small>입고코드를 골라 그 입고분만 찾습니다</small></span>
+                    <span class="go"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-r"/></svg></span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ───── 1화면: 연/월/입고코드 ([입고] 모드) ───── -->
+    <section class="screen" id="s1">
+        <div class="top">
+            <button class="back" onclick="show('s0')"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-l"/></svg>처음</button>
+            <div class="ttl" id="s1Title"><b style="font-size:17px;letter-spacing:-.02em">입고</b></div>
+        </div>
+        <div class="setup">
+            <div class="hero">
+                <h1>오늘 찾을<br>입고코드를 고르세요</h1>
+                <p>입고코드는 이 폰에 기억됩니다.</p>
             </div>
             <div class="field">
                 <div class="labrow"><span class="lab">입고정리 · 연도 / 월 / 입고코드</span><span>위아래로 돌려 선택</span></div>
@@ -267,7 +308,7 @@
     <!-- ───── 2화면: 발주서 입력 / 카메라 / 목록 ───── -->
     <section class="screen" id="s2">
         <div class="top">
-            <button class="back" onclick="show('s1')"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-l"/></svg>설정</button>
+            <button class="back" onclick="show(mode==='all'?'s0':'s1')"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-l"/></svg>설정</button>
             <div class="ttl" id="pickTitle"></div>
             <button class="ico" onclick="loadOrders()" title="새로고침" aria-label="새로고침"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg></button>
         </div>
@@ -309,8 +350,8 @@
     <!-- 입고일자 확인 — 발주서(또는 박스)에 여러 입고코드의 가상 분량이 섞여 있으면 [확인] 을 눌러야 카드로 들어간다 -->
     <div class="mix-back" id="mixBack">
         <div class="mix-card" role="alertdialog" aria-labelledby="mixTitle">
-            <h2 id="mixTitle"><span class="ex">!</span>입고일자 확인</h2>
-            <p>해당 발주서는 <b>여러 입고일 박스가 섞여있습니다.</b>
+            <h2 id="mixTitle"><span class="ex">!</span><span id="mixHead">입고일자 확인</span></h2>
+            <p id="mixText">해당 발주서는 <b>여러 입고일 박스가 섞여있습니다.</b>
 '입고일자를 반드시 확인해주세요'</p>
             <div class="codes" id="mixCodes"></div>
             <button class="btn primary" onclick="mixOk()">확인</button>
@@ -337,6 +378,7 @@
         let shipments=[], sel={y:'',m:'',code:''};   // 1화면 휠 선택값 (휠이 보일 때만 바뀐다)
         let active={code:''};                          // [다음] 을 누른 시점의 출고코드 — 2·3화면은 이것만 쓴다
         let orders=[], curOrder=null, rows=[], idx=0;
+        let mode='inbound';                            // 'inbound' = 입고코드별 (예전 그대로) · 'all' = 발주서의 재고 + 입고 전부 (2026-10-20)
 
         // 화면 전환. display:none 이 되면 휠 scrollTop 이 0 으로 초기화되므로(스크롤 이벤트까지 남) 1화면으로 돌아올 때 휠을 선택값에 다시 맞춘다
         function show(id){
@@ -415,11 +457,29 @@
                 setupWheels();
             }catch(e){ toast('입고코드 목록을 불러오지 못했습니다: '+e.message); }
         }
+        // 0화면 — 이름 확인 후 모드 선택
+        function needWorker(){
+            if(!worker()){ toast('본인 이름을 입력하세요.'); $('worker').focus(); return false; }
+            try{ localStorage.setItem(LS.worker,worker()); }catch(_){}
+            return true;
+        }
+        function goInbound(){
+            if(!needWorker()) return;
+            mode='inbound';
+            $('s1Title').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">입고</b><small>${esc(worker())}</small>`;
+            show('s1');
+        }
+        function goAll(){
+            if(!needWorker()) return;
+            mode='all'; active.code='';
+            $('pickTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">전체</b><small>${esc(worker())}</small>`;
+            show('s2'); loadOrders(); setTimeout(()=>$('orderInput').focus(),50);
+        }
         function goPick(){
-            if(!worker()){ toast('본인 이름을 입력하세요.'); $('worker').focus(); return; }
+            if(!worker()){ toast('본인 이름을 입력하세요.'); show('s0'); return; }
             if(!sel.code){ toast('입고코드를 선택하세요.'); return; }
             try{ localStorage.setItem(LS.worker,worker()); localStorage.setItem(LS.sel,JSON.stringify(sel)); }catch(_){}
-            active.code=sel.code;
+            mode='inbound'; active.code=sel.code;
             $('pickTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">입고코드 ${esc(active.code)}</b><small>${esc(worker())}</small>`;
             show('s2'); loadOrders();
         }
@@ -428,7 +488,7 @@
         async function loadOrders(){
             $('olist').innerHTML='<div class="empty">불러오는 중…</div>';
             try{
-                const res=await fetch('/api/inbound/mobile-orders?shipmentCode='+encodeURIComponent(active.code));
+                const res=await fetch(mode==='all'?'/api/mobile/all-orders':'/api/inbound/mobile-orders?shipmentCode='+encodeURIComponent(active.code));
                 const d=await res.json(); if(!res.ok) throw new Error(d.error||'조회 실패');
                 orders=d; renderOrders();
             }catch(e){ $('olist').innerHTML=`<div class="empty">${esc(e.message)}</div>`; }
@@ -439,7 +499,9 @@
         function renderOrders(){
             const left=orders.filter(o=>!isDoneOrder(o)).length, nOrders=new Set(orders.map(o=>o.orderNumber)).size;
             $('olistSub').innerHTML=`박스 ${orders.length}개 · 발주서 ${nOrders}건 · <b>남음 ${left}</b>`;
-            if(!orders.length){ $('olist').innerHTML='<div class="empty">이 입고코드에는 출고리스트(배정)가 없습니다.<br>PC 입고정리에서 [출고준비]를 먼저 하세요.</div>'; return; }
+            if(!orders.length){ $('olist').innerHTML=mode==='all'
+                ?'<div class="empty">가상 박스가 잡힌 진행중 발주서가 없습니다.<br>PC 신규 발주서 가상버전에서 [배정] → [가상스캔]을 먼저 하세요.<br>발주번호를 직접 입력해도 됩니다.</div>'
+                :'<div class="empty">이 입고코드에는 출고리스트(배정)가 없습니다.<br>PC 입고정리에서 [출고준비]를 먼저 하세요.</div>'; return; }
             $('olist').innerHTML=orders.map(o=>{
                 const done=isDoneOrder(o), n=o.found+o.missing;
                 const rowCls=done?(o.missing?'miss':'done'):'';
@@ -448,10 +510,10 @@
                     : `<span class="prog ${n>0?'part':''}">${n} / ${o.total}</span>`;
                 // 큰 글자 = 박스 라벨에 찍힌 그대로 "발주번호-박스번호" (라벨과 같은 모양이어야 찾기 쉽다, 2026-10-15). 배지는 박스 크기
                 const bx=(o.boxNo!=null?`<span class="bx">📦 ${esc(o.boxSize||'')}</span>`:'<span class="bx none">박스 미정</span>')
-                    +(o.mixed?`<span class="bx mix" title="입고코드 ${esc((o.codes||[]).join(', '))}">입고일 섞임</span>`:'');
+                    +(o.mixed?`<span class="bx mix" title="${mode==='all'?'출처':'입고코드'} ${esc((o.codes||[]).join(', '))}">${mode==='all'?'출처 섞임':'입고일 섞임'}</span>`:'');
                 return `<div class="orow ${rowCls}" onclick="startOrder('${esc(orderKey(o))}')">
                     <div class="body"><div class="no">${esc(o.orderNumber)}${o.boxNo!=null?`<span class="dash">-</span>${o.boxNo}`:''}${bx}</div>
-                    <div class="meta">${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}<span class="qw">${o.qty}개 · ${o.kg}kg</span></div></div>${pill}</div>`;
+                    <div class="meta">${mode==='all'?`${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}${(o.codes||[]).length?` · ${esc(o.codes.join('·'))}`:''}`:`${o.batch}회차 · ${esc(o.center)||'-'} · ${esc(md(o.shippingDate))||'-'}`}<span class="qw">${o.qty}개 · ${o.kg}kg</span></div></div>${pill}</div>`;
             }).join('');
         }
         // "144287071-1" (박스 라벨) → 발주번호 + 박스번호 / "144287071" → 발주번호만(전체) / "144287071-0" → 박스 미정(가상 박스에 안 잡힌 행만)
@@ -498,7 +560,11 @@
         function mixedConfirm(mix){
             return new Promise(res=>{
                 mixResolve=res;
-                $('mixCodes').innerHTML=(mix.boxes||[]).map(b=>`<div><span>📦 ${esc(b.boxNo)}</span><span class="c">${(b.codes||[]).map(c=>c===active.code?`<b>${esc(c)}</b>`:esc(c)).join(' · ')}</span></div>`).join('');
+                $('mixHead').textContent=mode==='all'?'출처 확인':'입고일자 확인';
+                const hasStock=(mix.codes||[]).includes('재고');
+                $('mixText').innerHTML=mode==='all'?`해당 ${curBox?'박스':'발주서'}는 <b>${hasStock?'재고와 입고 박스가':'여러 입고일 박스가'} 섞여있습니다.</b>\n'꺼내는 곳(위치 / 입고코드-박스)을 반드시 확인해주세요'`
+                    :`해당 발주서는 <b>여러 입고일 박스가 섞여있습니다.</b>\n'입고일자를 반드시 확인해주세요'`;
+                $('mixCodes').innerHTML=(mix.boxes||[]).map(b=>`<div><span>📦 ${esc(b.boxNo)}</span><span class="c">${(b.codes||[]).map(c=>mode!=='all'&&c===active.code?`<b>${esc(c)}</b>`:esc(c)).join(' · ')}</span></div>`).join('');
                 $('mixBack').classList.add('show');
                 playWarn();
             });
@@ -508,14 +574,15 @@
         // ════════ 3화면: 카드 덱 ════════
         async function reloadDeck(first){
             try{
-                const res=await fetch(`/api/inbound/mobile-list?shipmentCode=${encodeURIComponent(active.code)}&orderNumber=${encodeURIComponent(curOrder)}${curBox!=null?`&boxNo=${curBox}`:''}`);
+                const q=`orderNumber=${encodeURIComponent(curOrder)}${curBox!=null?`&boxNo=${curBox}`:''}`;
+                const res=await fetch(mode==='all'?`/api/mobile/all-list?${q}`:`/api/inbound/mobile-list?shipmentCode=${encodeURIComponent(active.code)}&${q}`);
                 const d=await res.json(); if(!res.ok) throw new Error(d.error||'조회 실패');
                 rows=d.rows||[];
                 if(!rows.length){
                     playWarn();
                     if(curBox===0) toast(`발주서 ${curOrder} 에 박스 미정 상품이 없습니다. (전부 가상 박스에 잡힘)`);
-                    else if(curBox!=null) toast(d.boxExists===false?`발주서 ${curOrder} 에 📦${curBox} 박스가 없습니다.`:`📦${curBox} 에 가상으로 담긴 입고코드 ${active.code} 상품이 없습니다. (이미 찾았거나 다른 입고코드)`);
-                    else toast(`입고코드 ${active.code} 에 발주서 ${curOrder} 배정이 없습니다.`);
+                    else if(curBox!=null) toast(d.boxExists===false?`발주서 ${curOrder} 에 📦${curBox} 박스가 없습니다.`:mode==='all'?`📦${curBox} 에 가상으로 담긴 상품이 없습니다. (이미 실제로 담았음)`:`📦${curBox} 에 가상으로 담긴 입고코드 ${active.code} 상품이 없습니다. (이미 찾았거나 다른 입고코드)`);
+                    else toast(mode==='all'?`발주서 ${curOrder} 에 출고예정 배정(재고·입고)이 없습니다.`:`입고코드 ${active.code} 에 발주서 ${curOrder} 배정이 없습니다.`);
                     backToPick(); return;
                 }
                 // 입고코드가 둘 이상 섞인 발주서/박스 → 처음 들어갈 때 확인 모달을 거친 뒤 카드로 (2026-10-15)
@@ -533,7 +600,12 @@
         //   칩에는 박스 번호·크기만. 담을 개수는 아래 큰 숫자(출고개수)로 보여준다 — 박스가 여럿일 때(발주번호만 입력한 전체 보기)만 칩에 ×n (2026-10-15: 칩의 ×4 와 출고개수 12 가 같이 보여 헷갈림)
         //   박스가 없으면 "직접 스캔"
         function boxRow(r){
-            const src=`<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
+            // [전체] 모드: 입고 = "입고코드-박스명" (1018-BR5) · 재고 = 위치 (흰 칩). [입고] 모드는 예전 그대로 박스명만
+            const src=mode==='all'&&r.source==='재고'
+                ? `<span class="chip src stock" title="재고 위치">${ICON('i-search',20,2.2)}${esc(r.위치)||'-'}</span>`
+                : mode==='all'
+                ? `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.출고코드)}-${esc(r.박스명)||'-'}</span>`
+                : `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
             const list=(r.boxes||[]);
             const dst=list.length
                 ? list.map(b=>`<span class="chip pick" onclick="openSizeSheet(${b.boxNo})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
@@ -547,7 +619,7 @@
             const noimg=ICON('i-img',40,1.6)+'<div>상품 이미지 없음</div>';
             return `<div class="cardw" data-i="${i}"><div class="card ${st}">
                 ${band}
-                <div class="meta"><span class="batch">${r.회차}회차</span><span>${esc(r.출고코드)}</span><span class="sep">·</span><span>${esc(r.센터)||'-'}</span><span class="sep">·</span><span>${esc(ymd(r.출고예정일))||'-'}</span></div>
+                <div class="meta">${mode==='all'?`<span class="batch">${r.source==='재고'?'재고':esc(r.출고코드)} · ${r.회차}회차</span>`:`<span class="batch">${r.회차}회차</span><span>${esc(r.출고코드)}</span><span class="sep">·</span>`}<span>${esc(r.센터)||'-'}</span><span class="sep">·</span><span>${esc(ymd(r.출고예정일))||'-'}</span></div>
                 ${boxRow(r)}
                 <div class="thumb">${r.img?`<img src="${esc(r.img)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML=NOIMG">`:noimg}</div>
                 <div class="pname"><div class="nm">${modelBadge(r.상품명)}</div><span class="bc">${esc(r.바코드)||'-'}</span></div>
@@ -570,7 +642,7 @@
                 <div><h2>${left?`아직 ${left}장 남았습니다`:'이 발주서 끝'}</h2>
                 <p>${left?'왼쪽으로 넘겨 남은 카드를 확인하세요.':(m?'못 찾은 상품은 사무실 입고정리 표에 없음으로 보입니다.':`${rows.length}장 모두 처리했습니다.`)}</p></div>
                 <div class="tiles"><div class="tile ok"><div class="k">찾음</div><div class="v">${f}</div></div><div class="tile miss"><div class="k">없음</div><div class="v">${m}</div></div><div class="tile"><div class="k">전체</div><div class="v">${rows.length}</div></div></div>
-                ${miss.length?`<div class="misslist"><div class="lab">없음으로 표시한 상품</div>${miss.map(r=>`<div class="missrow"><div class="bx">${esc(r.박스명)||'-'}</div><div class="b"><div class="n">${esc(r.상품명)}</div><div class="m"><span class="bc">${esc(r.바코드)}</span><span>${esc(r.출고개수)}개 없음</span></div></div></div>`).join('')}</div>`:''}
+                ${miss.length?`<div class="misslist"><div class="lab">없음으로 표시한 상품</div>${miss.map(r=>`<div class="missrow"><div class="bx" style="${r.source==='재고'?'font-size:11px':''}">${esc(r.source==='재고'?r.위치:r.박스명)||'-'}</div><div class="b"><div class="n">${esc(r.상품명)}</div><div class="m"><span class="bc">${esc(r.바코드)}</span><span>${esc(r.출고개수)}개 없음</span></div></div></div>`).join('')}</div>`:''}
                 <div class="end-foot">
                     ${left?`<button class="btn" onclick="goTo(firstLeft())">남은 카드로</button>`:''}
                     <button class="btn primary" onclick="backToPick()">다음 발주서 ${ICON('i-arrow',20,2.5)}</button>
@@ -617,7 +689,9 @@
             r.모바일=status; r.모바일처리자=status?worker():null; r.모바일시각=status?new Date().toISOString():null;   // 낙관적 반영
             repaint(i);
             try{
-                const res=await fetch('/api/inbound/mobile-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allocId:r.allocId,status,worker:worker()})});
+                const res=mode==='all'
+                    ? await fetch('/api/mobile/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listId:r.listId,status,worker:worker()})})
+                    : await fetch('/api/inbound/mobile-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allocId:r.allocId,status,worker:worker()})});
                 const d=await res.json(); if(!res.ok) throw new Error(d.error||'저장 실패');
                 r.모바일=d.모바일; r.모바일처리자=d.모바일처리자; r.모바일시각=d.모바일시각; repaint(i);
                 return true;

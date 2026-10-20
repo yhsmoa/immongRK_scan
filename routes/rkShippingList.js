@@ -209,12 +209,9 @@ router.post('/api/shipping-list/stock-allocate', async (req, res) => {
 });
 
 // 재고건 예정 취소 — rk_shipping_list(재고) 삭제 + rk_stocks 복원(+이력)
-// body: { ids: [rk_shipping_list.id, ...] }
-router.post('/api/shipping-list/stock-cancel', async (req, res) => {
-  try {
-    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(v => parseInt(v, 10)).filter(Number.isFinite);
-    if (!ids.length) return res.status(400).json({ error: '취소할 항목이 없습니다.' });
-
+//   재고준비 [취소](아래 라우트) 와 신규 발주서 가상버전 [배정 취소](rkAllocate.js) 가 같이 쓴다. ids 는 정수 배열.
+//   note: 이력 메모 (기본 '재고준비 취소 복원' — 기존 라우트는 그대로 이 값)
+async function cancelStockReservations(ids, note = '재고준비 취소 복원') {
     // 대상 예약 조회 (재고건만)
     const rows = [];
     for (let i = 0; i < ids.length; i += 200) {
@@ -224,7 +221,7 @@ router.post('/api/shipping-list/stock-cancel', async (req, res) => {
       rows.push(...(data || []));
     }
     const targets = rows.filter(r => r.source === '재고');
-    if (!targets.length) return res.json({ canceled: 0, restored: 0 });
+    if (!targets.length) return { canceled: 0, restored: 0 };
 
     // 1) 예약 삭제
     const delIds = targets.map(r => r.id);
@@ -259,7 +256,7 @@ router.post('/api/shipping-list/stock-cancel', async (req, res) => {
           if (error) throw error;
           restored += add;
           histories.push({ stock_id: stockId, sku_id: cur.sku_id || null, barcode: cur.barcode, location: cur.location,
-            change_type: 'add', qty: add, qty_before: before, qty_after: after, note: '재고준비 취소 복원' });
+            change_type: 'add', qty: add, qty_before: before, qty_after: after, note });
         }));
       }
       for (let i = 0; i < histories.length; i += 500) {
@@ -268,7 +265,16 @@ router.post('/api/shipping-list/stock-cancel', async (req, res) => {
       }
     }
 
-    res.json({ canceled: targets.length, restored });
+    return { canceled: targets.length, restored };
+}
+router.cancelStockReservations = cancelStockReservations;   // rkAllocate.js 배정 취소용
+
+// body: { ids: [rk_shipping_list.id, ...] }
+router.post('/api/shipping-list/stock-cancel', async (req, res) => {
+  try {
+    const ids = (Array.isArray(req.body.ids) ? req.body.ids : []).map(v => parseInt(v, 10)).filter(Number.isFinite);
+    if (!ids.length) return res.status(400).json({ error: '취소할 항목이 없습니다.' });
+    res.json(await cancelStockReservations(ids));
   } catch (e) {
     console.error('[rk] shipping-list/stock-cancel:', e);
     res.status(500).json({ error: '예정 취소 중 오류가 발생했습니다: ' + e.message });

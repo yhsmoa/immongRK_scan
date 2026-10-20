@@ -111,6 +111,7 @@ app.use(require('./routes/rkStocks'));
 app.use(require('./routes/rkInbound'));
 app.use(require('./routes/rkShippingList'));
 app.use(require('./routes/rkShipScan'));
+app.use(require('./routes/rkAllocate')); // 신규 발주서 가상버전 [배정] — 재고+입고 통합 배정 (docs/plan-neworder-virtual.md)
 app.use(require('./routes/rkAdItems'));
 app.use(require('./routes/rkLabel'));   // 라벨 출력 연동 (label-service 임베드)
 app.use(require('./routes/rkShipDocs')); // 쉽먼트 [순서정리] — 쿠팡 부착문서·동봉문서 PDF 재정렬
@@ -2068,6 +2069,10 @@ app.post('/api/orders/update-location', async (req, res) => {
 // 신규 발주서 등록 페이지
 app.get('/newOrder', (req, res) => {
     res.sendFile(path.join(__dirname, 'newOrder.html'));
+});
+// 신규 발주서 가상버전 — 배정(재고+입고) → 가상스캔 → 박스라벨 (docs/plan-neworder-virtual.md)
+app.get('/newOrderV', (req, res) => {
+    res.sendFile(path.join(__dirname, 'newOrderVirtual.html'));
 });
 
 // 엑셀 파일 분석 API (메모리에만 저장)
