@@ -676,6 +676,14 @@ router.post('/api/inbound/prepare', async (req, res) => {
 
     // 대상 아이템의 기존 배정 → 아이템별 배정합계(남은수량 계산) + 출고코드별 최대 회차
     const existingForTarget = (allAllocs || []).filter(a => targetItemIds.has(a.shipment_item_id));
+    // 재고확정(rk_cn_stock_arranges) 분량 — 재고정리에서 선반(rk_stocks)으로 올린 만큼은 입고 남은 수량에서 뺀다 (2026-10-20, D5).
+    //   재고정리 화면의 남은상품(원본 − 출고 − 재고원장)과 같은 공식. 빼지 않으면 그 분량이 입고분으로 또 배정되고 재고에서도 배정될 수 있었다.
+    //   이미 저장된 배정은 건드리지 않는다. 재고확정이 없는 아이템은 결과가 예전과 같다.
+    const arrangedRows = targetItemIds.size > 2000
+      ? (await pageAll('rk_cn_stock_arranges', 'shipment_item_id, qty')).filter(a => targetItemIds.has(a.shipment_item_id))   // 코드 지정 없이 전체 — 원장 통째로 몇 페이지
+      : await S.chunked([...targetItemIds], 200, (part) => pageAll('rk_cn_stock_arranges', 'shipment_item_id, qty', q => q.in('shipment_item_id', part)));
+    const arrangedByItem = new Map();
+    for (const a of arrangedRows) arrangedByItem.set(a.shipment_item_id, (arrangedByItem.get(a.shipment_item_id) || 0) + (parseInt(a.qty, 10) || 0));
     const allocatedByItem = new Map();
     const maxBatchByShipment = new Map();
     for (const a of existingForTarget) {
@@ -748,7 +756,7 @@ router.post('/api/inbound/prepare', async (req, res) => {
     const allocRows = [];
     for (const it of items) {
       const total = parseInt(it.quantity) || 0;
-      let remaining = total - (allocatedByItem.get(it.id) || 0);
+      let remaining = total - (allocatedByItem.get(it.id) || 0) - (arrangedByItem.get(it.id) || 0);
       if (remaining <= 0) continue;
       const entries = (orderProductMap.get(it.barcode) || []).slice()
         .sort((a, b) => String(a.order.입고예정일 || '').localeCompare(String(b.order.입고예정일 || '')));
