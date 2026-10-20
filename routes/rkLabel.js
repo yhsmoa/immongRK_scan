@@ -130,8 +130,10 @@ router.post('/api/label/items', async (req, res) => {
 const mmdd = (ymd) => { const m = String(ymd || '').match(/^\d{4}(\d{2})(\d{2})$/); return m ? m[1] + m[2] : ''; };
 // ── 찾아야 할 곳 (2026-10-20, 신규 발주서 가상버전 세로 박스 라벨) ──
 //   박스 안 가상 분량의 출처 = rk_ship_box_items.virtual_codes 키 ('재고' | 입고코드). 실제 스캔 분량은 출처 기록이 없어 세지 않는다.
-//   bx_source_count 2 · bx_source_badge ❷ · bx_sources "재고 / 1011" · bx_sources_qty "재고 8 / 1011 4" · bx_sources_line "❷ 재고 / 1011"
-//   bx_inbound_boxes "1011-BR3 / 1011-BR7" — 그 박스의 입고 분량이 배정된 입고 박스(rk_cn_shipping → 아이템 박스명)
+//   bx_source_count 2 · bx_source_badge ❷ · bx_sources "▲재고 ▲1011" · bx_sources_qty "▲재고 8 ▲1011 4" · bx_sources_line "❷ ▲재고 ▲1011"
+//   bx_inbound_boxes "▲1011-BR3 ▲1011-BR7" — 그 박스의 입고 분량이 배정된 입고 박스(rk_cn_shipping → 아이템 박스명)
+//   항목마다 앞에 ▲ (2026-10-20): 가운뎃점은 잘 안 보이고, '-' 는 입고 박스 표기(1011-BR3)와, '/' 는 숫자 1 과 헷갈렸다.
+//   ▲ 는 일반 글꼴의 도형 문자라 1비트 인쇄에서도 또렷하다 (컬러 이모지 🔎 는 뭉개짐)
 const CIRCLED = ['❶', '❷', '❸', '❹', '❺', '❻', '❼', '❽', '❾', '❿', '⓫', '⓬', '⓭', '⓮', '⓯', '⓰', '⓱', '⓲', '⓳', '⓴'];
 const circled = (n) => (n > 0 ? (CIRCLED[n - 1] || `(${n})`) : '');
 const STOCK_KEY = '재고';
@@ -139,14 +141,15 @@ function sourceFields(codeQty, inboundBoxes) {
   const keys = Object.keys(codeQty).filter((k) => codeQty[k] > 0)
     .sort((a, b) => ((a === STOCK_KEY ? 0 : 1) - (b === STOCK_KEY ? 0 : 1)) || a.localeCompare(b, 'ko', { numeric: true }));
   const n = keys.length;
-  const names = keys.join(' / ');   // 구분자 ' / ' — 가운뎃점은 라벨에서 잘 안 보이고 '-' 는 입고 박스 표기(1011-BR3)와 헷갈린다 (2026-10-20)
+  const MARK = '▲';
+  const names = keys.map((k) => MARK + k).join(' ');
   return {
     bx_source_count: n ? n : '',
     bx_source_badge: circled(n),
     bx_sources: names,
-    bx_sources_qty: keys.map((k) => `${k} ${codeQty[k]}`).join(' / '),
+    bx_sources_qty: keys.map((k) => `${MARK}${k} ${codeQty[k]}`).join(' '),
     bx_sources_line: n ? `${circled(n)} ${names}` : '',
-    bx_inbound_boxes: (inboundBoxes || []).join(' / '),
+    bx_inbound_boxes: (inboundBoxes || []).map((b) => MARK + b).join(' '),
   };
 }
 const EMPTY_SOURCES = sourceFields({}, []);
