@@ -118,19 +118,75 @@ router.post('/api/neworders/batch-update-location', async (req, res) => {
 });
 
 // 등록 (신규 → 전체, RPC)
+// ── 재고관리 매입가 동기화 (2026-10-20) ──
+//   등록하는 발주서들의 상품(바코드)별 매입가·공급가·부가세·발주등록일시를 rk_inventories 에 반영한다.
+//   · 이 4개 열(purchase_price, supply_price, vat, last_ordered_at)만 덮어쓴다 — 비어 있으면 채우고, 다르면 최신 값으로
+//   · 같은 바코드가 여러 발주서에 있으면 발주등록일시가 가장 최근인 상품의 값
+//   · 재고관리에 없는 바코드는 건너뛴다 (행을 만들지 않는다)
+//   · 실패해도 등록 자체는 성공으로 둔다 (console.error 만). 정의 사본: supabase/rk_inventories_price_last_order.sql
+async function readNewOrderItemsForSync(orderNumbers) {
+  const heads = await S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => S.supabase.from('rk_new_orders')
+    .select('id').in('order_number', nos).order('id', { ascending: true })));
+  const ids = heads.map((h) => h.id);
+  if (!ids.length) return [];
+  return S.chunked(ids, 200, (part) => S.pageAll(() => S.supabase.from('rk_new_order_items')
+    .select('barcode, purchase_price, supply_price, vat, registered_at').in('order_id', part).order('id', { ascending: true })));
+}
+async function syncInventoryPrices(items) {
+  const latest = new Map();   // barcode → 가장 최근 발주등록일시의 상품
+  for (const it of items) {
+    const bc = String(it.barcode || '').trim();
+    if (!bc) continue;
+    const t = it.registered_at ? Date.parse(it.registered_at) : 0;
+    const cur = latest.get(bc);
+    if (!cur || t > cur.t) latest.set(bc, { t, it });
+  }
+  const barcodes = [...latest.keys()];
+  if (!barcodes.length) return 0;
+  const exist = await S.chunked(barcodes, 200, (part) => S.pageAll(() => S.supabase.from('rk_inventories')
+    .select('id, barcode, purchase_price, supply_price, vat, last_ordered_at').in('barcode', part).order('id', { ascending: true })));
+  const num = (v) => (v == null || v === '' || isNaN(Number(v))) ? null : Math.round(Number(v));
+  const updates = [];
+  for (const row of exist) {
+    const src = latest.get(String(row.barcode || '').trim());
+    if (!src) continue;
+    const next = { purchase_price: num(src.it.purchase_price), supply_price: num(src.it.supply_price), vat: num(src.it.vat), last_ordered_at: src.it.registered_at || null };
+    const same = next.purchase_price === num(row.purchase_price) && next.supply_price === num(row.supply_price) && next.vat === num(row.vat)
+      && (next.last_ordered_at ? Date.parse(next.last_ordered_at) : 0) === (row.last_ordered_at ? Date.parse(row.last_ordered_at) : 0);
+    if (!same) updates.push({ id: row.id, next });
+  }
+  await S.chunkedPool(updates, 1, async ([u]) => {
+    const { error } = await S.supabase.from('rk_inventories').update(u.next).eq('id', u.id);
+    if (error) throw error;
+    return [u.id];
+  }, 5);
+  return updates.length;
+}
+
+router.readNewOrderItemsForSync = readNewOrderItemsForSync;   // 스크립트·테스트용
+router.syncInventoryPrices = syncInventoryPrices;
+
 router.post('/api/neworders/register', async (req, res) => {
   try {
     const { orderNumbers } = req.body;
     if (!Array.isArray(orderNumbers) || orderNumbers.length === 0)
       return res.status(400).json({ message: '등록할 발주서가 선택되지 않았습니다.' });
+    // 등록 RPC 가 신규발주 행을 옮기므로 동기화용 상품 값은 RPC 전에 읽어 둔다
+    let syncItems = [];
+    try { syncItems = await readNewOrderItemsForSync(orderNumbers); }
+    catch (e) { console.error('[rk] neworders/register 매입가 동기화 준비 실패:', e.message); }
     const { data, error } = await S.supabase.rpc('rk_register_neworders', { p_order_numbers: orderNumbers });
     if (error) throw error;
     const registered = data.registered || 0;
     const duplicates = data.duplicates || 0;
+    let priceSynced = 0;
+    try { priceSynced = await syncInventoryPrices(syncItems); }
+    catch (e) { console.error('[rk] neworders/register 매입가 동기화 실패:', e.message); }
     let message = '';
     if (registered > 0) message += `${registered}개의 발주서가 성공적으로 등록되었습니다.`;
     if (duplicates > 0) message += `\n${duplicates}개의 발주서는 이미 존재합니다.`;
-    res.json({ message, registered, duplicates, errors: [] });
+    if (priceSynced > 0) message += `\n재고관리 매입가·최근발주 ${priceSynced}건 갱신`;
+    res.json({ message, registered, duplicates, priceSynced, errors: [] });
   } catch (e) {
     console.error('[rk] neworders/register:', e);
     res.status(500).json({ message: '서버 오류가 발생했습니다.' });

@@ -25,7 +25,31 @@ function invToKorean(r) {
     quantity: r.quantity == null ? '-' : r.quantity,
     location: r.location == null ? '-' : r.location,
     lastUpdate: r.last_update,
+    // 매입가·공급가·부가세·최근발주등록일 — 신규발주서 등록 때 채워진다 (rkNewOrders syncInventoryPrices). 없으면 null
+    purchasePrice: r.purchase_price == null ? null : Number(r.purchase_price),
+    supplyPrice: r.supply_price == null ? null : Number(r.supply_price),
+    vat: r.vat == null ? null : Number(r.vat),
+    lastOrderedAt: r.last_ordered_at || null,
+    img: r.img || null,
+    createdAt: r.created_at || null,
   };
+}
+
+// 목록 조회에 쓰는 열 — 화면 표에 필요한 것만 (긴 텍스트·이미지는 빼지 않는다: 혼용률·권장연령은 표에 보이고 img 는 짧은 URL)
+const LIST_COLS = 'id, mongo_id, sku_id, name, barcode, order_status, composition, recommanded_age, quantity, location, last_update, purchase_price, supply_price, vat, last_ordered_at, img, created_at';
+
+// 검색 조건 적용 — 상태(발주가능상태) + 검색어(콤마로 여러 개, SKU/바코드/상품명 ilike)
+function applyInvFilter(q, { orderStatus, searchTerm }) {
+  if (orderStatus) q = q.eq('order_status', orderStatus);
+  const terms = String(searchTerm || '').split(',').map((t) => t.trim()).filter(Boolean);
+  if (terms.length) {
+    const ors = terms.flatMap((t) => {
+      const v = t.replace(/[,()]/g, ' '); // .or 문법 깨짐 방지
+      return [`sku_id.ilike.%${v}%`, `barcode.ilike.%${v}%`, `name.ilike.%${v}%`];
+    }).join(',');
+    q = q.or(ors);
+  }
+  return q;
 }
 
 // 페이지네이션 조회 (쿼리 빌더 팩토리를 받아 1000행씩)
@@ -44,10 +68,26 @@ async function fetchAll(buildQuery) {
 }
 
 // 재고 목록 (전체)
+// 재고 목록
+//   ?page=1&size=100&status=정상&q=검색어  → { rows, total, page, size }  (서버 페이지네이션, 2026-10-20)
+//     · 정렬은 id 오름차순 고정 — id 는 고유·불변이라 페이지 사이에 행이 겹치거나 빠지지 않는다 (새 행은 맨 뒤에 붙는다)
+//     · total 은 같은 조건의 count(exact) — 페이지 수 계산용
+//   page 없이 부르면 예전처럼 전체 배열 (다른 화면 호환)
 router.get('/api/inventory/list', async (req, res) => {
   try {
-    const rows = await fetchAll(() => sb.from('rk_inventories').select('*').order('id', { ascending: true }));
-    res.json(rows.map(invToKorean));
+    const filter = { orderStatus: String(req.query.status || '').trim(), searchTerm: String(req.query.q || '') };
+    if (req.query.page == null) {
+      const rows = await fetchAll(() => applyInvFilter(sb.from('rk_inventories').select(LIST_COLS).order('id', { ascending: true }), filter));
+      return res.json(rows.map(invToKorean));
+    }
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const size = Math.min(1000, Math.max(1, parseInt(req.query.size, 10) || 100));
+    const from = (page - 1) * size;
+    const { data, count, error } = await applyInvFilter(
+      sb.from('rk_inventories').select(LIST_COLS, { count: 'exact' }).order('id', { ascending: true }), filter)
+      .range(from, from + size - 1);
+    if (error) throw error;
+    res.json({ rows: (data || []).map(invToKorean), total: count || 0, page, size });
   } catch (e) {
     console.error('[rk] inventory/list:', e);
     res.status(500).json({ error: '재고 목록을 불러오는 중 오류가 발생했습니다.' });

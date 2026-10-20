@@ -112,12 +112,14 @@
                 padding: 8px;
             }
             /* 모바일에서 숨길 열 (⚠ 열 순서가 바뀌면 번호도 같이 바꿔야 한다)
-               1 체크 · 2 SKU · 3 상품명 · 4 바코드 · 5 혼용률 · 6 권장연령 · 7 발주가능상태 · 8 재고 */
+               1 체크 · 2 SKU · 3 상품명 · 4 바코드 · 5 혼용률 · 6 권장연령 · 7 발주가능상태 · 8 재고 · 9 매입가 · 10 최근발주 */
             th:nth-child(2), td:nth-child(2), /* SKU ID */
             th:nth-child(5), td:nth-child(5), /* 혼용률 */
             th:nth-child(6), td:nth-child(6), /* 권장연령 */
             th:nth-child(7), td:nth-child(7), /* 발주가능상태 */
-            th:nth-child(8), td:nth-child(8) { /* 재고 */
+            th:nth-child(8), td:nth-child(8), /* 재고 */
+            th:nth-child(9), td:nth-child(9), /* 매입가 */
+            th:nth-child(10), td:nth-child(10) { /* 최근발주 */
                 display: none;
             }
             .mobile-wrap {
@@ -431,6 +433,8 @@
                             <th>권장연령</th>
                             <th>발주가능상태</th>
                             <th>재고</th>
+                            <th class="col-price" title="신규발주서 등록 시 최신 발주 상품의 매입가 (공급가·부가세는 칸에 마우스를 올리면 표시)">매입가</th>
+                            <th class="col-last" title="그 상품이 마지막으로 발주된 발주등록일 (신규발주서 등록 시 갱신)">최근발주</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -625,30 +629,51 @@
             }
         }
 
-        // 재고 데이터 로드
-        function loadInventoryData() {
-            fetch('/api/inventory/list')
-                .then(response => response.json())
-                .then(data => {
-                    // 모든 데이터 표시 (필터링 제거)
-                    displayData(data);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
-        }
-
-        // 페이지네이션 상태
-        let invViewData = [];
+        // ── 재고 데이터 로드 — 서버 페이지네이션 (2026-10-20) ──
+        //   예전에는 16,000행을 통째로 받아 화면에서 100개씩 잘랐다. 지금은 현재 페이지 한 장만 받는다.
+        //   서버가 id 오름차순으로 고정 정렬하고 같은 조건의 총 건수(total)를 같이 주므로, 페이지를 넘겨도 행이 겹치거나 빠지지 않는다.
+        //   검색/상태 필터(invFilter)도 서버가 처리한다. 업로드·삭제·등록 뒤에는 현재 페이지를 다시 읽는다.
+        let invViewData = [];      // 현재 페이지 행
+        let invTotal = 0;          // 조건에 맞는 전체 건수
         let invPageSize = 100;
         let invPage = 1;
+        let invFilter = { status: '', q: '' };
+        let invLoadToken = 0;      // 늦게 도착한 이전 요청이 화면을 덮지 않게
 
-        // 데이터 세팅 → 1페이지부터 렌더 (검색/로드 공용 진입점)
-        function displayData(data) {
-            invViewData = Array.isArray(data) ? data : [];
-            invPage = 1;
-            renderInventory();
+        async function loadInventoryData() {
+            const token = ++invLoadToken;
+            const tbody = document.querySelector('#inventoryTable tbody');
+            if (tbody && !tbody.children.length) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;padding:24px">불러오는 중…</td></tr>';
+            const params = new URLSearchParams({ page: String(invPage), size: String(invPageSize) });
+            if (invFilter.status) params.set('status', invFilter.status);
+            if (invFilter.q) params.set('q', invFilter.q);
+            try {
+                const res = await fetch('/api/inventory/list?' + params.toString());
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || '조회 실패');
+                if (token !== invLoadToken) return;
+                invViewData = Array.isArray(data.rows) ? data.rows : [];
+                invTotal = Number(data.total) || 0;
+                // 마지막 페이지 뒤를 가리키면(삭제 등으로 줄어든 경우) 마지막 페이지로 되돌려 다시 읽는다
+                const totalPages = Math.max(1, Math.ceil(invTotal / invPageSize));
+                if (invPage > totalPages) { invPage = totalPages; return loadInventoryData(); }
+                renderInventory();
+            } catch (error) {
+                if (token !== invLoadToken) return;
+                console.error('Error:', error);
+                if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#c00;padding:24px">${esc(error.message)}</td></tr>`;
+            }
         }
+
+        // 검색/필터를 바꿔 1페이지부터 다시 읽기 (검색 폼 진입점)
+        function displayData(filter) {
+            if (filter) invFilter = { status: filter.status || '', q: filter.q || '' };
+            invPage = 1;
+            loadInventoryData();
+        }
+
+        const fmtPrice = (v) => (v == null || v === '' || isNaN(Number(v))) ? '' : Number(v).toLocaleString();
+        const fmtDate = (iso) => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
         // 혼용률·권장연령은 자유 입력 텍스트라 태그로 해석되지 않게 이스케이프한다
         const esc = (s) => String(s == null ? '' : s)
@@ -662,10 +687,8 @@
             // 모바일 여부 확인 (CSS 미디어 쿼리와 동일한 기준 사용)
             const isMobile = window.matchMedia('(max-width: 768px)').matches;
 
-            const totalPages = Math.max(1, Math.ceil(invViewData.length / invPageSize));
-            if (invPage > totalPages) invPage = totalPages;
-            const start = (invPage - 1) * invPageSize;
-            const pageItems = invViewData.slice(start, start + invPageSize);
+            const totalPages = Math.max(1, Math.ceil(invTotal / invPageSize));
+            const pageItems = invViewData;   // 서버가 준 현재 페이지
 
             pageItems.forEach(item => {
                 const tr = document.createElement('tr');
@@ -687,11 +710,13 @@
                     <td class="col-age">${esc(item.recommandedAge)}</td>
                     <td>${item.orderStatus}</td>
                     <td>${item.quantity}</td>
+                    <td class="col-price" title="${item.purchasePrice == null ? '' : `공급가 ${fmtPrice(item.supplyPrice)} · 부가세 ${fmtPrice(item.vat)}`}">${fmtPrice(item.purchasePrice)}</td>
+                    <td class="col-last">${fmtDate(item.lastOrderedAt)}</td>
                 `;
                 tbody.appendChild(tr);
             });
 
-            document.getElementById('rowCount').textContent = invViewData.length;
+            document.getElementById('rowCount').textContent = invTotal.toLocaleString();
             const selectAll = document.getElementById('selectAll');
             if (selectAll) { selectAll.checked = false; selectAll.indeterminate = false; }
             renderInvPagination(totalPages);
@@ -700,7 +725,7 @@
 
         function renderInvPagination(totalPages) {
             const el = document.getElementById('pagination');
-            if (invViewData.length === 0) { el.innerHTML = ''; return; }
+            if (invTotal === 0) { el.innerHTML = ''; return; }
             let html = `<button ${invPage===1?'disabled':''} onclick="gotoInvPage(${invPage-1})">이전</button>`;
             for (const p of invPageWindow(invPage, totalPages)) {
                 html += p === '...' ? `<span class="ellipsis">…</span>` : `<button class="${p===invPage?'active':''}" onclick="gotoInvPage(${p})">${p}</button>`;
@@ -721,17 +746,17 @@
         }
 
         function gotoInvPage(p) {
-            const total = Math.max(1, Math.ceil(invViewData.length / invPageSize));
-            if (p < 1 || p > total) return;
+            const total = Math.max(1, Math.ceil(invTotal / invPageSize));
+            if (p < 1 || p > total || p === invPage) return;
             invPage = p;
-            renderInventory();
+            loadInventoryData();
             const tc = document.querySelector('.table-container'); if (tc) tc.scrollTop = 0;
         }
 
         function changeInvPageSize() {
             invPageSize = Number(document.getElementById('pageSize').value) || 100;
             invPage = 1;
-            renderInventory();
+            loadInventoryData();
         }
 
         function updateInvSel() {
@@ -944,25 +969,8 @@
             event.preventDefault();
             const orderStatus = document.getElementById('orderStatus').value;
             const searchTerm = document.getElementById('searchTerm').value;
-
-            fetch('/api/inventory/search', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    orderStatus: orderStatus === '전체' ? '' : orderStatus,
-                    searchTerm: searchTerm
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                displayData(data);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('검색 중 오류가 발생했습니다.');
-            });
+            // 서버 페이지네이션 목록이 검색 조건까지 처리한다 (/api/inventory/list?status=&q=)
+            displayData({ status: orderStatus === '전체' ? '' : orderStatus, q: searchTerm.trim() });
         }
 
         // 파일 업로드 처리 (클라이언트에서 파싱 → 2000건씩 청크 전송, 진행률 표시)

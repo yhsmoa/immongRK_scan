@@ -469,6 +469,38 @@ async function loadWorkbookForStyling(buffer) {
 
 // 프로모션 대상조회 — 쿠팡 프로모션 엑셀(SKUID 열)을 받아 재고(rk_stocks.sku_id, qty>0)가 있는 행을
 // 노란 배경 + 상단 정렬한 엑셀을 돌려준다. 원본 양식(머리글·안내 행)은 그대로 둔다.
+// 재고정리건(남은상품) 수량을 SKU ID 별로 — /api/inbound/stock-arranges 의 대기 목록과 같은 계산
+//   남은 = rk_cn_shipment_items.quantity − rk_cn_shipping.ship_qty 합 − rk_cn_stock_arranges.qty 합 (> 0 인 것만)
+//   바코드 → SKU ID 는 rk_inventories (재고관리에 없는 바코드는 SKU 를 못 붙여 제외)
+async function pendingArrangeQtyBySku() {
+  const [items, shipping, arr] = await Promise.all([
+    S.pageAll(() => sb.from('rk_cn_shipment_items').select('id, barcode, quantity').order('id', { ascending: true })),
+    S.pageAll(() => sb.from('rk_cn_shipping').select('shipment_item_id, ship_qty').order('id', { ascending: true })),
+    S.pageAll(() => sb.from('rk_cn_stock_arranges').select('shipment_item_id, qty').order('id', { ascending: true })),
+  ]);
+  const shipBy = new Map(), arrBy = new Map();
+  for (const a of shipping) shipBy.set(a.shipment_item_id, (shipBy.get(a.shipment_item_id) || 0) + (parseInt(a.ship_qty, 10) || 0));
+  for (const a of arr) arrBy.set(a.shipment_item_id, (arrBy.get(a.shipment_item_id) || 0) + (parseInt(a.qty, 10) || 0));
+  const byBarcode = new Map();
+  for (const it of items) {
+    const remaining = (parseInt(it.quantity, 10) || 0) - (shipBy.get(it.id) || 0) - (arrBy.get(it.id) || 0);
+    const bc = String(it.barcode || '').trim();
+    if (remaining > 0 && bc) byBarcode.set(bc, (byBarcode.get(bc) || 0) + remaining);
+  }
+  const out = new Map();
+  const barcodes = [...byBarcode.keys()];
+  if (!barcodes.length) return out;
+  const inv = await S.chunked(barcodes, 200, (part) => S.pageAll(() => sb.from('rk_inventories')
+    .select('sku_id, barcode').in('barcode', part).order('id', { ascending: true })));
+  for (const r of inv) {
+    const sku = String(r.sku_id ?? '').trim(), bc = String(r.barcode || '').trim();
+    if (sku && byBarcode.has(bc)) out.set(sku, (out.get(sku) || 0) + byBarcode.get(bc));
+  }
+  return out;
+}
+
+router.pendingArrangeQtyBySku = pendingArrangeQtyBySku;   // 스크립트·테스트용
+
 router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: '파일이 업로드되지 않았습니다.' });
@@ -525,7 +557,12 @@ router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) =
       if (data.length < 1000) break;
     }
 
-    // 행 값 읽기 → 재고 있는 행을 위로 (원래 순서 유지)
+    // 재고정리건(남은상품) — 재고정리(/stockArrange) 대기 목록과 같은 계산: 입고 원본 − 출고 − 재고확정 (2026-10-20)
+    //   재고확정이 끝난 분량은 이미 rk_stocks 에 들어가 위 "재고"에 잡히므로 중복되지 않는다.
+    //   입고 데이터는 바코드 단위라 재고관리(rk_inventories)의 바코드 → SKU ID 로 붙인다.
+    const arrangeQty = await pendingArrangeQtyBySku();
+
+    // 행 값 읽기 → 재고(재고 + 재고정리건 총합) 있는 행을 위로 (원래 순서 유지)
     // 셀 스타일은 행과 함께 옮긴다. xlsx-populate 의 cell.style(name, v) 는 셀마다 새 스타일을 만들어
     // (조회만 해도 생성) 파일이 비대해지므로, 스타일 id(_styleId)를 직접 옮기고 노란 스타일은 원본 스타일별 1개만 만든다.
     const rows = [];
@@ -536,10 +573,17 @@ router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) =
         styleIds.push(sheet.cell(r, c)._styleId);
       }
       const sku = skuOf(r);
-      rows.push({ values, styleIds, sku, qty: stockQty.get(sku) || 0 });
+      const stock = stockQty.get(sku) || 0, arrange = arrangeQty.get(sku) || 0;
+      rows.push({ values, styleIds, sku, stockQty: stock, arrangeQty: arrange, qty: stock + arrange });
     }
     const hits = rows.filter((x) => x.qty > 0);
     const sorted = hits.concat(rows.filter((x) => !(x.qty > 0)));
+
+    // 마지막 열 뒤에 [재고] [재고정리건] [총합] 세 열 — 머리글은 파란 배경 (발주가능상태 조회와 같은 모양)
+    const EXTRA = ['재고', '재고정리건', '총합'];
+    const headStyle = wb.styleSheet().createStyle(sheet.cell(headRow, skuCol)._styleId);
+    headStyle.style('fill', 'FFBDD7EE'); headStyle.style('bold', true);
+    EXTRA.forEach((h, i) => { const cell = sheet.cell(headRow, lastCol + 1 + i); cell.value(h); cell._style = undefined; cell._styleId = headStyle.id(); });
 
     const yellowByBase = new Map();
     const yellowStyleId = (baseId) => {
@@ -560,6 +604,14 @@ router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) =
         cell._style = undefined;
         cell._styleId = row.qty > 0 ? yellowStyleId(row.styleIds[j]) : row.styleIds[j];
       });
+      // 새 열: 재고 / 재고정리건 / 총합 — 총합이 있는 행만 세 값을 쓴다 (없는 행은 빈칸). 스타일은 그 행 SKU 칸과 같게 (매칭 행은 노란색)
+      const baseId = row.styleIds[skuCol - 1];
+      [row.stockQty, row.arrangeQty, row.qty].forEach((q, i2) => {
+        const cell = sheet.cell(r, lastCol + 1 + i2);
+        cell.value(row.qty > 0 ? q : undefined);
+        cell._style = undefined;
+        cell._styleId = row.qty > 0 ? yellowStyleId(baseId) : baseId;
+      });
     });
 
     const buffer = await wb.outputAsync();
@@ -568,7 +620,9 @@ router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) =
       total: rows.length,
       matched: hits.length,
       totalQty: hits.reduce((s, x) => s + x.qty, 0),
-      items: hits.map((x) => ({ sku: x.sku, name: nameCol ? String(x.values[nameCol - 1] ?? '') : '', qty: x.qty })),
+      stockQty: hits.reduce((s, x) => s + x.stockQty, 0),
+      arrangeQty: hits.reduce((s, x) => s + x.arrangeQty, 0),
+      items: hits.map((x) => ({ sku: x.sku, name: nameCol ? String(x.values[nameCol - 1] ?? '') : '', qty: x.qty, stockQty: x.stockQty, arrangeQty: x.arrangeQty })),
       filename: `${base}_재고대상.xlsx`,
       rebuilt,
       file: Buffer.from(buffer).toString('base64'),
