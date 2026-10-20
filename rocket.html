@@ -83,6 +83,18 @@
         .c-created{font-size:10px;}
         td.c-created,th.c-created{text-align:center;padding-left:2px;padding-right:2px;}
         td.order-no{font-weight:600;color:#1e293b;}
+        /* 내보내기 이력 — 발주번호 옆 ⏱ (확정·쉽먼트·CJ 파일에 언제 어떤 수량으로 들어갔는지) */
+        .xlog-btn{border:none;background:transparent;cursor:pointer;font-size:11px;padding:0 3px;margin-left:3px;opacity:.35;line-height:1;vertical-align:middle;}
+        tr:hover .xlog-btn{opacity:.8;}
+        .xlog-btn:hover{opacity:1;}
+        .xlog-meta{font-size:11px;color:#8b93a5;margin:-2px 0 8px;word-break:break-all;}
+        .xlog-meta b{color:#475569;font-weight:600;}
+        .kind-pill{display:inline-block;border-radius:6px;padding:2px 9px;font-size:11.5px;font-weight:700;background:#eef0f4;color:#475569;}
+        .kind-pill.k1{background:#e8f0ff;color:#2563eb;}   /* 확정 */
+        .kind-pill.k2{background:#e7f7ec;color:#16a34a;}   /* 쉽먼트 */
+        .kind-pill.k3{background:#fff1e6;color:#ea580c;}   /* CJ */
+        .xlog-v{color:#9333ea;font-weight:600;font-size:11px;margin-left:3px;}
+        .xlog-sub{color:#9aa1b0;font-size:11px;}
         td.pname{white-space:normal;min-width:280px;max-width:460px;color:#334155;cursor:text;user-select:text;}
         /* 상품명 모델코드 배지 — 클릭 시 클립보드 복사 (shortage 동일) */
         .name-badge{cursor:pointer;}
@@ -460,7 +472,7 @@
                     const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
                     return `<tr data-i="${i}" data-ord="${esc(r.발주번호)}" data-bc="${esc(r.상품바코드)}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
-                        <td class="order-no">${esc(r.발주번호)}${orderVmark(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
+                        <td class="order-no">${esc(r.발주번호)}${orderVmark(r.발주번호)}<button class="xlog-btn" title="내보내기 이력 — 확정·쉽먼트·CJ 파일에 언제 어떤 수량으로 들어갔는지">⏱</button></td><td>${esc(r.물류센터)}</td>
                         <td>${esc(r.상품번호)}</td><td class="c-barcode">${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}${rowVtag(r)}</td>
                         <td class="num dt">${esc(r.발주수량)}</td><td class="num dt">${esc(r.확정수량)}</td>
                         <td class="num dt">${scanHtml}</td>
@@ -1231,6 +1243,8 @@
             tb.addEventListener('click', e=>{
                 const badge=e.target.closest('.name-badge');
                 if(badge){ copyBadge(badge); return; }
+                const xb=e.target.closest('.xlog-btn');
+                if(xb){ const tr=xb.closest('tr'); openExportLogs(tr?tr.getAttribute('data-ord'):''); return; }
                 const cell=e.target.closest('td.dt');
                 if(!cell) return;
                 const tr=cell.closest('tr'); if(!tr) return;
@@ -1246,6 +1260,66 @@
             else fbCopy(code,done);
         }
         function fbCopy(text,cb){ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(_){} ta.remove(); cb&&cb(); }
+
+        // ── 발주번호 옆 ⏱ → 내보내기 이력 (오른쪽 슬라이드) ──
+        //   GET /api/export-logs?orderNumber= : 그 발주서가 들어간 확정·쉽먼트·CJ 파일을 최근 것부터, 파일별 바코드 수량 표.
+        //   확정수량 = 그 파일에 적힌 값(확정: 확정수량 열 / 쉽먼트: 납품수량 열), 보라 숫자 = 그중 가상스캔 분량.
+        async function openExportLogs(orderNumber){
+            if(!orderNumber) return;
+            document.getElementById('xlogOrder').textContent=orderNumber;
+            document.getElementById('xlogCount').textContent='';
+            document.getElementById('xlogBody').innerHTML='<div class="hempty">불러오는 중…</div>';
+            document.getElementById('xlogBack').classList.add('show');
+            try{
+                const res=await fetch(`/api/export-logs?orderNumber=${encodeURIComponent(orderNumber)}`);
+                const d=await res.json();
+                if(!res.ok) throw new Error(d.error||'조회 실패');
+                const logs=d.logs||[];
+                document.getElementById('xlogCount').textContent=logs.length?`${logs.length}건`:'';
+                document.getElementById('xlogBody').innerHTML=renderExportLogs(logs);
+            }catch(e){
+                document.getElementById('xlogBody').innerHTML=`<div class="hempty">${esc(e.message)}</div>`;
+            }
+        }
+        function closeExportLogs(){ document.getElementById('xlogBack').classList.remove('show'); }
+        function fmtExportedAt(ts){
+            const dt=new Date(ts); if(isNaN(dt)) return esc(ts||'-');
+            const p=n=>String(n).padStart(2,'0');
+            return `${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())} ${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+        }
+        const KIND_CLS={'확정':'k1','쉽먼트':'k2','CJ':'k3'};
+        function renderExportLogs(logs){
+            if(!logs.length) return '<div class="hempty">이 발주서가 들어간 내보내기 파일이 없습니다.<br><span class="xlog-sub">(이력 기록 시작 이전에 만든 파일은 보이지 않습니다)</span></div>';
+            return logs.map(l=>{
+                const items=l.items||[];
+                const isCj=l.kind==='CJ';
+                const isShip=l.kind==='쉽먼트';
+                const sumC=items.reduce((s,r)=>s+(Number(r.confirmedQty)||0),0);
+                const sumV=items.reduce((s,r)=>s+(Number(r.virtualQty)||0),0);
+                let table;
+                if(isCj){
+                    table=`<table class="htable"><colgroup><col style="width:100%"></colgroup>
+                        <thead><tr><th class="c">박스 (번호-타입)</th></tr></thead><tbody>${
+                        items.map(r=>`<tr><td class="c"><span class="box-emoji">📦 ${esc(r.boxInfo||'-')}</span></td></tr>`).join('')||'<tr><td class="hempty">행 없음</td></tr>'}</tbody></table>`;
+                }else{
+                    const qtyCell=r=>`${Number(r.confirmedQty)||0}${(Number(r.virtualQty)||0)>0?`<span class="xlog-v" title="그중 가상스캔 분량">(가상 ${Number(r.virtualQty)||0})</span>`:''}`;
+                    table = isShip
+                        ? `<table class="htable"><colgroup><col style="width:44%"><col style="width:22%"><col style="width:34%"></colgroup>
+                            <thead><tr><th>바코드</th><th class="c">박스</th><th class="r">납품수량</th></tr></thead><tbody>${
+                            items.map(r=>`<tr><td style="text-align:left">${esc(r.barcode||'-')}</td><td class="c">${esc(r.boxInfo||'-')}</td><td class="r">${qtyCell(r)}</td></tr>`).join('')}</tbody></table>`
+                        : `<table class="htable"><colgroup><col style="width:46%"><col style="width:20%"><col style="width:34%"></colgroup>
+                            <thead><tr><th>바코드</th><th class="r">발주</th><th class="r">확정</th></tr></thead><tbody>${
+                            items.map(r=>{ const mis=(Number(r.orderQty)||0)!==(Number(r.confirmedQty)||0);
+                                return `<tr><td style="text-align:left">${esc(r.barcode||'-')}</td><td class="r" style="font-weight:400">${r.orderQty==null?'-':Number(r.orderQty)}</td><td class="r"${mis?' style="color:#ea580c"':''}>${qtyCell(r)}</td></tr>`; }).join('')}</tbody></table>`;
+                }
+                const cnt = isCj ? `박스 ${items.length}개` : `${isShip?'납품':'확정'} ${sumC}${sumV>0?` <span class="xlog-v">(가상 ${sumV})</span>`:''}`;
+                return `<div class="scard">
+                    <div class="scard-h"><span class="t"><span class="kind-pill ${KIND_CLS[l.kind]||''}">${esc(l.kind)}</span> &nbsp;${fmtExportedAt(l.exportedAt)}</span><span class="cnt">${cnt}</span></div>
+                    <div class="xlog-meta"><b>${esc(l.filename||'-')}</b> · 발주서 ${esc(l.orderCount)}건 · ${esc(l.rowCount)}행 · #${esc(l.id)}</div>
+                    ${table}
+                </div>`;
+            }).join('');
+        }
 
         loadData();
     </script>
@@ -1269,6 +1343,25 @@
             </div>
             <div class="scan-scroll"><div id="scanBody"></div></div>
             <div class="scan-foot"><button class="savebtn" id="scanSaveBtn" onclick="saveScanEdits()" disabled>저장</button></div>
+        </div>
+    </div>
+
+    <!-- 내보내기 이력 오른쪽 슬라이드 (발주번호 옆 ⏱) — 확정·쉽먼트·CJ 파일을 최근 것부터, 파일별 바코드 수량 -->
+    <div class="scan-back" id="xlogBack" onclick="if(event.target.id==='xlogBack')closeExportLogs()">
+        <div class="scan-modal">
+            <div class="scan-top">
+                <div class="scan-head">
+                    <span class="lbl">내보내기 이력 <span class="xlog-sub" id="xlogCount"></span></span>
+                    <button onclick="closeExportLogs()">✕</button>
+                </div>
+                <div class="item-detail" style="padding-top:0">
+                    <div class="idinfo">
+                        <div class="iname" id="xlogOrder"></div>
+                        <div class="icode xlog-sub">언제 어떤 파일에 어떤 수량으로 들어갔는지 · <span class="xlog-v">(가상 n)</span> = 그중 가상스캔 분량</div>
+                    </div>
+                </div>
+            </div>
+            <div class="scan-scroll"><div id="xlogBody"></div></div>
         </div>
     </div>
 </body>

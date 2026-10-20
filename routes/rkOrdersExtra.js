@@ -88,6 +88,72 @@ async function shipScanOrders(orderNumbers) {
   return result;
 }
 
+// ── 내보내기 이력 (rk_export_logs / rk_export_log_items, supabase/rk_export_logs.sql) ──
+//   파일을 만들 때마다 "언제 어떤 파일에 어떤 값으로 들어갔는지" 를 남긴다 — 어느 시점의 파일을 쿠팡에 올렸는지
+//   앱에 기록이 없어 Railway 로그 시각으로 추정해야 했던 문제(발주서 144286429, 2026-10-16).
+//   기록이 실패해도 파일 응답은 그대로 — 호출하는 쪽은 res.send 뒤에 await 없이 부르고, 여기서 console.error 만 남긴다.
+//   kind: '확정' | '쉽먼트' | 'CJ'
+//   items: [{ order_number, barcode, order_qty, confirmed_qty(파일에 적힌 값), virtual_qty(그중 가상 분량), box_info }]
+async function recordExport(kind, filename, items) {
+  try {
+    const rows = (items || []).filter((it) => it && it.order_number);
+    const orderCount = new Set(rows.map((it) => it.order_number)).size;
+    const { data: log, error } = await S.supabase.from('rk_export_logs')
+      .insert({ kind, filename, order_count: orderCount, row_count: rows.length }).select('id').single();
+    if (error) throw error;
+    const toInt = (v) => (v == null || v === '' ? null : (parseInt(v, 10) || 0));
+    const payload = rows.map((it) => ({
+      log_id: log.id,
+      order_number: String(it.order_number),
+      barcode: it.barcode == null ? null : String(it.barcode),
+      order_qty: toInt(it.order_qty),
+      confirmed_qty: toInt(it.confirmed_qty),
+      virtual_qty: toInt(it.virtual_qty),
+      box_info: it.box_info || null,
+    }));
+    for (let i = 0; i < payload.length; i += 500) {
+      const { error: e2 } = await S.supabase.from('rk_export_log_items').insert(payload.slice(i, i + 500));
+      if (e2) throw e2;
+    }
+    return log.id;
+  } catch (e) {
+    console.error(`[rk] 내보내기 이력 기록 실패(무시) kind=${kind}:`, e.message || e);
+    return null;
+  }
+}
+
+// ── 내보내기 이력 조회 — 그 발주서가 들어간 파일 목록 (최근 것부터), 파일별 바코드 수량 ──
+//   GET /api/export-logs?orderNumber=144286429[&barcode=…]
+//   (⚠ /api/orders/export-logs 로 두면 먼저 마운트된 rkOrders.js 의 GET /api/orders/:orderNumber 가 가로챈다)
+//   응답: { logs:[{ id, kind, exportedAt, filename, orderCount, rowCount,
+//                   items:[{ barcode, orderQty, confirmedQty, virtualQty, boxInfo }] }] }
+router.get('/api/export-logs', async (req, res) => {
+  try {
+    const orderNumber = String(req.query.orderNumber || '').trim();
+    if (!orderNumber) return res.status(400).json({ error: 'orderNumber 가 필요합니다.' });
+    const barcode = String(req.query.barcode || '').trim();
+    const rows = await S.pageAll(() => {
+      let q = S.supabase.from('rk_export_log_items')
+        .select('log_id, barcode, order_qty, confirmed_qty, virtual_qty, box_info, rk_export_logs!inner(id, kind, exported_at, filename, order_count, row_count)')
+        .eq('order_number', orderNumber).order('id', { ascending: true });
+      if (barcode) q = q.eq('barcode', barcode);
+      return q;
+    });
+    const byLog = new Map();
+    for (const r of rows) {
+      const h = r.rk_export_logs;
+      if (!h) continue;
+      if (!byLog.has(h.id)) byLog.set(h.id, { id: h.id, kind: h.kind, exportedAt: h.exported_at, filename: h.filename, orderCount: h.order_count, rowCount: h.row_count, items: [] });
+      byLog.get(h.id).items.push({ barcode: r.barcode, orderQty: r.order_qty, confirmedQty: r.confirmed_qty, virtualQty: r.virtual_qty, boxInfo: r.box_info });
+    }
+    const logs = [...byLog.values()].sort((a, b) => String(b.exportedAt).localeCompare(String(a.exportedAt)) || (b.id - a.id));
+    res.json({ logs });
+  } catch (e) {
+    console.error('[rk] export-logs:', e);
+    res.status(500).json({ error: '내보내기 이력 조회에 실패했습니다.' });
+  }
+});
+
 /** 출고 순서 정렬 키 — 박스 순서 > 발주서 순서 > 없음(맨 뒤). 같은 발주서 안에서 순서 없는 박스는 그 발주서 바로 뒤에 붙는다 */
 function seqKeyOf(order, product) {
   if (product && product.박스순서 != null) return product.박스순서;
@@ -213,11 +279,14 @@ router.post('/api/shipment/export', async (req, res) => {
     headers.forEach((header, index) => { mainSheet.cell(1, index + 1).value(header); });
 
     let rowIndex = 2;
+    const logItems = [];   // 내보내기 이력 — 파일의 행마다 (납품수량 = 박스별 스캔수량, 그중 가상 분량)
     orders.forEach((order) => {
       const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-');
       scannedProducts.forEach((product) => {
         const boxNumber = product.박스정보.split('-')[0];
         const invoiceNumber = (invoiceNumbers && invoiceNumbers[order.발주번호]?.[boxNumber]) || '';
+        logItems.push({ order_number: order.발주번호, barcode: product.상품바코드, order_qty: product.발주수량,
+          confirmed_qty: product.스캔수량, virtual_qty: product.가상수량, box_info: product.박스정보 });
         mainSheet.cell(rowIndex, 1).value(order.발주번호);
         mainSheet.cell(rowIndex, 2).value(order.물류센터);
         mainSheet.cell(rowIndex, 3).value('쉽먼트');
@@ -241,6 +310,7 @@ router.post('/api/shipment/export', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename + '.xlsx')}`);
     res.send(buffer);
+    recordExport('쉽먼트', filename + '.xlsx', logItems);   // 응답 뒤 기록 — 실패해도 파일엔 영향 없음
   } catch (e) {
     console.error('[rk] shipment/export:', e);
     res.status(500).json({ error: '데이터 내보내기에 실패했습니다.' });
@@ -312,6 +382,11 @@ router.post('/api/shipment/export-cj', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename + '.xlsx')}`);
     res.send(buffer);
+    // 내보내기 이력 — 박스 단위(수량 없음), 발주번호 = '144286429 - 1' 의 앞부분, box_info = '박스번호-박스타입'
+    recordExport('CJ', filename + '.xlsx', cjData.map((d) => {
+      const boxNumber = String(d.발주번호).split(' - ')[1] || '';
+      return { order_number: String(d.발주번호).split(' - ')[0], box_info: `${boxNumber}-${d.박스타입}` };
+    }));
   } catch (e) {
     console.error('[rk] shipment/export-cj:', e);
     res.status(500).json({ error: 'CJ 엑셀 다운로드에 실패했습니다.' });
@@ -333,13 +408,15 @@ router.post('/api/orders/export', async (req, res) => {
 
     // 확정수량 = 출고스캔(rk_ship_box_items)의 발주번호+바코드별 합 (scanned_qty 미사용, rocket 화면 스캔열과 동일)
     const shipScanMap = new Map();
+    const virtualMap = new Map();   // 발주번호|바코드 → 그중 가상스캔 분량 (내보내기 이력용)
     const orderNos = [...new Set(orders.map((o) => o.발주번호).filter(Boolean))];
     const scanRows = await S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
-      .select('order_number, barcode, qty').in('order_number', nos).order('id', { ascending: true })));
+      .select('order_number, barcode, qty, virtual_qty').in('order_number', nos).order('id', { ascending: true })));
     for (const r of scanRows) {
       if (!r.order_number || !r.barcode) continue;
       const k = `${r.order_number}|${r.barcode}`;
       shipScanMap.set(k, (shipScanMap.get(k) || 0) + (parseInt(r.qty) || 0));
+      virtualMap.set(k, (virtualMap.get(k) || 0) + (parseInt(r.virtual_qty, 10) || 0));
     }
 
     const dropdownOptions = [
@@ -407,6 +484,11 @@ router.post('/api/orders/export', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename)}`);
     res.send(buffer);
+    // 내보내기 이력 — 파일의 행마다 확정수량(파일에 적힌 값)과 그중 가상 분량
+    recordExport('확정', filename, exportData.map((row) => ({
+      order_number: row.발주번호, barcode: row.상품바코드, order_qty: row.발주수량,
+      confirmed_qty: row.확정수량, virtual_qty: virtualMap.get(`${row.발주번호}|${row.상품바코드}`) || 0,
+    })));
   } catch (e) {
     console.error('[rk] orders/export:', e);
     res.status(500).json({ error: '서버 오류가 발생했습니다.' });
