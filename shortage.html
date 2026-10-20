@@ -231,6 +231,12 @@
         .cp-gray   { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
         .cp-blue   { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
         .cp-faint  { background: #f8fafc; color: #cbd5e1; border-color: #f1f5f9; }  /* 재고 0 — 평점 0.0 과 같은 톤 */
+        .cp-red    { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }  /* 가격오류 — 적정판매가보다 1,000원 이상 비쌈 */
+        .cp-orange { background: #fff7ed; color: #ea580c; border-color: #fdba74; }  /* 가격오류 — 적정판매가보다 1,000원 미만 비쌈 */
+        /* [가격오류] 토글 — 빨간 테두리, 켜지면 빨간 채움 */
+        .btn-price-err { background: #fff; color: #dc2626; border: 1.5px solid #dc2626; font-weight: 700; }
+        .btn-price-err:hover { background: #fef2f2; }
+        .btn-price-err.on { background: #dc2626; color: #fff; }
         /* 평점은 배지 없이 글씨만 — >=3 초록 / 미만 주황 / 리뷰없음 회색 */
         .cp-rate { font-size: 11.5px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
         .cp-rate i { font-style: normal; font-weight: 600; opacity: .7; }
@@ -643,6 +649,7 @@
                         <option value="shortage" selected>재고부족</option>
                         <option value="pending">입고재고</option>
                     </select>
+                    <button type="button" class="btn btn-price-err" id="priceErrBtn" onclick="togglePriceErr()" title="쿠팡 판매가가 적정판매가(이유몽 매입가÷0.6 · 아이엠몽 매입가÷0.65~÷0.6)보다 높은 상품만 보기 — 1,000원 미만 주황 · 이상 빨강">가격오류</button>
                 </div>
                 <!-- 우측: 초기화 | xlsx업로드 | 입력목록+저장 | 사입복사 -->
                 <div style="display: flex; gap: 8px; align-items: center;">
@@ -1038,13 +1045,14 @@
                 try { localStorage.setItem('shortageDateRange', JSON.stringify({ startDate, endDate })); } catch (e) { /* 무시 */ }
 
                 const queryStr = params.toString();
-                const response = await fetch('/api/shortage' + (queryStr ? '?' + queryStr : ''));
+                // 광고결과(판매가)도 같이 다시 읽는다 — 가격오류 판정이 최신 판매가·매입가로 되도록 (2026-10-20)
+                const [response] = await Promise.all([fetch('/api/shortage' + (queryStr ? '?' + queryStr : '')), loadCoupangInfo()]);
                 if (!response.ok) throw new Error('API 호출 실패');
 
                 const json = await response.json();
                 if (myToken !== loadToken) return;   // 더 최신 로드가 시작됨 → 이 결과 폐기
                 allData = json;
-                filteredData = [...allData];
+                filteredData = viewRows(allData);
                 sortData();
                 renderTable();
                 saveCache();
@@ -1079,7 +1087,7 @@
                 updateModeUI();
                 if (cache.mode === 'pending') currentSort = { key: 'remainQty', order: 'desc' };
                 allData = cache.data;
-                filteredData = [...allData];
+                filteredData = viewRows(allData);
                 sortData();
                 renderTable();
                 return true;
@@ -1092,12 +1100,12 @@
             try {
                 showLoading();
                 // 서버가 pending 바코드로 목록을 구성하고 주문/재고/예상/주간까지 보강해서 내려줌
-                const res = await fetch('/api/shortage?mode=pending');
+                const [res] = await Promise.all([fetch('/api/shortage?mode=pending'), loadCoupangInfo()]);
                 if (!res.ok) throw new Error('API 호출 실패');
                 const json = await res.json();
                 if (myToken !== loadToken) return;   // 더 최신 로드가 시작됨 → 이 결과 폐기
                 allData = json;
-                filteredData = [...allData];
+                filteredData = viewRows(allData);
                 sortData();
                 renderTable();
                 saveCache();
@@ -1110,7 +1118,7 @@
         /* ========== 검색 필터 ========== */
         function applyFilter() {
             const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
-            filteredData = allData.filter(item => {
+            filteredData = viewRows(allData).filter(item => {
                 if (!keyword) return true;
                 return (item.상품바코드 || '').toLowerCase().includes(keyword)
                     || (item.상품이름 || '').toLowerCase().includes(keyword)
@@ -1231,7 +1239,55 @@
             } catch (_) { /* 광고정보 없으면 배지만 안 나옴 */ }
         }
 
-        function cpBadges(skuId) {
+        /* ========== 가격오류 (2026-10-20) ==========
+           적정판매가 = 매입가(재고관리 rk_inventories.purchase_price, /api/shortage 의 purchasePrice) ÷ 비율
+             · 이유몽   = 매입가 ÷ 0.6
+             · 아이엠몽 = 매입가 ÷ 0.65 ~ 매입가 ÷ 0.6
+           쿠팡 판매가(광고결과 price)가 적정판매가 **상한보다 높을 때만** 가격오류 (낮은 건 표시하지 않음).
+             차액 = 판매가 − 적정판매가 상한.  ±10원은 반올림 오차로 무시.
+             PRICE_RED 미만 = 주황 · PRICE_RED 이상 = 빨강
+           브랜드는 상품이름으로 판단 (둘 다 아니면 검사하지 않음). 판매가는 광고결과로 매칭된 상품(배지가 보이는 상품)만 본다. */
+        const PRICE_TOL = 10;
+        const PRICE_RED = 1000;   // 이 금액 이상 비싸면 빨강, 미만이면 주황
+        function priceCheck(item) {
+            const c = cpInfo[String(item && item.skuId || '')];
+            if (!c || !String(c.pid || '').trim() || !String(c.iid || '').trim()) return null;
+            const price = Number(c.price), pp = Number(item.purchasePrice);
+            if (!(price > 0) || !(pp > 0)) return null;
+            const name = String(item.상품이름 || '');
+            let lo, hi;
+            if (name.includes('이유몽')) { lo = hi = 0.6; }
+            else if (name.includes('아이엠몽')) { lo = 0.6; hi = 0.65; }
+            else return null;
+            const fairMin = pp / hi, fairMax = pp / lo;   // 적정판매가 범위 (이유몽은 한 값)
+            const diff = price - fairMax;                  // 적정판매가 상한보다 얼마나 비싼가
+            const err = diff > PRICE_TOL;
+            const level = !err ? null : (diff >= PRICE_RED ? 'red' : 'orange');
+            // hover 문구 — 매입가 / 적정판매가 (+ 비싼 경우 차액)
+            const won = (v) => Math.round(v).toLocaleString() + '원';
+            const fair = lo === hi ? won(fairMax) : `${won(fairMin)} ~ ${won(fairMax)}`;
+            return { err, level, diff, tip: `매입가 : ${won(pp)}
+적정판매가 : ${fair}${err ? `
+판매가가 ${won(diff)} 더 높음` : ''}` };
+        }
+        let priceErrOnly = false;
+        // 화면에 올릴 행 — [가격오류] 가 켜져 있으면 가격오류 행만
+        function viewRows(list) {
+            return priceErrOnly ? list.filter(it => { const pc = priceCheck(it); return pc && pc.err; }) : [...list];
+        }
+        function updatePriceErrBtn() {
+            const btn = document.getElementById('priceErrBtn');
+            if (!btn) return;
+            const n = allData.reduce((s, it) => { const pc = priceCheck(it); return s + (pc && pc.err ? 1 : 0); }, 0);
+            btn.textContent = n ? `가격오류 ${n.toLocaleString()}` : '가격오류';
+            btn.classList.toggle('on', priceErrOnly);
+        }
+        function togglePriceErr() {
+            priceErrOnly = !priceErrOnly;
+            applyFilter();   // 검색어 유지한 채 다시 거른다
+        }
+
+        function cpBadges(skuId, item) {
             const c = cpInfo[String(skuId || '')];
             if (!c) return '';
             // 상품 링크를 만들 수 없으면(=제대로 매칭되지 않은 건) 배지를 아예 표시하지 않는다
@@ -1254,9 +1310,13 @@
                 out.push('<span class="cp-badge ' + (stock > 0 ? 'cp-blue' : 'cp-faint') + '">재고 '
                     + stock.toLocaleString() + '</span>');
             }
-            // 가격 — 항상 회색
+            // 가격 — 기본 회색, 매입가 비율이 기준 밖이면 빨강 (priceCheck)
             const price = n(c.price);
-            if (price != null) out.push('<span class="cp-badge cp-gray">' + price.toLocaleString() + '원</span>');
+            if (price != null) {
+                const pc = item ? priceCheck(item) : null;
+                out.push('<span class="cp-badge ' + (pc && pc.err ? (pc.level === 'red' ? 'cp-red' : 'cp-orange') : 'cp-gray') + '"'
+                    + (pc ? ' title="' + pc.tip + '"' : '') + '>' + price.toLocaleString() + '원</span>');
+            }
             if (!out.length) return '';
             const url = 'https://www.coupang.com/vp/products/' + encodeURIComponent(pid)
                 + '?vendorItemId=' + encodeURIComponent(iid);
@@ -1353,6 +1413,7 @@
             if (filteredData.length === 0) {
                 emptyArea.style.display = '';
                 tableArea.style.display = 'none';
+                updatePriceErrBtn();
                 return;
             }
 
@@ -1370,7 +1431,7 @@
                     <td class="img-cell">${item.img ? `<span class="img-emoji" data-img="${String(item.img).replace(/"/g, '&quot;')}">🖼️</span>` : ''}</td>
                     <td>${item.skuId || ''}</td>
                     <td>${item.상품바코드}</td>
-                    <td class="name-cell" title="${item.상품이름}"><div class="nm-row"><span class="nm-text">${modelBadge(item.상품이름)}</span>${cpBadges(item.skuId)}</div></td>
+                    <td class="name-cell" title="${item.상품이름}"><div class="nm-row"><span class="nm-text">${modelBadge(item.상품이름)}</span>${cpBadges(item.skuId, item)}</div></td>
                     <td class="col-narrow">${Number(item.총발주수량).toLocaleString()}</td>
                     <td class="col-narrow">${Number(item.총스캔수량).toLocaleString()}</td>
                     <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
@@ -1387,6 +1448,7 @@
                 </tr>`;
             }).join('');
 
+            updatePriceErrBtn();
             updateSortIcons();
             bindInputCells();
             bindDsCells();
@@ -2071,7 +2133,7 @@
                     if (r.row && r.row.상품바코드 && qty > 0) savedInputs.set(r.row.상품바코드, qty);
                 });
                 document.getElementById('searchInput').value = '';
-                filteredData = [...allData];
+                filteredData = viewRows(allData);
                 sortData();
                 renderTable();
                 saveCache();   // 새로고침해도 이 상태 유지

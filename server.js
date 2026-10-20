@@ -2898,7 +2898,7 @@ app.get('/api/shortage', async (req, res) => {
                 'rk_ship_box_items 조회 오류:'), POOL),
             // 상품정보 조회 실패는 기존처럼 요청 전체 실패로 처리 (SKU 가 없으면 예상·주간 열이 전부 비게 됨)
             rkShared.chunkedPool(bcAll, 200, (batch) => rkShared.pageAll(
-                () => supabase.from('rk_inventories').select('barcode, sku_id, img').in('barcode', batch).order('id', { ascending: true })), POOL),
+                () => supabase.from('rk_inventories').select('barcode, sku_id, img, purchase_price').in('barcode', batch).order('id', { ascending: true })), POOL),
         ]);
         const shipScanMap = new Map();
         scanRows.forEach(r => {
@@ -2913,9 +2913,12 @@ app.get('/api/shortage', async (req, res) => {
         const barcodeToSku = new Map();
         // barcode → 이미지 URL 매핑 (rk_inventories.img)
         const barcodeToImg = new Map();
+        // barcode → 매입가 (rk_inventories.purchase_price) — 화면이 쿠팡 판매가(광고결과)와 비교해 [가격오류]를 표시한다 (2026-10-20)
+        const barcodeToPurchase = new Map();
         invRows.forEach(r => {
             if (r.barcode && r.sku_id) barcodeToSku.set(r.barcode, r.sku_id);
             if (r.barcode && r.img) barcodeToImg.set(r.barcode, r.img);
+            if (r.barcode && r.purchase_price != null) barcodeToPurchase.set(r.barcode, Number(r.purchase_price));
         });
 
         // 3단계: 부족수량 계산 + SKU 수집
@@ -3062,6 +3065,7 @@ app.get('/api/shortage', async (req, res) => {
         shortageList.forEach(item => {
             item.remainQty = remainMap.get(item.상품바코드) || 0;
             item.img = barcodeToImg.get(item.상품바코드) || '';
+            item.purchasePrice = barcodeToPurchase.has(item.상품바코드) ? barcodeToPurchase.get(item.상품바코드) : null;
         });
 
         // 5.8단계: 재고부족 판정 — 발주수량이 확보 가능한 물량보다 많은 것만 남긴다.
