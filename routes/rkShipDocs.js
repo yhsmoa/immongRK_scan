@@ -19,7 +19,8 @@
  *   POST /api/shipment/doc-sort/plan   fields label[] · manifest[] · cj[]        → 매칭 결과(JSON)
  *   POST /api/shipment/doc-sort/build  같은 fields + kind=label|manifest         → 정리된 PDF
  *
- * 도장: 각 장 오른쪽 아래 "순서  📋 발주번호-박스번호  📦 N번  실제|가상|일부가상" — 기본 크기의 3.5배(장 너비에 맞춰 줄임, 좁으면 두 줄).
+ * 도장: 각 장 오른쪽 아래 "순서  📋 발주번호-박스번호  📦 N번 · 크기  실제|가상|일부가상" — 기본 크기의 3.5배(장 너비에 맞춰 줄임, 좁으면 두 줄).
+ *   크기 = rk_ship_boxes.box_size(극소·소·중·대·대2) — 현장에서 어떤 상자인지 보이게 (2026-10-20 추가). 수량·종수는 넣지 않는다(사용자 결정).
  *   실제/가상 = 그 박스가 출고스캔으로 실제 찍은 박스인지 [가상스캔]으로 잡은 박스인지 (rk_ship_box_items.virtual_qty 합 기준).
  *   글꼴은 fonts/ (나눔고딕 · Noto Emoji, 둘 다 OFL).
  *   PDF 안에서 컬러 이모지는 안 되므로 흑백 윤곽(인쇄는 어차피 흑백).
@@ -37,10 +38,10 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 40 } });
 const FIELDS = [{ name: 'label', maxCount: 20 }, { name: 'manifest', maxCount: 20 }, { name: 'cj', maxCount: 10 }];
 
-// 도장 글꼴 — 나눔고딕·Noto Emoji 를 도장에 쓰는 글자(숫자·괄호·"순서번못찾음박스발주가상실제일부혼합확정"·📋📦)만 남겨 pyftsubset 으로 미리 잘라 둔 파일.
+// 도장 글꼴 — 나눔고딕·Noto Emoji 를 도장에 쓰는 글자(숫자·괄호·"순서번못찾음박스발주가상실제일부혼합확정극소중대"·"·"·📋📦)만 남겨 pyftsubset 으로 미리 잘라 둔 파일.
 //   pdf-lib 의 런타임 subset(embedFont subset:true)은 이 글꼴들에서 글리프가 깨져 뷰어에 "X"·숫자 일부만 보였다 (2026-10-15).
 //   그래서 미리 자른 작은 글꼴을 subset 없이 통째로 넣는다. 도장 문구에 새 글자를 추가하면 fonts/ 의 subset 을 다시 만들어야 한다:
-//   pip install fonttools  →  pyftsubset NanumGothic-Regular.ttf --output-file=StampKR.ttf --text="순서번못찾음박스발주가상실제일부혼합확정" --unicodes="U+0020-007E" --no-hinting
+//   pip install fonttools  →  python -m fontTools.subset NanumGothic-Regular.ttf --output-file=StampKR.ttf --text="순서번못찾음박스발주가상실제일부혼합확정극소중대" --unicodes="U+0020-007E,U+00B7" --no-hinting   (2026-10-20: 박스 크기 글자·가운뎃점 추가)
 //   pyftsubset NotoEmoji-Regular.ttf --output-file=StampEmoji.ttf --unicodes="U+1F4CB,U+1F4E6" --no-hinting
 const FONT_DIR = path.join(__dirname, '..', 'fonts');
 const FONT_KR = path.join(FONT_DIR, 'StampKR.ttf');
@@ -300,13 +301,14 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
 //   virt: 박스가 실제 스캔인지 가상스캔인지 — '실제' · '가상' · '일부가상' (DB 박스를 못 찾은 장은 빈 문자열) (2026-10-15 추가)
 const VIRT_LABEL = { real: '실제', virtual: '가상', mixed: '일부가상' };
 function stampTextOf(p) {
-  if (!p.box) return { pos: '(못찾음)', mid: `${p.order || '?'}-?`, box: '?', virt: '' };
-  return { pos: p.orderSeq == null ? '(순서X)' : String(p.pos), mid: `${p.box.orderNo}-${p.box.boxNo}`, box: `${p.box.boxNo}번`, virt: VIRT_LABEL[p.box.virt] || '' };
+//   size: 박스 크기(rk_ship_boxes.box_size, 극소·소·중·대·대2) — 없으면 빈 문자열 (2026-10-20 추가)
+  if (!p.box) return { pos: '(못찾음)', mid: `${p.order || '?'}-?`, box: '?', size: '', virt: '' };
+  return { pos: p.orderSeq == null ? '(순서X)' : String(p.pos), mid: `${p.box.orderNo}-${p.box.boxNo}`, box: `${p.box.boxNo}번`, size: String(p.box.size || '').trim(), virt: VIRT_LABEL[p.box.virt] || '' };
 }
 
 // 도장 그리기 — 오른쪽 아래. 기본 크기(순번 15 · 본문 10)의 STAMP_SCALE 배로 찍되, 장 너비에 안 들어가면 들어가는 만큼만 키운다.
-//   "12  📋 144199497-4  📦 4번  가상" — 순번은 크게, "(순서X)"/"(못찾음)" 은 본문 크기. 밑에 뭐가 있어도 읽히게 흰 바탕.
-//   한 줄로는 STAMP_TWO_LINE_BELOW 배도 안 되는 좁은 장(라벨 크기)은 두 줄("순번 📋 발주-박스" / "📦 N번 가상")로 쌓아 더 키운다.
+//   "12  📋 144199497-4  📦 4번 · 대2  가상" — 순번은 크게, "(순서X)"/"(못찾음)" 은 본문 크기. 밑에 뭐가 있어도 읽히게 흰 바탕.
+//   한 줄로는 STAMP_TWO_LINE_BELOW 배도 안 되는 좁은 장(라벨 크기)은 두 줄("순번 📋 발주-박스" / "📦 N번 · 크기 가상")로 쌓아 더 키운다.
 //   2026-10-15: 글자를 3.5배로 키우고(현장에서 멀리서도 보이게) 실제/가상 표시를 붙였다.
 const STAMP_SCALE = 3.5;
 const STAMP_TWO_LINE_BELOW = 2.5;
@@ -314,7 +316,7 @@ function drawStamp(page, st, sub, kr, em) {
   const { width } = page.getSize();
   const posSize = /^\d+$/.test(st.pos) ? 15 : 10;
   const line1 = [[st.pos + '  ', kr, posSize], ['📋', em, 10], [' ' + st.mid, kr, 10]];
-  const line2 = [['📦', em, 10], [' ' + st.box + (sub || ''), kr, 10]];
+  const line2 = [['📦', em, 10], [' ' + st.box + (sub || '') + (st.size ? ' · ' + st.size : ''), kr, 10]];
   if (st.virt) line2.push(['  ' + st.virt, kr, 10]);
   const widthOf = (segs, sc) => segs.reduce((n, [t, f, s]) => n + f.widthOfTextAtSize(t, s * sc), 0);
   const fit = (w1) => Math.max(1, Math.min(STAMP_SCALE, (width - 28) / w1));   // 좌우 여백 14pt 씩은 남긴다
