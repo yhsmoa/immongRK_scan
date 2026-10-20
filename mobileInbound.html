@@ -198,6 +198,22 @@
         .mix-card .codes div{display:flex;justify-content:space-between;align-items:center;background:var(--fill);border-radius:10px;padding:8px 12px;font-size:14px;font-weight:700;color:var(--ink2);}
         .mix-card .codes .c b{color:var(--coral);}
         .orow .no .bx.mix{background:#FEF3C7;color:#B45309;}
+
+        /* 박스 크기 변경 (2026-10-20) — 덱 제목의 📦N·크기, 카드의 담는 곳 칩을 누르면 아래에서 크기 시트. 극소에 안 들어가 중으로 바꿔 담은 것을 폰에서 기록 */
+        .top .ttl .bxbtn{border:0;background:#EEEDFE;color:#3C3489;border-radius:999px;padding:3px 10px;margin-left:6px;font:inherit;font-size:14px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;gap:3px;vertical-align:middle;white-space:nowrap;}
+        .top .ttl .bxbtn:active{background:#DCD9FB;}
+        .chip.pick{cursor:pointer;}
+        .chip.pick:active{background:var(--line);}
+        .sz-back{position:fixed;inset:0;background:rgba(23,22,26,.55);display:none;align-items:flex-end;justify-content:center;z-index:56;}
+        .sz-back.show{display:flex;}
+        .sz-sheet{background:#fff;border-radius:22px 22px 0 0;padding:18px 18px calc(16px + env(safe-area-inset-bottom));width:100%;max-width:480px;box-shadow:0 -12px 40px rgba(0,0,0,.25);}
+        .sz-sheet h2{margin:0 0 4px;font-size:19px;font-weight:900;color:var(--ink);letter-spacing:-.02em;}
+        .sz-sheet p{margin:0 0 14px;font-size:14px;line-height:1.5;color:var(--muted);}
+        .sz-sheet p b{color:#3C3489;}
+        .sz-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;}
+        .sz-grid button{height:60px;border:1.5px solid var(--line);background:#fff;border-radius:14px;font:inherit;font-size:17px;font-weight:900;color:var(--ink2);cursor:pointer;}
+        .sz-grid button.cur{border-color:#3C3489;background:#EEEDFE;color:#3C3489;}
+        .sz-grid button:disabled{opacity:.45;}
     </style>
 </head>
 <body>
@@ -298,6 +314,16 @@
 '입고일자를 반드시 확인해주세요'</p>
             <div class="codes" id="mixCodes"></div>
             <button class="btn primary" onclick="mixOk()">확인</button>
+        </div>
+    </div>
+
+    <!-- 박스 크기 변경 시트 — 덱 제목 📦N 또는 카드 담는 곳 칩을 누르면 (2026-10-20). 바뀌는 건 rk_ship_boxes.box_size 뿐 -->
+    <div class="sz-back" id="szBack" onclick="if(event.target.id==='szBack')closeSizeSheet()">
+        <div class="sz-sheet" role="dialog" aria-labelledby="szTitle">
+            <h2 id="szTitle">박스 크기 변경</h2>
+            <p id="szSub"></p>
+            <div class="sz-grid" id="szGrid"></div>
+            <button class="btn ghost" onclick="closeSizeSheet()">닫기</button>
         </div>
     </div>
 
@@ -446,7 +472,9 @@
         }
         function parseOrderNo(raw){ const p=parseOrderCode(raw); return p?p.no:null; }
         let curBox=null;   // 박스 라벨로 들어온 경우의 박스번호 (발주번호만이면 null = 전체 · 0 = 박스 미정)
-        const boxTag=()=>curBox==null?'':curBox===0?' · 박스 미정':` · 📦${curBox}`;
+        // 박스 보기면 📦N · 크기 를 누를 수 있는 버튼으로 — 누르면 크기 변경 시트 (2026-10-20). 크기는 카드의 담는 곳 칩(rows[].boxes)에서 읽는다
+        const curBoxSize=()=>{ for(const r of rows) for(const b of (r.boxes||[])) if(b.boxNo===curBox) return b.boxSize||''; return ''; };
+        const boxTag=()=>curBox==null?'':curBox===0?' · 박스 미정':`<button class="bxbtn" onclick="openSizeSheet(curBox)" title="박스 크기 변경">📦${curBox}${curBoxSize()?' · '+esc(curBoxSize()):''} ▾</button>`;
         $('orderInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); startOrder($('orderInput').value); } });
         function startNextOrder(){
             const o=orders.find(x=>!isDoneOrder(x));
@@ -457,7 +485,7 @@
             const p=parseOrderCode(raw);
             if(!p){ playWarn(); toast('발주번호 형식이 아닙니다: '+String(raw||'').trim()); return; }
             $('orderInput').value='';
-            curOrder=p.no; curBox=p.boxNo;
+            curOrder=p.no; curBox=p.boxNo; rows=[];   // rows 를 비워야 제목의 박스 크기(boxTag)가 이전 발주서 것을 읽지 않는다
             $('deckTitle').innerHTML=`<b>${esc(p.no)}${boxTag()}</b><small></small>`;
             $('deck').innerHTML='<div class="cardw"><div class="card"><div class="empty">불러오는 중…</div></div></div>';
             show('s3');
@@ -508,7 +536,7 @@
             const src=`<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
             const list=(r.boxes||[]);
             const dst=list.length
-                ? list.map(b=>`<span class="chip" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개)">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
+                ? list.map(b=>`<span class="chip pick" onclick="openSizeSheet(${b.boxNo})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
                 : `<span class="chip none">${ICON('i-box',18,2)}박스 미정 · 직접 스캔</span>`;
             return `<div class="boxrow">${src}<span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
         }
@@ -604,6 +632,41 @@
             if(ok) goTo(nextLeft(i));   // 다음 미처리 카드 (없으면 완료 카드)
         }
         async function clearMark(i){ await save(i,null); }
+
+        // ── 박스 크기 변경 시트 — 극소/소/중/대/대2 중 하나를 고르면 바로 저장 (POST /api/inbound/mobile-box-size) ──
+        //   상품 배정·찾음/없음은 그대로, rk_ship_boxes.box_size 만 바뀐다. 이미 뽑은 박스 라벨은 옛 크기라 재출력을 안내한다
+        const BOX_SIZES=['극소','소','중','대','대2'];
+        let szBox=null, szBusy=false;
+        function sizeOfBox(boxNo){ for(const r of rows) for(const b of (r.boxes||[])) if(b.boxNo===boxNo) return b.boxSize||''; const o=orders.find(o=>o.orderNumber===curOrder&&o.boxNo===boxNo); return o?(o.boxSize||''):''; }
+        function openSizeSheet(boxNo){
+            if(!curOrder||!(boxNo>0)) return;
+            szBox=boxNo; renderSizeSheet();
+            $('szBack').classList.add('show');
+        }
+        function renderSizeSheet(){
+            const cur=sizeOfBox(szBox);
+            $('szSub').innerHTML=`<b>${esc(curOrder)}-${szBox}</b> · 지금 <b>${esc(cur)||'크기 없음'}</b> — 바꿀 크기를 누르세요`;
+            $('szGrid').innerHTML=BOX_SIZES.map(sz=>`<button class="${sz===cur?'cur':''}" ${szBusy?'disabled':''} onclick="changeBoxSize('${sz}')">${sz}</button>`).join('');
+        }
+        function closeSizeSheet(){ $('szBack').classList.remove('show'); szBox=null; }
+        async function changeBoxSize(size){
+            if(szBusy||szBox==null) return;
+            const boxNo=szBox, prev=sizeOfBox(boxNo);
+            if(size===prev){ closeSizeSheet(); return; }
+            szBusy=true; renderSizeSheet();
+            try{
+                const res=await fetch('/api/inbound/mobile-box-size',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:curOrder,boxNo,boxSize:size,worker:worker()})});
+                const d=await res.json(); if(!res.ok) throw new Error(d.error||'변경 실패');
+                // 화면의 같은 박스를 전부 새 크기로: 카드 칩(rows), 목록(orders), 덱 제목
+                for(const r of rows) for(const b of (r.boxes||[])) if(b.boxNo===boxNo) b.boxSize=d.boxSize;
+                for(const o of orders) if(o.orderNumber===curOrder&&o.boxNo===boxNo) o.boxSize=d.boxSize;
+                const keep=idx; renderDeck(); goTo(keep,true);
+                const t=$('deckTitle').querySelector('b'); if(t) t.innerHTML=`${esc(curOrder)}${boxTag()}`;
+                playOk(); closeSizeSheet();
+                toast(`📦${boxNo} ${d.prevSize||'크기 없음'} → ${d.boxSize} · 박스 라벨을 다시 출력하세요`);
+            }catch(e){ playWarn(); toast('박스 크기 변경 실패: '+e.message); }
+            finally{ szBusy=false; if(szBox!=null) renderSizeSheet(); }
+        }
 
         // ════════ 카메라 바코드 ════════
         //   안드로이드 크롬: 내장 BarcodeDetector (빠름). 아이폰(사파리·크롬 모두 WebKit)은 이 API 가 없어 ZXing 라이브러리를 그때 내려받아 쓴다 (2026-10-15).

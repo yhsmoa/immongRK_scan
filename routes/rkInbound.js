@@ -433,6 +433,36 @@ router.post('/api/inbound/mobile-check', async (req, res) => {
   }
 });
 
+// 박스 크기 변경 (2026-10-20) — 현장에서 가상스캔이 정한 상자(예: 극소)에 다 안 들어가 다른 크기(예: 중)로 바꿔 담았을 때 폰에서 바로 기록.
+//   바꾸는 건 rk_ship_boxes.box_size 한 열뿐 — 박스 안 상품 배정·찾음/없음·가상확정 수량은 그대로다 (PC 출고스캔의 크기 변경과 같은 범위).
+//   이미 뽑은 박스 라벨(bx_size)은 옛 크기가 되므로 화면이 재출력을 안내한다. 순서정리 도장·라벨출력은 DB 를 다시 읽어 새 크기로 나온다.
+//   body: { orderNumber, boxNo, boxSize, worker }  → { ok, orderNumber, boxNo, prevSize, boxSize }
+const BOX_SIZES = ['극소', '소', '중', '대', '대2'];   // 출고스캔(/shipScan) 크기 버튼과 같은 목록
+router.post('/api/inbound/mobile-box-size', async (req, res) => {
+  try {
+    const orderNumber = String(req.body.orderNumber || '').trim();
+    const boxNo = parseInt(req.body.boxNo, 10);
+    const boxSize = String(req.body.boxSize || '').trim();
+    const worker = String(req.body.worker || '').trim().slice(0, 40);
+    if (!orderNumber || !Number.isFinite(boxNo) || boxNo <= 0) return res.status(400).json({ error: '발주번호와 박스번호가 필요합니다.' });
+    if (!BOX_SIZES.includes(boxSize)) return res.status(400).json({ error: `박스 크기는 ${BOX_SIZES.join('/')} 중 하나여야 합니다.` });
+    // 처리완료(DONE) 발주서도 막지 않는다 — 모바일 입고의 찾음/없음 저장(mobile-check)과 같은 기준. 목록(mobile-orders)이 DONE 발주서의 박스도 주므로 현장에서 막히면 안 된다
+    const { data: boxes, error: e1 } = await sb.from('rk_ship_boxes').select('id, box_size').eq('order_number', orderNumber).eq('box_no', boxNo).order('id', { ascending: true }).limit(1);
+    if (e1) throw e1;
+    if (!boxes || !boxes.length) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${boxNo} 박스가 없습니다.` });
+    const prevSize = String(boxes[0].box_size || '').trim();
+    if (prevSize !== boxSize) {
+      const { error: e2 } = await sb.from('rk_ship_boxes').update({ box_size: boxSize }).eq('id', boxes[0].id);
+      if (e2) throw e2;
+      console.log(`[rk] inbound/mobile-box-size: ${orderNumber}-${boxNo} ${prevSize || '(없음)'} → ${boxSize} (${worker || '작업자 미입력'})`);
+    }
+    res.json({ ok: true, orderNumber, boxNo, prevSize, boxSize, changed: prevSize !== boxSize });
+  } catch (e) {
+    console.error('[rk] inbound/mobile-box-size:', e);
+    res.status(500).json({ error: '박스 크기 변경 실패: ' + e.message });
+  }
+});
+
 // 출고배정 취소(삭제) — rk_cn_shipping 삭제 + rk_shipping_list 미러 정리.
 // 남은상품은 아이템수량-배정합계로 매번 계산되므로 삭제하면 자동 복원됨.
 router.post('/api/inbound/shipping/delete', async (req, res) => {
