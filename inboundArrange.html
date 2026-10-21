@@ -206,6 +206,9 @@
         .label-opts label{display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap;}
         .label-opts input{width:16px;height:16px;accent-color:#6366f1;}
         .label-opts small{color:#94a3b8;font-size:12px;}
+        .label-opts .qrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+        .label-opts .qrow .lbl{font-weight:600;color:#475569;}
+        .label-opts .need{color:#dc2626;font-weight:700;font-size:12.5px;}
 
         #toast{position:fixed;left:50%;bottom:34px;transform:translateX(-50%) translateY(20px);background:#1e293b;color:#fff;padding:13px 20px;border-radius:10px;font-size:13.5px;line-height:1.5;box-shadow:0 8px 24px rgba(15,23,42,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:10010;max-width:90vw;white-space:pre-line;text-align:center;}
         #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -230,6 +233,8 @@
                     <button class="btn" id="vbBtn" onclick="openVirtualBatch()">가상스캔</button>
                     <!-- 임시: 체크한 행의 출고번호(=발주번호)로 쉽먼트와 같은 박스 라벨을 찍는다 (표 순서 = 인쇄 순서) -->
                     <button class="btn" id="boxLabelPrintBtn" onclick="openBoxLabelPrint()">박스라벨출력</button>
+                    <!-- 상품 라벨 (2026-10-21): 체크한 행의 바코드로 상품관리 [라벨출력]과 같은 라벨(바코드 스티커 + 케어라벨, 혼용률·권장연령 포함) — 장수는 모달에서 고른다 -->
+                    <button class="btn" id="itemLabelPrintBtn" onclick="openItemLabelPrint()">상품라벨</button>
                 </div>
             </div>
 
@@ -299,11 +304,21 @@
     <div class="label-back" id="labelBack" onclick="if(event.target.id==='labelBack')closeLabelPrint()">
         <div class="label-modal">
             <div class="label-head">
-                <h3>박스 라벨출력<span class="sub" id="labelPrintSub"></span></h3>
+                <h3><span id="labelPrintTitle">박스 라벨출력</span><span class="sub" id="labelPrintSub"></span></h3>
                 <button onclick="closeLabelPrint()">✕</button>
             </div>
             <!-- 기본 = 이미 뽑힌 박스(실제 스캔·가상확정)는 빼고 아직 미확정인 가상 박스만. 풀면 전부 (2026-10-15) -->
-            <div class="label-opts"><label><input type="checkbox" id="labelSkipPrinted" checked onchange="reloadBoxLabels()"> 이미 뽑힌 박스 라벨 제외 <small>실제 스캔됐거나 가상확정(모바일로 다 찾음)된 박스는 빼고 뽑습니다 · 풀면 전부</small></label></div>
+            <div class="label-opts" id="labelOpts"><label><input type="checkbox" id="labelSkipPrinted" checked onchange="reloadBoxLabels()"> 이미 뽑힌 박스 라벨 제외 <small>실제 스캔됐거나 가상확정(모바일로 다 찾음)된 박스는 빼고 뽑습니다 · 풀면 전부</small></label></div>
+            <!-- 상품 라벨 장수 — 기본값 없이 매번 고른다 (가상스캔 모달과 같은 원칙). 고르면 그때 라벨 서비스로 보낸다 -->
+            <div class="label-opts" id="labelQtyOpts" style="display:none">
+                <div class="qrow"><span class="lbl">장수</span>
+                    <div class="vb-seg">
+                        <button type="button" id="labelQtyEach" onclick="setItemLabelQty('qty')">출고개수만큼</button>
+                        <button type="button" id="labelQtyOne" onclick="setItemLabelQty('one')">바코드당 1장</button>
+                    </div>
+                    <span id="labelQtyHint" class="need">선택하세요</span>
+                </div>
+            </div>
             <!-- allow: 임베드(다른 origin)가 이 PC 의 QZ Tray(wss://localhost)에 붙으려면 크롬 로컬 네트워크 접근(LNA) 권한을
                  부모 페이지가 위임해야 한다. src 를 넣기 전부터 이 속성이 있어야 한다 (iframe 이동 시 적용). -->
             <iframe id="labelPrintFrame" title="박스 라벨 출력"
@@ -773,6 +788,9 @@
                     printerMap:loadLabelPrinterMap(),   // 이 PC 에서 기억해 둔 템플릿별 프린터
                     items:j.items
                 };
+                document.getElementById('labelPrintTitle').textContent='박스 라벨출력';
+                document.getElementById('labelOpts').style.display='';
+                document.getElementById('labelQtyOpts').style.display='none';
                 document.getElementById('labelPrintSub').textContent=`박스 ${j.items.length}개 · 발주서 ${j.orderCount}건${skippedN?` · 제외 ${skippedN}`:''}`;
                 document.getElementById('labelPrintStatus').textContent=(!j.items.length&&skippedN)?`선택한 발주서의 박스 라벨은 모두 이미 뽑힌 것으로 봅니다 (${skippedN}박스). 전부 뽑으려면 위 체크를 푸세요.`:'';
                 document.getElementById('labelBack').classList.add('show');
@@ -783,7 +801,67 @@
             }catch(e){ toast('박스 라벨 출력 준비 실패: '+e.message); }
             finally{ btn.disabled=false; }
         }
-        function closeLabelPrint(){ document.getElementById('labelBack').classList.remove('show'); labelPending=null; }
+        // ============================================================
+        // 상품라벨 (2026-10-21) — 체크한 출고리스트 행의 바코드로 상품관리 [라벨출력]과 같은 라벨을 찍는다 (/api/label/items → labelType 'both').
+        //   라벨 내용(상품명·SKU·혼용률·권장연령)은 상품관리 DB 기준이라 이유몽·아이엠몽이 섞여 있어도 행마다 맞는 값이 나가고,
+        //   권장연령이 있는 상품은 키즈 템플릿·없으면 성인 템플릿으로 라벨 서비스가 나눈다.
+        //   같은 바코드가 여러 행(여러 발주서)에 있으면 한 항목으로 합친다. 장수는 모달에서 고른다: 출고개수만큼(행의 출고개수 합) / 바코드당 1장
+        // ============================================================
+        let itemLabelItems=[], itemLabelQty=new Map(), itemLabelMode=null;
+        function checkedShippingRows(){
+            const ids=new Set([...document.querySelectorAll('.rowchk:checked')].map(c=>String(c.dataset.allocid)));
+            return (shippingRows||[]).filter(r=>r.allocId!=null&&ids.has(String(r.allocId)));
+        }
+        async function openItemLabelPrint(){
+            const rows=checkedShippingRows();
+            if(!rows.length){ toast('상품 라벨을 출력할 행(출고리스트)을 선택해주세요.'); return; }
+            const qtyBy=new Map();   // 바코드 → 출고개수 합 (행 순서 유지)
+            for(const r of rows){ const bc=String(r.바코드||'').replace(/\s+/g,''); if(!bc) continue; qtyBy.set(bc,(qtyBy.get(bc)||0)+(Number(r.출고개수)||0)); }
+            const barcodes=[...qtyBy.keys()];
+            if(!barcodes.length){ toast('선택한 행에 바코드가 없습니다.'); return; }
+            const btn=document.getElementById('itemLabelPrintBtn'); btn.disabled=true;
+            try{
+                const cfg=await getLabelCfg();
+                const res=await fetch('/api/label/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({barcodes})});
+                const j=await res.json();
+                if(!res.ok) throw new Error(j.error||'상품 데이터 조회 실패');
+                if(!j.items.length){ toast('선택한 바코드가 상품관리에 없습니다.'); return; }
+                if((j.missing||[]).length) toast(`${j.missing.length}개 바코드는 상품관리에 없어 라벨을 만들지 않았습니다.\n${j.missing.join(', ')}`);
+                itemLabelItems=j.items; itemLabelQty=qtyBy; itemLabelMode=null; labelPending=null;
+                const kids=j.items.filter(i=>String(i.data.recommanded_age||'').trim()).length;
+                document.getElementById('labelPrintTitle').textContent='상품 라벨출력';
+                document.getElementById('labelPrintSub').textContent=`상품 ${j.items.length}종 (성인 ${j.items.length-kids} · 키즈 ${kids}) · 행 ${rows.length}건`;
+                document.getElementById('labelOpts').style.display='none';
+                document.getElementById('labelQtyOpts').style.display='';
+                renderItemLabelQty();
+                document.getElementById('labelPrintStatus').textContent='장수를 고르면 라벨 서비스로 보냅니다.';
+                document.getElementById('labelBack').classList.add('show');
+                const frame=document.getElementById('labelPrintFrame');
+                if(frame.dataset.ready!=='1') frame.src=cfg.url+'/print-embed'+(labelDebug?'?debug=1':'');   // 미리 띄워 두고, 장수를 고르면 보낸다
+            }catch(e){ toast('상품 라벨 출력 준비 실패: '+e.message); }
+            finally{ btn.disabled=false; }
+        }
+        function renderItemLabelQty(){
+            document.getElementById('labelQtyEach').classList.toggle('on', itemLabelMode==='qty');
+            document.getElementById('labelQtyOne').classList.toggle('on', itemLabelMode==='one');
+            const total=itemLabelItems.reduce((s,i)=>s+(itemLabelMode==='qty'?Math.max(1,itemLabelQty.get(i.data.barcode)||1):1),0);
+            const hint=document.getElementById('labelQtyHint');
+            hint.className=itemLabelMode?'':'need';
+            hint.textContent=itemLabelMode?`총 ${total}장 (스티커·케어라벨 각각)`:'선택하세요';
+        }
+        function setItemLabelQty(mode){
+            if(!itemLabelItems.length) return;
+            itemLabelMode=mode; renderItemLabelQty();
+            const cfg=labelCfg;
+            labelPending={
+                type:'label-print:print', requestId:String(Date.now()), source:cfg.source, userId:cfg.userId,
+                labelType:'both', autoPrint:false, printerMap:loadLabelPrinterMap(),
+                items:itemLabelItems.map(i=>({ data:i.data, qty: mode==='qty'?Math.max(1,itemLabelQty.get(i.data.barcode)||1):1 })),
+            };
+            document.getElementById('labelPrintStatus').textContent='';
+            sendLabelPending();   // iframe 이 아직이면 'label-print:ready' 때 보낸다
+        }
+        function closeLabelPrint(){ document.getElementById('labelBack').classList.remove('show'); labelPending=null; itemLabelItems=[]; itemLabelMode=null; }
         // 임베드 → 이 창: 준비 완료 / 프린터 지정 변경 / 인쇄 결과
         window.addEventListener('message',function(e){
             if(!labelOrigin||e.origin!==labelOrigin) return;
@@ -791,7 +869,9 @@
             if(d.type==='label-print:ready'){ document.getElementById('labelPrintFrame').dataset.ready='1'; sendLabelPending(); }
             else if(d.type==='label-print:printer-map'){ if(d.map&&typeof d.map==='object'&&!Array.isArray(d.map)) saveLabelPrinterMap(d.map); }
             else if(d.type==='label-print:result'){
-                document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨`:'✕ 박스 라벨 실패';   // 상세 사유는 임베드가 alert 로 띄운다
+                const st=document.getElementById('labelPrintStatus');
+                const type=d.labelType==='box'?'박스 라벨':d.labelType==='care'?'케어 라벨':'라벨 스티커';
+                st.textContent=d.ok?(st.textContent&&!/고르면/.test(st.textContent)?st.textContent+' · ':'')+`✓ ${type} ${d.printed}장 전송됨`:`✕ ${type} 실패`;   // 상세 사유는 임베드가 alert 로 띄운다
             }
         });
         document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeLabelPrint(); closeVirtualBatch(); } });
