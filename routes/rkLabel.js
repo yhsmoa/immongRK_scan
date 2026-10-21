@@ -2,12 +2,12 @@
  * 라벨 출력 연동 — 별도 서비스(label-service) 에 상품 데이터를 넘겨 QZ Tray 로 인쇄한다.
  *
  * 이 앱은 라벨을 직접 그리지 않는다. 상품관리 페이지의 [라벨출력] 이 선택한 바코드를 보내면
- * 여기서 coupang_items(쿠팡 상품 마스터) 를 조회해 라벨 서비스가 기대하는 필드 묶음으로 만들어 돌려주고,
+ * 여기서 상품관리(rk_inventories) 를 조회해 라벨 서비스가 기대하는 필드 묶음으로 만들어 돌려주고,
  * 브라우저가 그것을 iframe(label-service /print-embed) 에 postMessage 로 전달한다.
  *
  *   GET  /labelSettings          → 라벨 서비스의 양식 편집기로 이동 (헤더 메뉴 · 홈 카드)
  *   GET  /api/label/config       → { url, source, userId }  라벨 서비스 주소 + 이 앱의 사업자 계정
- *   POST /api/label/items        → { barcodes } → { items:[{ data, qty }], missing:[barcode] }      상품 라벨 (상품관리 · 발주서 관리)
+ *   POST /api/label/items        → { barcodes } → { items:[{ data, qty }], missing:[상품관리에 없는 barcode] }  상품 라벨 (상품관리 · 발주서 관리)
  *   POST /api/label/order-boxes  → { orderNumbers } → { items:[{ data, qty }], noBox, notFound }   박스 라벨 (쉽먼트)
  *
  * env: LABEL_SERVICE_URL (필수), LABEL_ACCOUNT_USERNAME (si_users.username, 기본 immong)
@@ -58,56 +58,49 @@ router.get('/api/label/config', async (req, res) => {
   }
 });
 
-// ── 바코드 → 라벨 데이터 (coupang_items 우선, 재고·위치는 rk_inventories) ──
+// ── 바코드 → 라벨 데이터 — 상품관리(rk_inventories) 한 곳에서 (2026-10-21) ──
+//   예전에는 쿠팡 상품정보(coupang_items)를 먼저 보고 없으면 재고 정보로 채웠는데, 라벨 템플릿이 쓰는 값
+//   (바코드·상품명·SKU·혼용률·권장연령)은 전부 상품관리 DB 에 있다. coupang_items 에만 있는 값(크기·무게·박스 수량·담당자)은
+//   어느 템플릿도 쓰지 않아서 조회를 없앴다 → "쿠팡 상품정보에 없어…" 경고도 없어졌다.
+//   혼용률(composition)·권장연령(recommanded_age)을 같이 보낸다 — 템플릿의 {composition} 줄이 비어 나가던 문제.
+//   권장연령이 있으면 라벨 서비스가 키즈 템플릿을 고른다(비어 있으면 성인, 예전과 같다).
+//   같은 바코드가 상품관리에 여러 행이면 혼용률이 있는 행 › id 작은 행.
+//   응답 missing = 상품관리에 없는 바코드 (그 바코드는 라벨을 만들지 않는다)
 router.post('/api/label/items', async (req, res) => {
   try {
     const barcodes = [...new Set((Array.isArray(req.body.barcodes) ? req.body.barcodes : [])
       .map((b) => String(b || '').replace(/\s+/g, '')).filter(Boolean))];
     if (!barcodes.length) return res.status(400).json({ error: '바코드가 없습니다.' });
 
-    const items = new Map();   // barcode → coupang_items row
-    const inv = new Map();     // barcode → rk_inventories row
-    for (let i = 0; i < barcodes.length; i += BATCH) {
-      const chunk = barcodes.slice(i, i + BATCH);
-      const [ci, ri] = await Promise.all([
-        sb.from('coupang_items').select('*').in('barcode', chunk),
-        sb.from('rk_inventories').select('barcode, sku_id, name, order_status, quantity, location').in('barcode', chunk),
-      ]);
-      if (ci.error) throw ci.error;
-      if (ri.error) throw ri.error;
-      for (const r of ci.data || []) if (!items.has(r.barcode)) items.set(r.barcode, r);
-      for (const r of ri.data || []) if (!inv.has(r.barcode)) inv.set(r.barcode, r);
+    const rows = await S.chunked(barcodes, BATCH, (chunk) => S.pageAll(() => sb.from('rk_inventories')
+      .select('id, barcode, sku_id, name, order_status, quantity, location, composition, recommanded_age')
+      .in('barcode', chunk).order('id', { ascending: true })));
+    const inv = new Map();   // barcode → rk_inventories row
+    const filled = (v) => String(v == null ? '' : v).trim() !== '';
+    for (const r of rows) {
+      const bc = String(r.barcode || '').replace(/\s+/g, '');
+      const cur = inv.get(bc);
+      if (!cur || (!filled(cur.composition) && filled(r.composition))) inv.set(bc, r);
     }
 
     const missing = [];
     const out = [];
     for (const barcode of barcodes) {
-      const c = items.get(barcode);
       const r = inv.get(barcode);
-      if (!c) missing.push(barcode);
-      if (!c && !r) continue;   // 어디에도 없는 바코드는 보내지 않는다
-      const name = (c && c.product_name) || (r && r.name) || '';
+      if (!r) { missing.push(barcode); continue; }
+      const name = S.str(r.name);
       out.push({
         qty: 1,
         data: {
           barcode,
           item_name: name,
           product_name: name,
-          sku_id: (c && c.sku_id) || (r && r.sku_id) || '',
-          request_number: c ? c.request_number : '',
-          order_status: (c && c.order_status) || (r && r.order_status) || '',
-          brand_manager: c ? c.brand_manager : '',
-          instock_manager: c ? c.instock_manager : '',
-          size_width: c ? c.size_width : null,
-          size_length: c ? c.size_length : null,
-          size_height: c ? c.size_height : null,
-          weight: c ? c.weight : null,
-          moq: c ? c.MOQ : null,
-          inner_qty: c ? c.inner_qty : null,
-          box_qty: c ? c.box_qty : null,
-          box_barcode: c ? c.box_barcode : '',
-          stock: r && r.quantity !== '-' ? r.quantity : '',
-          location: r && r.location !== '-' ? r.location : '',
+          sku_id: S.str(r.sku_id),
+          order_status: S.str(r.order_status),
+          composition: S.str(r.composition).trim(),
+          recommanded_age: S.str(r.recommanded_age).trim(),
+          stock: r.quantity != null && r.quantity !== '-' ? r.quantity : '',
+          location: r.location && r.location !== '-' ? r.location : '',
         },
       });
     }

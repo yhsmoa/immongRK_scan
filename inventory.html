@@ -842,7 +842,7 @@
 
         // ============================================================
         // 라벨출력 — 별도 서비스(label-service) 임베드
-        //   1) 선택한 행의 바코드 → /api/label/items 로 coupang_items 데이터 조회
+        //   1) 선택한 행의 바코드 → /api/label/items 로 상품관리(rk_inventories) 데이터 조회 (혼용률·권장연령 포함)
         //   2) iframe(/print-embed) 이 준비되면 postMessage 로 항목 전달
         //   3) 임베드 안에서 템플릿 확인 후 QZ Tray 로 인쇄. 결과는 message 로 돌아온다
         //
@@ -906,7 +906,7 @@
                 if (!res.ok) throw new Error(j.error || '상품 데이터 조회 실패');
                 if (!j.items.length) { alert('선택한 바코드가 상품 데이터에 없습니다.'); return; }
                 if (j.missing.length) {
-                    alert(`${j.missing.length}개 바코드는 쿠팡 상품정보(coupang_items)에 없어 재고 정보(상품명·SKU)만으로 출력됩니다.`);
+                    alert(`${j.missing.length}개 바코드는 상품관리에 없어 라벨을 만들지 않았습니다.\n${j.missing.join(', ')}`);
                 }
 
                 labelPending = {

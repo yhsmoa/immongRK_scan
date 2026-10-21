@@ -745,7 +745,7 @@
 
         // ============================================================
         // 라벨출력 — 상품 라벨 (label-service 임베드). 상품관리(/inventory)의 라벨출력과 같은 흐름
-        //   1) 선택 행의 상품바코드 → POST /api/label/items → coupang_items 기반 items[{ data, qty:1 }]
+        //   1) 선택 행의 상품바코드 → POST /api/label/items → 상품관리(rk_inventories) 기반 items[{ data, qty:1 }]
         //   2) iframe(label-service /print-embed) 이 준비되면 postMessage(labelType:'both' — 바코드 스티커·케어 라벨)
         //   3) 임베드에서 템플릿·프린터 확인 후 QZ Tray 로 인쇄. 결과는 message 로 돌아온다
         //   박스 라벨(발주번호-박스번호·박스 크기)은 아래 [박스라벨출력](openBoxLabelPrint) — 쉽먼트 페이지(/shipment)의 [박스라벨출력] 과 같은 흐름.
@@ -782,7 +782,7 @@
                 const j=await res.json();
                 if(!res.ok) throw new Error(j.error||'상품 데이터 조회 실패');
                 if(!j.items.length){ toast('선택한 바코드가 상품 데이터에 없습니다.'); return; }
-                if(j.missing.length) toast(`${j.missing.length}개 바코드는 쿠팡 상품정보(coupang_items)에 없어 재고 정보(상품명·SKU)만으로 출력됩니다.`);
+                if(j.missing.length) toast(`${j.missing.length}개 바코드는 상품관리에 없어 라벨을 만들지 않았습니다.\n${j.missing.join(', ')}`);
 
                 showLabelModal(cfg, '라벨출력', `${j.items.length}개 상품`, 'both', j.items);
             }catch(e){ toast('라벨 출력 준비 실패: '+e.message); }
