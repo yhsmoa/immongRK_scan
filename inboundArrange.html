@@ -443,10 +443,13 @@
 
         // 모바일 입고 표시 — 이모지만, 처리자·시각은 title(마우스 올리면)
         function mobileCell(r){
-            if(!r.모바일) return '';
-            const who=r.모바일처리자?esc(r.모바일처리자):'', at=r.모바일시각?new Date(r.모바일시각).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+            // 모바일 메모(2026-10-21) — 📝 에 마우스를 올리면 메모·작성자·시각
+            const fmt=ts=>ts?new Date(ts).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+            const memo=r.모바일메모?`<span title="${esc('메모: '+r.모바일메모+(r.모바일메모처리자?' · '+r.모바일메모처리자:'')+(r.모바일메모시각?' · '+fmt(r.모바일메모시각):''))}" style="cursor:help">📝</span>`:'';
+            if(!r.모바일) return memo;
+            const who=r.모바일처리자?esc(r.모바일처리자):'', at=fmt(r.모바일시각);
             const tip=(r.모바일==='found'?'모바일 찾음':'모바일 없음')+(who?' · '+who:'')+(at?' · '+at:'');
-            return `<span title="${tip}" style="cursor:default">${r.모바일==='found'?'✅':'❌'}</span>`;
+            return `<span title="${tip}" style="cursor:default">${r.모바일==='found'?'✅':'❌'}</span>${memo}`;
         }
 
         function switchTab(t){
