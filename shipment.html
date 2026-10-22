@@ -81,6 +81,13 @@
         .chip.dim{opacity:.4;}
         .chip .doc{margin-left:1px;}   /* 📃 = [쉽먼트 등록] 된 박스 */
 
+        /* 가이드 모달 */
+        .guide ol{margin:0;padding-left:22px;line-height:1.7;font-size:13.5px;color:var(--ink);}
+        .guide li{margin-bottom:8px;}
+        .guide li .s{display:block;color:#64748b;font-size:12.5px;}
+        .guide code{background:#f1f5f9;padding:1px 5px;border-radius:5px;font-size:12.5px;}
+        .guide .tip{margin-top:12px;padding:10px 12px;background:#f5f7ff;border:1px solid #e0e7ff;border-radius:10px;font-size:12.5px;color:#334155;line-height:1.6;}
+
         /* 순서지정 모달 — 박스 라벨 바코드를 출고할 순서대로 스캔 */
         .seq-modal{background:#fff;border-radius:14px;width:640px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(15,23,42,.3);}
         .seq-input{margin:14px 20px 0;height:48px;padding:0 16px;border:2px solid #c7d2fe;border-radius:10px;font-size:18px;font-weight:600;color:var(--ink);outline:none;font-family:inherit;letter-spacing:.02em;}
@@ -236,6 +243,7 @@
                 </div>
                 <div class="actions">
                     <button class="btn" onclick="openSummary()">요약</button>
+                    <button class="btn" onclick="openGuide()">가이드</button>
                     <button class="btn" id="expandBtn" onclick="toggleExpandAll()">발주서 펼쳐보기</button>
                     <span class="sep"></span>
                     <!-- 작업 순서대로 (2026-10-22): 박스라벨출력 → CJ 엑셀(접수) → 순서지정(박스 스캔) → 쉽먼트 저장(송장번호) → 쉽먼트 등록(쿠팡 PDF 보관) → [순서대로] 탭에서 출력 -->
@@ -302,6 +310,34 @@
         <div class="side-body">
             <p class="legend"><span class="w"></span>같은 날짜·물류센터 박스가 9개 이상</p>
             <div id="sumBody"></div>
+        </div>
+    </div>
+
+    <!-- 가이드 모달 — 진행 순서 (버튼 순서와 같다). 자세한 설계는 docs/plan-ship-docs.md -->
+    <div class="modal-back" id="guideBack" onclick="if(event.target.id==='guideBack')closeGuide()">
+        <div class="modal" style="width:620px">
+            <div class="modal-head">
+                <h3>진행 순서</h3>
+                <button onclick="closeGuide()">✕</button>
+            </div>
+            <div class="modal-body guide">
+                <ol>
+                    <li><b>박스라벨출력</b> — 발주서를 체크하고 박스마다 <code>발주번호-박스번호</code> 라벨을 뽑아 붙입니다.</li>
+                    <li><b>CJ 엑셀</b> — 체크한 발주서의 박스로 CJ 접수 파일을 내려받아 CJ 에 올립니다. <span class="s">발주번호 열에 크기·센터·박스·수량이 같이 적힙니다.</span></li>
+                    <li><b>순서지정</b> — 오늘 나갈 박스 라벨을 <b>실을 순서대로</b> 스캔하고 저장합니다. <span class="s">박스 단위로만 찍습니다. 저장하면 이전 순서는 지워집니다.</span></li>
+                    <li><b>쉽먼트 저장</b> — CJ 결과 엑셀을 올려 운송장번호를 채우고 쿠팡 쉽먼트 파일을 내려받아 쿠팡에 올립니다.</li>
+                    <li><b>쉽먼트 등록</b> — 쿠팡이 준 <b>부착문서·동봉문서 PDF</b> 를 올려 등록합니다. <span class="s">박스별로 보관되어 배지에 📃 가 붙습니다. 한 번 등록하면 다시 올릴 필요가 없습니다.</span></li>
+                    <li><b>순서대로 탭</b> — 순서 지정된 박스만 보입니다. 오른쪽 위 <b>[부착문서 출력] [동봉문서 출력]</b> 으로 그 순서대로 합쳐진 PDF 를 뽑습니다. <span class="s">체크한 박스가 있으면 그것만, 없으면 전부. 다 나가면 [초기화].</span></li>
+                </ol>
+                <div class="tip">
+                    <b>박스가 나뉘어 나갈 때</b> — 발주서 A 의 5박스 중 오늘 3박스만 나가면, 순서지정에서 그 3박스만 찍고 출력합니다.
+                    서류는 5박스 모두 등록해 두면 됩니다. 이틀 뒤 남은 2박스를 찍으면 그때 보관된 서류가 출력됩니다.
+                </div>
+                <div class="tip">
+                    <b>배지</b> — 회색 = 실제 스캔 · 🔀 일부 가상 · 👾 전부 가상 · ✅ 가상확정(다 찾음) · 📃 서류 등록됨
+                </div>
+            </div>
+            <div class="modal-foot"><button class="btn" onclick="closeGuide()">닫기</button></div>
         </div>
     </div>
 
@@ -683,6 +719,9 @@
             document.getElementById('sideBack').classList.remove('show');
             document.getElementById('sidePanel').classList.remove('show');
         }
+        // ── 가이드 (진행 순서) ──
+        function openGuide(){ document.getElementById('guideBack').classList.add('show'); }
+        function closeGuide(){ document.getElementById('guideBack').classList.remove('show'); }
 
         // ── 송장번호 모달 ──
         let invOrders=[];   // 모달에 띄운 발주서 (최신 데이터)
@@ -1087,7 +1126,7 @@
 
         let toastTimer;
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
-        document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSummary(); closeInvoiceModal(); closeLabelPrint(); closeSeqModal(); closeDocSort(); } });
+        document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSummary(); closeGuide(); closeInvoiceModal(); closeLabelPrint(); closeSeqModal(); closeDocSort(); } });
 
         loadOrders();
     </script>
