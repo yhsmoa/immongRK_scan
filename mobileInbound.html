@@ -232,6 +232,17 @@
         .sz-grid button{height:60px;border:1.5px solid var(--line);background:#fff;border-radius:14px;font:inherit;font-size:17px;font-weight:900;color:var(--ink2);cursor:pointer;}
         .sz-grid button.cur{border-color:#3C3489;background:#EEEDFE;color:#3C3489;}
         .sz-grid button:disabled{opacity:.45;}
+        /* 박스 추가하기 (2026-10-22) — 크기 시트 아래. [+] 를 누르면 크기 버튼이 열리고, 고르면 이 카드부터 마지막 카드까지 새 박스로 */
+        .sz-add{border-top:1px solid var(--line);padding-top:12px;margin-bottom:12px;}
+        .sz-add .hd{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+        .sz-add .hd b{display:block;font-size:15px;font-weight:900;color:var(--ink);}
+        .sz-add .hd small{display:block;font-size:12.5px;line-height:1.4;color:var(--muted);margin-top:2px;}
+        .sz-add .hd small em{font-style:normal;color:#3C3489;font-weight:800;}
+        .sz-add .plus{flex:none;width:48px;height:48px;border-radius:14px;border:1.5px solid #C7C3F5;background:#F7F6FF;color:#3C3489;font:inherit;font-size:28px;font-weight:900;line-height:1;cursor:pointer;}
+        .sz-add .plus.open{background:#3C3489;border-color:#3C3489;color:#fff;}
+        .sz-add .plus:disabled{opacity:.4;}
+        .sz-add .sz-grid{margin:10px 0 0;}
+        .sz-add .note{font-size:12.5px;color:#B23A2E;margin-top:8px;}
         /* 메모 (2026-10-21) — 카드의 메모 줄 + 아래에서 올라오는 입력 시트 (박스 크기 시트와 같은 모양) */
         .memo-line{flex:none;display:flex;align-items:flex-start;gap:8px;background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;padding:8px 12px;font-size:14.5px;font-weight:700;color:#92400E;line-height:1.4;cursor:pointer;word-break:break-word;}
         .memo-line small{display:block;font-size:11.5px;font-weight:600;color:#B45309;opacity:.8;margin-top:2px;}
@@ -388,6 +399,7 @@
             <h2 id="szTitle">박스 크기 변경</h2>
             <p id="szSub"></p>
             <div class="sz-grid" id="szGrid"></div>
+            <div class="sz-add" id="szAdd"></div>
             <button class="btn ghost" onclick="closeSizeSheet()">닫기</button>
         </div>
     </div>
@@ -679,7 +691,7 @@
         // 꺼내는 곳(박스명, 검정) → 담는 곳(출고스캔 박스 번호 · 크기, 오른쪽). 서버가 가상으로 담긴 박스만 준다(이미 실제로 담은 분량은 제외).
         //   칩에는 박스 번호·크기만. 담을 개수는 아래 큰 숫자(출고개수)로 보여준다 — 박스가 여럿일 때(발주번호만 입력한 전체 보기)만 칩에 ×n (2026-10-15: 칩의 ×4 와 출고개수 12 가 같이 보여 헷갈림)
         //   박스가 없으면 "직접 스캔"
-        function boxRow(r){
+        function boxRow(r,i){
             // [전체] 모드: 입고 = "입고코드-박스명" (1018-BR5) · 재고 = 위치 (흰 칩). [입고] 모드는 예전 그대로 박스명만
             const src=mode==='all'&&r.source==='재고'
                 ? `<span class="chip src stock" title="재고 위치">${ICON('i-search',20,2.2)}${esc(r.위치)||'-'}</span>`
@@ -688,7 +700,7 @@
                 : `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
             const list=(r.boxes||[]);
             const dst=list.length
-                ? list.map(b=>`<span class="chip pick" onclick="openSizeSheet(${b.boxNo})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
+                ? list.map(b=>`<span class="chip pick" onclick="openSizeSheet(${b.boxNo},${i})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
                 : `<span class="chip none">${ICON('i-box',18,2)}박스 미정 · 직접 스캔</span>`;
             return `<div class="boxrow">${src}<span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
         }
@@ -700,7 +712,7 @@
             return `<div class="cardw" data-i="${i}"><div class="card ${st}">
                 ${band}
                 <div class="meta">${mode==='all'?`<span class="batch">${r.source==='재고'?'재고':esc(r.출고코드)} · ${r.회차}회차</span>`:`<span class="batch">${r.회차}회차</span><span>${esc(r.출고코드)}</span><span class="sep">·</span>`}<span>${esc(r.센터)||'-'}</span><span class="sep">·</span><span>${esc(ymd(r.출고예정일))||'-'}</span></div>
-                ${boxRow(r)}
+                ${boxRow(r,i)}
                 <div class="thumb">${r.img?`<img src="${esc(r.img)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML=NOIMG">`:noimg}</div>
                 <div class="pname"><div class="nm">${modelBadge(r.상품명)}</div><span class="bc">${esc(r.바코드)||'-'}</span></div>
                 ${r.모바일메모?`<div class="memo-line" onclick="openMemo(${i})"><span>📝</span><span>${esc(r.모바일메모)}<small>${esc(r.모바일메모처리자||'')}${r.모바일메모시각?' · '+fmtAt(r.모바일메모시각):''}</small></span></div>`:''}
@@ -836,18 +848,59 @@
         //   상품 배정·찾음/없음은 그대로, rk_ship_boxes.box_size 만 바뀐다. 이미 뽑은 박스 라벨은 옛 크기라 재출력을 안내한다
         const BOX_SIZES=['극소','소','중','대','대2'];
         let szBox=null, szBusy=false;
+        let szIdx=null, szAddOpen=false;   // 시트를 연 카드 번호(칩에서 열었을 때만) · 박스 추가하기 크기 버튼이 펼쳐졌는지
         function sizeOfBox(boxNo){ for(const r of rows) for(const b of (r.boxes||[])) if(b.boxNo===boxNo) return b.boxSize||''; const o=orders.find(o=>o.orderNumber===curOrder&&o.boxNo===boxNo); return o?(o.boxSize||''):''; }
-        function openSizeSheet(boxNo){
+        function openSizeSheet(boxNo,cardIdx){
             if(!curOrder||!(boxNo>0)) return;
-            szBox=boxNo; renderSizeSheet();
+            szBox=boxNo; szIdx=Number.isInteger(cardIdx)&&rows[cardIdx]?cardIdx:null; szAddOpen=false; renderSizeSheet();
             $('szBack').classList.add('show');
         }
         function renderSizeSheet(){
             const cur=sizeOfBox(szBox);
             $('szSub').innerHTML=`<b>${esc(curOrder)}-${szBox}</b> · 지금 <b>${esc(cur)||'크기 없음'}</b> — 바꿀 크기를 누르세요`;
             $('szGrid').innerHTML=BOX_SIZES.map(sz=>`<button class="${sz===cur?'cur':''}" ${szBusy?'disabled':''} onclick="changeBoxSize('${sz}')">${sz}</button>`).join('');
+            renderSplitSection();
         }
-        function closeSizeSheet(){ $('szBack').classList.remove('show'); szBox=null; }
+        function closeSizeSheet(){ $('szBack').classList.remove('show'); szBox=null; szIdx=null; szAddOpen=false; }
+        // ── 박스 추가하기 (2026-10-22) — 대2로 바꿔도 다 안 들어갈 때. 시트를 연 카드부터 (지금 화면 순서로) 마지막 카드까지 이 박스 몫을 새 박스로 옮긴다 ──
+        //   카드 순서는 서버가 정한 고정 순서(회차›출고예정일›센터›출고번호›박스명, [전체]는 박스번호 먼저)라 "이 카드부터 끝까지" 가 매번 같다.
+        //   첫 카드부터라면 박스를 통째로 옮기는 것 = 크기 변경이므로 막는다. 제목·완료 카드에서 연 시트(카드 없음)에는 안 보인다.
+        //   옮기는 건 가상 박스 배정(rk_ship_box_items)뿐 — 찾음/없음·출고개수는 그대로. 새 박스 번호는 그 발주서의 최대+1 (서버가 정함)
+        function splitPlan(){
+            if(szIdx==null||!(szBox>0)) return null;
+            const inBox=r=>(r.boxes||[]).find(b=>b.boxNo===szBox);
+            const before=rows.slice(0,szIdx).filter(inBox).length;
+            const cards=[]; const moves=new Map();
+            rows.forEach((r,j)=>{ if(j<szIdx) return; const b=inBox(r); if(!b||!(b.virtualQty>0)) return; cards.push(j);
+                const code=r.출고코드!=null&&String(r.출고코드).trim()!==''?String(r.출고코드).trim():null;
+                const k=`${r.바코드}|${code||''}`; const m=moves.get(k)||{barcode:r.바코드,code,qty:0}; m.qty+=Number(b.virtualQty)||0; moves.set(k,m); });
+            return { before, cards, moves:[...moves.values()], qty:[...moves.values()].reduce((s,m)=>s+m.qty,0) };
+        }
+        function renderSplitSection(){
+            const el=$('szAdd'); const p=splitPlan();
+            if(!p||!p.cards.length){ el.innerHTML=''; el.style.display='none'; return; }
+            el.style.display='';
+            const ok=p.before>0;
+            const sub=ok?`이 상품부터 마지막까지 <em>${p.cards.length}장 · ${p.qty}개</em> 를 새 박스로 옮깁니다`:`이 박스의 첫 상품입니다 — 통째로 옮기려면 위의 크기 변경을 쓰세요`;
+            el.innerHTML=`<div class="hd"><div><b>박스 추가하기</b><small>${sub}</small></div><button class="plus ${szAddOpen?'open':''}" ${ok&&!szBusy?'':'disabled'} onclick="toggleSplit()" aria-label="박스 추가">${szAddOpen?'−':'+'}</button></div>
+                ${szAddOpen?`<div class="sz-grid">${BOX_SIZES.map(sz=>`<button ${szBusy?'disabled':''} onclick="splitBox('${sz}')">${sz}</button>`).join('')}</div><div class="note">새 박스 크기를 고르면 바로 옮깁니다. 📦${szBox} 라벨은 다시 출력하세요.</div>`:''}`;
+        }
+        function toggleSplit(){ if(szBusy) return; szAddOpen=!szAddOpen; renderSplitSection(); }
+        async function splitBox(size){
+            if(szBusy||szBox==null) return;
+            const p=splitPlan(); if(!p||!p.cards.length||!p.before){ renderSplitSection(); return; }
+            if(!confirm(`📦${szBox} 의 ${p.cards.length}장(${p.qty}개)을 새 박스(${size})로 옮길까요?`)) return;
+            const fromBoxNo=szBox; szBusy=true; renderSizeSheet();
+            try{
+                const res=await fetch('/api/inbound/mobile-box-split',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumber:curOrder,fromBoxNo,boxSize:size,worker:worker(),moves:p.moves})});
+                const d=await res.json(); if(!res.ok) throw new Error(d.error||'박스 추가 실패');
+                ordersCache.clear();   // 목록에 새 박스 줄이 생기므로 돌아갈 때 다시 읽는다
+                playOk(); closeSizeSheet();
+                await reloadDeck(false);   // 카드 배정을 서버에서 다시 — 박스 보기면 옮긴 카드는 이 화면에서 빠진다
+                toast(`📦${fromBoxNo} → 새 📦${d.newBoxNo} (${d.boxSize}) ${d.movedQty}개 옮김 · 박스 라벨을 다시 출력하세요`);
+            }catch(e){ playWarn(); toast('박스 추가 실패: '+e.message); }
+            finally{ szBusy=false; if(szBox!=null) renderSizeSheet(); }
+        }
         async function changeBoxSize(size){
             if(szBusy||szBox==null) return;
             const boxNo=szBox, prev=sizeOfBox(boxNo);

@@ -675,6 +675,101 @@ router.post('/api/inbound/mobile-box-size', async (req, res) => {
   }
 });
 
+// 박스 추가하기 (2026-10-22) — 대2로 바꿔도 다 안 들어갈 때, 지금 보는 카드부터 (화면 순서로) 마지막 카드까지의 몫을 **새 가상 박스**로 옮긴다.
+//   카드 순서는 서버 정렬(mobileCmp · [전체]는 박스번호 › 동선)이라 접속할 때마다 같으므로 "이 카드부터 끝까지" 가 뜻이 있다.
+//   화면이 카드마다 (바코드, 출고코드, 그 박스 몫 virtualQty) 를 모아 보내면, 원래 박스(rk_ship_box_items)에서 그만큼 빼고 새 박스(box_no = 최대+1)에 같은 양을 넣는다.
+//   · 빼는 순서는 카드 배정(assignVirtualBoxes)과 같다 — 그 출고코드로 기록된 가상 분량(virtual_codes[code]) 먼저, 그다음 코드 미기록 분량.
+//     그래서 옮기고 나서 다시 읽어도 앞 카드들은 전처럼 원래 박스, 옮긴 카드들은 새 박스로 배정된다.
+//   · 새 박스에는 옮긴 전부를 그 카드의 출고코드로 기록한다(virtual_codes = {code: n}) — 미기록 분량으로 두면 다른 코드 카드가 먼저 집어갈 수 있다.
+//   · qty 도 같이 줄인다(qty - virtual_qty = 이미 실제 스캔한 개수는 그대로). 옮긴 뒤 0 이 되는 행은 지운다.
+//   · 상품의 찾음/없음(rk_cn_shipping.mobile_*)과 출고개수는 안 건드린다. 원래 박스의 가상확정은 가상 합이 달라져 자동으로 풀린다(라벨 재출력 안내).
+//   · 트랜잭션이 없어 새 박스·아이템을 먼저 넣고 원래 박스를 줄인다. 중간에 실패하면 새 박스를 지워 되돌린다(cascade 로 아이템도).
+//   body: { orderNumber, fromBoxNo, boxSize, worker, moves:[{ barcode, code, qty }] }  → { ok, orderNumber, fromBoxNo, newBoxNo, boxSize, movedQty, movedItems }
+router.post('/api/inbound/mobile-box-split', async (req, res) => {
+  try {
+    const orderNumber = String(req.body.orderNumber || '').trim();
+    const fromBoxNo = parseInt(req.body.fromBoxNo, 10);
+    const boxSize = String(req.body.boxSize || '').trim();
+    const worker = String(req.body.worker || '').trim().slice(0, 40);
+    if (!orderNumber || !Number.isFinite(fromBoxNo) || fromBoxNo <= 0) return res.status(400).json({ error: '발주번호와 박스번호가 필요합니다.' });
+    if (!BOX_SIZES.includes(boxSize)) return res.status(400).json({ error: `박스 크기는 ${BOX_SIZES.join('/')} 중 하나여야 합니다.` });
+    // 옮길 몫 — (바코드, 출고코드) 로 합친다. 출고코드가 없는 카드(예전 저장분)는 code null = 미기록 분량에서만 뺀다
+    const moves = new Map();
+    for (const m of (Array.isArray(req.body.moves) ? req.body.moves : [])) {
+      const barcode = String((m && m.barcode) || '').trim(); const q = parseInt(m && m.qty, 10);
+      const code = m && m.code != null && String(m.code).trim() !== '' ? String(m.code).trim() : null;
+      if (!barcode || !Number.isFinite(q) || q <= 0) continue;
+      const k = `${barcode}|${code == null ? '' : code}`;
+      const cur = moves.get(k) || { barcode, code, qty: 0 }; cur.qty += q; moves.set(k, cur);
+    }
+    if (!moves.size) return res.status(400).json({ error: '새 박스로 옮길 상품이 없습니다.' });
+
+    const { data: boxes, error: e1 } = await sb.from('rk_ship_boxes').select('id, box_no, box_size').eq('order_number', orderNumber).order('box_no', { ascending: true });
+    if (e1) throw e1;
+    const from = (boxes || []).find(b => b.box_no === fromBoxNo);
+    if (!from) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${fromBoxNo} 박스가 없습니다.` });
+    const { data: items, error: e2 } = await sb.from('rk_ship_box_items').select('id, barcode, product_name, qty, virtual_qty, virtual_codes').eq('box_id', from.id).order('id', { ascending: true });
+    if (e2) throw e2;
+
+    // 원래 박스에서 빼기 (메모리) — 부족하면 화면이 오래된 것이므로 아무것도 바꾸지 않고 돌려보낸다
+    const stale = () => res.status(409).json({ error: `📦${fromBoxNo} 의 내용이 화면과 다릅니다. 새로고침 후 다시 시도하세요.` });
+    const work = new Map();   // item.id → { item, qty, vq, codes }
+    for (const it of (items || [])) {
+      const vq = Math.max(0, parseInt(it.virtual_qty, 10) || 0);
+      work.set(it.id, { item: it, qty: Math.max(0, parseInt(it.qty, 10) || 0), vq, codes: VirtualPack.trimCodes(it.virtual_codes, vq) || {} });
+    }
+    const newItems = new Map();   // barcode → { barcode, product_name, qty, codes }
+    for (const mv of moves.values()) {
+      let need = mv.qty;
+      for (const w of work.values()) {
+        if (need <= 0) break;
+        if (w.item.barcode !== mv.barcode) continue;
+        let take = 0;
+        if (mv.code != null && (w.codes[mv.code] || 0) > 0) { const t = Math.min(need, w.codes[mv.code]); w.codes[mv.code] -= t; if (!w.codes[mv.code]) delete w.codes[mv.code]; take += t; }
+        const free = Math.max(0, w.vq - VirtualPack.sumCodes(w.codes) - take);
+        if (need - take > 0 && free > 0) take += Math.min(need - take, free);
+        if (!take) continue;
+        w.vq -= take; w.qty -= take; need -= take;
+        const n = newItems.get(mv.barcode) || { barcode: mv.barcode, product_name: w.item.product_name || null, qty: 0, codes: null };
+        n.qty += take; n.codes = VirtualPack.addCode(n.codes, mv.code, take); newItems.set(mv.barcode, n);
+      }
+      if (need > 0) return stale();
+    }
+
+    // 새 박스 + 아이템 넣기
+    const newBoxNo = Math.max(0, ...(boxes || []).map(b => parseInt(b.box_no, 10) || 0)) + 1;
+    const { data: nb, error: e3 } = await sb.from('rk_ship_boxes').insert({ order_number: orderNumber, box_no: newBoxNo, box_size: boxSize, is_virtual: true }).select('id').single();
+    if (e3) throw e3;
+    try {
+      const ins = [...newItems.values()].map(n => ({ box_id: nb.id, order_number: orderNumber, barcode: n.barcode, product_name: n.product_name, qty: n.qty, virtual_qty: n.qty, virtual_codes: VirtualPack.trimCodes(n.codes, n.qty) }));
+      const { error: e4 } = await sb.from('rk_ship_box_items').insert(ins);
+      if (e4) throw e4;
+      // 원래 박스 줄이기
+      for (const w of work.values()) {
+        const it = w.item;
+        if (w.qty === (parseInt(it.qty, 10) || 0) && w.vq === (parseInt(it.virtual_qty, 10) || 0)) continue;
+        if (w.qty <= 0) { const { error } = await sb.from('rk_ship_box_items').delete().eq('id', it.id); if (error) throw error; continue; }
+        const { error } = await sb.from('rk_ship_box_items').update({ qty: w.qty, virtual_qty: w.vq, virtual_codes: VirtualPack.trimCodes(w.codes, w.vq), updated_at: new Date().toISOString() }).eq('id', it.id);
+        if (error) throw error;
+      }
+      // 원래 박스에 가상 분량이 하나도 안 남으면 가상 표시·확정 해제 (ship-scan/save 와 같은 규칙)
+      if (![...work.values()].some(w => w.vq > 0)) {
+        const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: false, virtual_confirmed_qty: 0, virtual_confirmed_at: null }).eq('id', from.id);
+        if (error) throw error;
+      }
+    } catch (err) {
+      await sb.from('rk_ship_boxes').delete().eq('id', nb.id);   // 되돌리기 (아이템은 cascade)
+      throw err;
+    }
+    const movedQty = [...newItems.values()].reduce((s, n) => s + n.qty, 0);
+    console.log(`[rk] inbound/mobile-box-split: ${orderNumber}-${fromBoxNo} → 새 📦${newBoxNo}(${boxSize}) ${movedQty}개 · ${newItems.size}종 (${worker || '작업자 미입력'})`);
+    res.json({ ok: true, orderNumber, fromBoxNo, newBoxNo, boxSize, movedQty, movedItems: newItems.size });
+  } catch (e) {
+    console.error('[rk] inbound/mobile-box-split:', e);
+    res.status(500).json({ error: '박스 추가 실패: ' + e.message });
+  }
+});
+
 // 출고배정 취소(삭제) — rk_cn_shipping 삭제 + rk_shipping_list 미러 정리.
 // 남은상품은 아이템수량-배정합계로 매번 계산되므로 삭제하면 자동 복원됨.
 //   입고정리 배정 삭제(아래 라우트) 와 신규 발주서 가상버전 [배정 취소](rkAllocate.js) 가 같이 쓴다. ids = rk_cn_shipping.id 정수 배열
