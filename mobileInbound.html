@@ -155,6 +155,11 @@
         .band{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:14px;padding:9px 12px 9px 14px;color:#fff;}
         .band.found{background:var(--green);}
         .band.missing{background:var(--coral-dark);}
+        .band.part{background:#FFF4E0;color:#8A5A00;}
+        .band.part .l small{color:#8A5A00;opacity:.85;white-space:normal;}
+        .chip .mk{margin-left:4px;font-size:13px;font-weight:900;}
+        .chip .mk.ok{color:#1B7F3B;}
+        .chip .mk.miss{color:#B23A2E;}
         .band .l{display:flex;align-items:center;gap:8px;min-width:0;}
         .band .l b{font-size:16px;font-weight:900;white-space:nowrap;}
         .band .l small{font-size:12.5px;font-weight:600;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -683,7 +688,7 @@
                 $('deckTitle').innerHTML=`<b>${esc(curOrder)}${boxTag()}</b><small>${esc(h.센터)||''} · ${esc(md(h.출고예정일))||''}</small>`;
                 renderDeck();
                 // 처음 열면 첫 미처리 카드로, 새로고침이면 현재 자리 유지
-                const target=first?Math.max(0,rows.findIndex(r=>!r.모바일)):Math.min(idx,rows.length);
+                const target=first?Math.max(0,rows.findIndex(r=>!markSt(r))):Math.min(idx,rows.length);
                 goTo(target<0?rows.length:target, true);
                 if(first) playOk();
             }catch(e){ playWarn(); toast(e.message); }
@@ -691,6 +696,23 @@
         // 꺼내는 곳(박스명, 검정) → 담는 곳(출고스캔 박스 번호 · 크기, 오른쪽). 서버가 가상으로 담긴 박스만 준다(이미 실제로 담은 분량은 제외).
         //   칩에는 박스 번호·크기만. 담을 개수는 아래 큰 숫자(출고개수)로 보여준다 — 박스가 여럿일 때(발주번호만 입력한 전체 보기)만 칩에 ×n (2026-10-15: 칩의 ×4 와 출고개수 12 가 같이 보여 헷갈림)
         //   박스가 없으면 "직접 스캔"
+        // ── 박스별 찾음/없음 (2026-10-22) — 한 행이 두 박스에 걸칠 때(출고개수 13 = 📦1 12 + 📦2 1) 2번을 담던 사람의 찾음이 1번 카드에 보이던 문제.
+        //   r.모바일박스 = {박스번호: {status, qty, by, at}} · 박스 보기(curBox)면 그 박스 기록만, 발주서 전체 보기면 행 요약(r.모바일: 전부 찾음/하나라도 없음)
+        //   박스별 기록이 하나도 없는 행(예전 기록)은 행 요약을 그대로 쓴다
+        const boxEntries=r=>(r&&r.모바일박스&&typeof r.모바일박스==='object')?r.모바일박스:{};
+        function markOf(r){
+            const e=boxEntries(r), has=Object.keys(e).length>0;
+            if(curBox!=null){ const m=e[String(curBox)]; if(m) return {status:m.status||null,by:m.by||null,at:m.at||null}; if(has) return null; }
+            return r.모바일?{status:r.모바일,by:r.모바일처리자,at:r.모바일시각}:null;
+        }
+        const markSt=r=>{ const m=markOf(r); return m?m.status:null; };
+        // 이번 표시가 걸리는 박스(들)와 몫 — 박스 보기면 그 박스만, 전체 보기면 카드의 박스 전부, 박스가 없으면 "0"(박스 미정) 에 행의 출고개수
+        function marksFor(r){
+            const list=r.boxes||[];
+            if(curBox>0){ const b=list.find(b=>b.boxNo===curBox); return [{boxNo:curBox, qty:b?Number(b.virtualQty)||0:0}]; }
+            if(curBox===0||!list.length) return [{boxNo:0, qty:Number(r.출고개수)||0}];
+            return list.map(b=>({boxNo:b.boxNo, qty:Number(b.virtualQty)||0}));
+        }
         function boxRow(r,i){
             // [전체] 모드: 입고 = "입고코드-박스명" (1018-BR5) · 재고 = 위치 (흰 칩). [입고] 모드는 예전 그대로 박스명만
             const src=mode==='all'&&r.source==='재고'
@@ -700,14 +722,17 @@
                 : `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
             const list=(r.boxes||[]);
             const dst=list.length
-                ? list.map(b=>`<span class="chip pick" onclick="openSizeSheet(${b.boxNo},${i})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}</span>`).join('')
+                ? list.map(b=>{ const m=boxEntries(r)[String(b.boxNo)]; const mk=m?(m.status==='found'?`<small class="mk ok" title="찾음 · ${esc(m.by||'')}">✓</small>`:`<small class="mk miss" title="없음 · ${esc(m.by||'')}">✕</small>`):'';
+                    return `<span class="chip pick" onclick="openSizeSheet(${b.boxNo},${i})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}${mk}</span>`; }).join('')
                 : `<span class="chip none">${ICON('i-box',18,2)}박스 미정 · 직접 스캔</span>`;
             return `<div class="boxrow">${src}<span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
         }
         function fmtAt(ts){ if(!ts) return ''; const d=new Date(ts); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
         function cardHtml(r,i){
-            const st=r.모바일||'';
-            const band=st?`<div class="band ${st}"><div class="l">${ICON('i-check',22,3)}<b>${st==='found'?'찾음':'없음'}</b><small>${esc(r.모바일처리자)||''} · ${fmtAt(r.모바일시각)}</small></div><button onclick="clearMark(${i})">취소</button></div>`:'';
+            const mk=markOf(r), st=mk?mk.status:'';
+            const band=st?`<div class="band ${st}"><div class="l">${ICON('i-check',22,3)}<b>${st==='found'?'찾음':'없음'}</b><small>${esc(mk.by)||''} · ${fmtAt(mk.at)}</small></div><button onclick="clearMark(${i})">취소</button></div>`
+                // 전체 보기에서 일부 박스만 표시된 행 — 어느 박스를 누가 처리했는지 한 줄로 (2026-10-22)
+                :(curBox==null&&Object.keys(boxEntries(r)).length?`<div class="band part"><div class="l"><b>일부</b><small>${Object.entries(boxEntries(r)).map(([k,m])=>`📦${k==='0'?'미정':k} ${m.status==='found'?'찾음':'없음'}${m.by?' · '+esc(m.by):''}`).join(' / ')}</small></div><button onclick="clearMark(${i})">취소</button></div>`:'');
             const noimg=ICON('i-img',40,1.6)+'<div>상품 이미지 없음</div>';
             return `<div class="cardw" data-i="${i}"><div class="card ${st}">
                 ${band}
@@ -728,8 +753,8 @@
             return `<div class="qty"><span class="k">출고개수</span><span class="v">${show}</span><span class="u">개</span>${list.length&&show!==total?`<span class="u" style="font-weight:600">· 배정 ${total}</span>`:''}</div>`;
         }
         function endHtml(){
-            const f=rows.filter(r=>r.모바일==='found').length, m=rows.filter(r=>r.모바일==='missing').length, left=rows.length-f-m;
-            const miss=rows.filter(r=>r.모바일==='missing');
+            const f=rows.filter(r=>markSt(r)==='found').length, m=rows.filter(r=>markSt(r)==='missing').length, left=rows.length-f-m;
+            const miss=rows.filter(r=>markSt(r)==='missing');
             return `<div class="cardw" data-i="${rows.length}"><div class="card end">
                 <div class="ring ${left?'left':''}">${left?ICON('i-search',40,2.4):ICON('i-check',44,3)}</div>
                 <div><h2>${left?`아직 ${left}장 남았습니다`:'이 발주서 끝'}</h2>
@@ -759,8 +784,8 @@
             $('deck').innerHTML=rows.map(cardHtml).join('')+endHtml();
             updateDots();
         }
-        function firstLeft(){ const i=rows.findIndex(r=>!r.모바일); return i<0?rows.length:i; }
-        function nextLeft(from){ for(let i=from+1;i<rows.length;i++) if(!rows[i].모바일) return i; return rows.length; }
+        function firstLeft(){ const i=rows.findIndex(r=>!markSt(r)); return i<0?rows.length:i; }
+        function nextLeft(from){ for(let i=from+1;i<rows.length;i++) if(!markSt(rows[i])) return i; return rows.length; }
         function goTo(i,instant){
             idx=Math.max(0,Math.min(rows.length,i));
             const deck=$('deck'); deck.scrollTo({left:idx*deck.clientWidth, behavior:instant?'auto':'smooth'});
@@ -769,13 +794,13 @@
         // 스와이프로 넘긴 뒤 현재 카드 번호 갱신
         let scrollT; $('deck').addEventListener('scroll',()=>{ clearTimeout(scrollT); scrollT=setTimeout(()=>{ const d=$('deck'); idx=Math.round(d.scrollLeft/Math.max(1,d.clientWidth)); updateDots(); },80); },{passive:true});
         function updateDots(){
-            const done=rows.filter(r=>r.모바일).length, n=rows.length;
+            const done=rows.filter(r=>markSt(r)).length, n=rows.length;
             const onEnd=idx>=n, full=n>0&&done>=n;
             $('dots').className='txt'+(full?' full':'');
             $('dots').innerHTML=full?`${n} / ${n} 완료`:(onEnd?`처리 ${done} / ${n}`:`${idx+1} / ${n} <span>· 처리 ${done}</span>`);
             const bar=$('progBar'); bar.style.width=(n?Math.round(done/n*100):0)+'%'; bar.classList.toggle('full',full);
             $('btnNone').disabled=onEnd; $('btnScan').disabled=onEnd; $('btnMemo').disabled=onEnd;
-            const cur=rows[idx]; const dim=!onEnd&&!!(cur&&cur.모바일);
+            const cur=rows[idx]; const dim=!onEnd&&!!(cur&&markSt(cur));
             $('btnMemo').classList.toggle('has', !onEnd&&!!(cur&&cur.모바일메모));
             $('btnNone').classList.toggle('dim',dim); $('btnScan').classList.toggle('dim',dim);
         }
@@ -791,15 +816,20 @@
         async function save(i,status){
             const r=rows[i]; if(!r||saving) return false;
             saving=true;
-            const prev={모바일:r.모바일,모바일처리자:r.모바일처리자,모바일시각:r.모바일시각};
-            r.모바일=status; r.모바일처리자=status?worker():null; r.모바일시각=status?new Date().toISOString():null;   // 낙관적 반영
+            const prev={모바일:r.모바일,모바일처리자:r.모바일처리자,모바일시각:r.모바일시각,모바일박스:r.모바일박스};
+            // 낙관적 반영 — 박스별 기록(이번 박스(들)만)과, 전체 보기면 행 요약도. 서버 응답으로 덮어쓴다 (2026-10-22)
+            const marks=marksFor(r), now=new Date().toISOString(), e={...boxEntries(r)};
+            for(const m of marks){ if(status) e[String(m.boxNo)]={status,qty:m.qty,by:worker(),at:now}; else delete e[String(m.boxNo)]; }
+            r.모바일박스=Object.keys(e).length?e:null;
+            if(curBox==null||status==null){ r.모바일=status; r.모바일처리자=status?worker():null; r.모바일시각=status?now:null; }
             repaint(i);
             try{
+                const body={status,worker:worker(),marks,shareTotal:Number.isFinite(Number(r.shareTotal))?Number(r.shareTotal):null};
                 const res=mode==='all'
-                    ? await fetch('/api/mobile/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listId:r.listId,status,worker:worker()})})
-                    : await fetch('/api/inbound/mobile-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allocId:r.allocId,status,worker:worker()})});
+                    ? await fetch('/api/mobile/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listId:r.listId,...body})})
+                    : await fetch('/api/inbound/mobile-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allocId:r.allocId,...body})});
                 const d=await res.json(); if(!res.ok) throw new Error(d.error||'저장 실패');
-                r.모바일=d.모바일; r.모바일처리자=d.모바일처리자; r.모바일시각=d.모바일시각; repaint(i);
+                r.모바일=d.모바일; r.모바일처리자=d.모바일처리자; r.모바일시각=d.모바일시각; r.모바일박스=d.모바일박스||null; repaint(i);
                 return true;
             }catch(e){ Object.assign(r,prev); repaint(i); playWarn(); toast('저장 실패: '+e.message); return false; }
             finally{ saving=false; }

@@ -446,10 +446,13 @@
             // 모바일 메모(2026-10-21) — 📝 에 마우스를 올리면 메모·작성자·시각
             const fmt=ts=>ts?new Date(ts).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'';
             const memo=r.모바일메모?`<span title="${esc('메모: '+r.모바일메모+(r.모바일메모처리자?' · '+r.모바일메모처리자:'')+(r.모바일메모시각?' · '+fmt(r.모바일메모시각):''))}" style="cursor:help">📝</span>`:'';
-            if(!r.모바일) return memo;
+            // 박스별 기록(2026-10-22) — 행이 여러 가상 박스에 걸쳐 박스마다 따로 표시된 경우. 일부만 처리됐으면 🔸, 툴팁에 박스별 내역
+            const bx=r.모바일박스&&typeof r.모바일박스==='object'?Object.entries(r.모바일박스):[];
+            const bxTip=bx.map(([k,m])=>`📦${k==='0'?'미정':k} ${m.status==='found'?'찾음':'없음'} ${m.qty||0}개${m.by?' · '+m.by:''}${m.at?' · '+fmt(m.at):''}`).join('\n');
+            if(!r.모바일){ if(!bx.length) return memo; return `<span title="${esc('일부 박스만 처리\n'+bxTip)}" style="cursor:help">🔸</span>${memo}`; }
             const who=r.모바일처리자?esc(r.모바일처리자):'', at=fmt(r.모바일시각);
-            const tip=(r.모바일==='found'?'모바일 찾음':'모바일 없음')+(who?' · '+who:'')+(at?' · '+at:'');
-            return `<span title="${tip}" style="cursor:default">${r.모바일==='found'?'✅':'❌'}</span>${memo}`;
+            const tip=(r.모바일==='found'?'모바일 찾음':'모바일 없음')+(who?' · '+who:'')+(at?' · '+at:'')+(bx.length>1?'\n'+bxTip:'');
+            return `<span title="${esc(tip)}" style="cursor:default">${r.모바일==='found'?'✅':'❌'}</span>${memo}`;
         }
 
         function switchTab(t){

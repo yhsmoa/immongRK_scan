@@ -305,21 +305,27 @@ async function mobileFoundByKey(orderNumbers) {
   if (!nos.length) return out;
   // 입고 = rk_cn_shipping(원본) · 재고 = rk_shipping_list source='재고' (모바일 [전체] 모드, 2026-10-20).
   //   입고 행은 rk_shipping_list 미러에도 같은 표시가 있지만 원본에서만 센다 (두 번 세지 않게)
+  //   박스별 기록(mobile_boxes, 2026-10-22)이 있으면 찾음으로 표시된 박스 몫만 센다 — 한 행이 두 박스에 걸쳐 한쪽만 찾았을 때 행 전체를 센 문제
   const [rows, stockRows] = await Promise.all([
     chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_cn_shipping')
-      .select('order_number, barcode, ship_qty').eq('mobile_status', 'found').in('order_number', part).order('id', { ascending: true }))),
+      .select('order_number, barcode, ship_qty, mobile_status, mobile_boxes').or('mobile_status.eq.found,mobile_boxes.not.is.null').in('order_number', part).order('id', { ascending: true }))),
     chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_shipping_list')
-      .select('order_number, barcode, qty').eq('source', '재고').eq('status', '출고예정').eq('mobile_status', 'found').in('order_number', part).order('id', { ascending: true }))),
+      .select('order_number, barcode, qty, mobile_status, mobile_boxes').eq('source', '재고').eq('status', '출고예정').or('mobile_status.eq.found,mobile_boxes.not.is.null').in('order_number', part).order('id', { ascending: true }))),
   ]);
+  const foundQty = (r, rowQty) => {
+    const e = r.mobile_boxes && typeof r.mobile_boxes === 'object' && !Array.isArray(r.mobile_boxes) ? Object.values(r.mobile_boxes) : [];
+    if (e.length) return e.filter((m) => m && m.status === 'found').reduce((s, m) => s + (parseInt(m.qty, 10) || 0), 0);
+    return r.mobile_status === 'found' ? (parseInt(rowQty, 10) || 0) : 0;
+  };
   for (const r of rows) {
     if (!r.order_number || !r.barcode) continue;
     const k = `${r.order_number}|${r.barcode}`;
-    out.set(k, (out.get(k) || 0) + (parseInt(r.ship_qty, 10) || 0));
+    out.set(k, (out.get(k) || 0) + foundQty(r, r.ship_qty));
   }
   for (const r of stockRows) {
     if (!r.order_number || !r.barcode) continue;
     const k = `${r.order_number}|${r.barcode}`;
-    out.set(k, (out.get(k) || 0) + (parseInt(r.qty, 10) || 0));
+    out.set(k, (out.get(k) || 0) + foundQty(r, r.qty));
   }
   return out;
 }
