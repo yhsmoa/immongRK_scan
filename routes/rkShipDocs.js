@@ -1,8 +1,16 @@
 /**
- * 쉽먼트 [순서정리] — 쿠팡 부착문서(Label)·동봉문서(Manifest) PDF 를 출고 순서대로 다시 묶고, 장마다 우리 박스 표시를 찍는다.
+ * 쉽먼트 서류 — 쿠팡 부착문서(Label)·동봉문서(Manifest) PDF 를 박스별로 보관([쉽먼트 등록])하고, 출고 순서대로 합쳐 내려준다([순서대로] 탭 출력).
  *
  * 쿠팡이 발송 완료 후 만들어 주는 두 PDF 는 박스 1개 = 1장인데 순서가 쿠팡 기준이라 발주서별로도 묶여 있지 않다.
- * 우리는 발주서 단위(발주번호-박스번호)로 박스를 싸고 [순서저장] 으로 출고 순서를 스캔해 두므로, 그 순서대로 재배열한다.
+ * 우리는 발주서 단위(발주번호-박스번호)로 박스를 싸고 [순서지정] 으로 출고 순서를 박스 단위로 스캔해 두므로, 그 순서대로 재배열한다.
+ *
+ * 2026-10-22 흐름 변경 — 발주서의 박스가 한 번에 다 나가지 않는다 (오늘 3박스, 이틀 뒤 2박스).
+ *   예전 [순서정리] 는 올린 PDF 를 분석만 하고 버려서 나갈 때마다 다시 올려야 했고, 순서 없는 박스도 "(순서X)" 로 뒤에 붙어 나왔다.
+ *   이제
+ *     [쉽먼트 등록]  POST /api/shipment/docs/register  — 두 PDF 를 올리면 장을 박스별로 쪼개 Storage(rk-ship-docs)에 두고 rk_ship_docs 에 기록 (같은 박스는 덮어씀)
+ *     [출력]         POST /api/shipment/docs/print     — rk_ship_seq 의 박스 순서대로 Storage 의 장을 합쳐 한 PDF. 순서 없는 박스는 아예 안 나간다.
+ *   순서와 서류는 서로 독립이다: 순서를 지우거나 다시 찍어도 서류는 남고, 나중에 순서가 잡히면 그때 출력된다.
+ *   예전 /doc-sort/plan 은 등록 모달의 미리보기(매칭 결과)로 그대로 쓴다. /doc-sort/build(올린 파일을 바로 정리해 내려받기)는 화면에서 뺐고 API 만 남겼다.
  *
  * 매칭 열쇠 (2026-10-15 사용자와 정리):
  *   1) 부착문서 ↔ 동봉문서 : 쉽먼트 바코드(PBL…). 두 문서 모두 장마다 찍혀 있고 박스마다 하나뿐이다.
@@ -33,8 +41,41 @@ const XLSX = require('xlsx');
 const { PDFDocument, rgb } = require('pdf-lib');
 const fontkit = require('@pdf-lib/fontkit');
 const S = require('./rkShared');
+const { parseCjRef } = require('../cjRef');
 
 const router = express.Router();
+
+// ── Storage (supabase/rk_ship_docs.sql) — 박스별 PDF: {발주번호}/{박스번호}/label.pdf · manifest.pdf ──
+const BUCKET = 'rk-ship-docs';
+let bucketReady = null;
+async function ensureBucket() {   // 버킷은 마이그레이션으로 만들지만, 없으면 첫 사용 때 한 번 만든다
+  if (!bucketReady) {
+    bucketReady = (async () => {
+      const { error } = await S.supabase.storage.createBucket(BUCKET, { public: false, fileSizeLimit: 52428800, allowedMimeTypes: ['application/pdf'] });
+      if (error && !/already exists|duplicate/i.test(error.message || '')) { bucketReady = null; throw error; }
+    })();
+  }
+  return bucketReady;
+}
+const docPath = (orderNo, boxNo, kind) => `${orderNo}/${boxNo}/${kind}.pdf`;
+async function putDoc(path, bytes) {
+  const { error } = await S.supabase.storage.from(BUCKET).upload(path, Buffer.from(bytes), { contentType: 'application/pdf', upsert: true });
+  if (error) throw new Error(`Storage 저장 실패(${path}): ${error.message}`);
+}
+async function getDoc(path) {
+  const { data, error } = await S.supabase.storage.from(BUCKET).download(path);
+  if (error) throw new Error(`Storage 읽기 실패(${path}): ${error.message}`);
+  return Buffer.from(await data.arrayBuffer());
+}
+/** 여러 작업을 동시에 최대 n 개씩 */
+async function pool(list, n, fn) {
+  const out = new Array(list.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(n, list.length) }, async () => {
+    while (i < list.length) { const k = i++; out[k] = await fn(list[k], k); }
+  }));
+  return out;
+}
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 40 } });
 const FIELDS = [{ name: 'label', maxCount: 20 }, { name: 'manifest', maxCount: 20 }, { name: 'cj', maxCount: 10 }];
 
@@ -119,7 +160,9 @@ async function parseFiles(files, formKind) {
   return out;
 }
 
-// ── CJ 운송장 엑셀 → 운송장번호 → { orderNo, boxNo } (송장번호 입력 모달과 같은 열: H=7 운송장, Z=25 "발주번호 - 박스") ──
+// ── CJ 운송장 엑셀 → 운송장번호 → { orderNo, boxNo } (송장번호 입력 모달과 같은 열: H=7 운송장, Z=25 발주번호 열) ──
+//   Z열은 우리가 CJ 접수 엑셀에 넣은 값이 그대로 돌아온 것 — 새 형식 "[대2] 경기광주3 - 144300338 - 1번 (총 4박스) - 23개" 와
+//   예전 "144300338 - 1" 둘 다 cjRef.js 의 parseCjRef 가 읽는다.
 function parseCjFiles(files) {
   const map = new Map();
   let rows = 0;
@@ -132,11 +175,9 @@ function parseCjFiles(files) {
       const r = data[i] || [];
       const inv = r[7], ob = r[25];
       if (!inv || !ob) continue;
-      const parts = String(ob).split(' - ');
-      if (parts.length !== 2) continue;
-      const boxNo = parseInt(parts[1], 10);
-      if (!Number.isFinite(boxNo)) continue;
-      map.set(String(inv).trim(), { orderNo: parts[0].trim(), boxNo });
+      const ref = parseCjRef(ob);
+      if (!ref) continue;
+      map.set(String(inv).trim(), ref);
       rows++;
     }
   }
@@ -449,6 +490,153 @@ async function buildPdf(kind, plan, req) {
   }
   return { bytes: await out.save(), pages: seq.length };
 }
+
+// ══════════════════════════════════════════════════════════════════
+// [쉽먼트 등록] — 올린 PDF 를 박스별로 쪼개 Storage 에 보관
+//   fields: label[] · manifest[] · cj[] (plan 과 같다)
+//   부착문서 장마다 우리 박스를 찾아(plan 의 매칭) 그 장 1장을 label.pdf 로, PBL 이 같은 동봉문서 장들을 manifest.pdf 로 저장한다.
+//   박스를 못 찾은 장·동봉문서만 있는 장은 저장하지 않고 돌려보낸다 (파일을 더 올려 다시 등록하면 된다 — 같은 박스는 덮어쓴다).
+//   순서(rk_ship_seq)는 보지 않는다 — 등록은 순서와 무관하고, 출력 때 순서 있는 박스만 고른다.
+//   응답: { registered:{label, manifest}, boxes:[{order, boxNo, label, manifest}], skipped:[장], dupLabel:[장], unpairedManifest:[장] }
+// ══════════════════════════════════════════════════════════════════
+router.post('/api/shipment/docs/register', upload.fields(FIELDS), async (req, res) => {
+  try {
+    const plan = await buildPlan(req);
+    if (!plan.labelPages.length) return res.status(400).json({ error: '부착문서가 없습니다. 부착문서 PDF 를 올려주세요.' });
+    const fileErrors = [...plan.labelFiles, ...plan.manifestFiles].filter((f) => f.error);
+    if (fileErrors.length) return res.status(400).json({ error: '읽지 못한 파일이 있습니다: ' + fileErrors.map((f) => `${f.name} (${f.error})`).join(', ') });
+    await ensureBucket();
+
+    // 원본 문서는 미리 다 연다 (fileKey → PDFDocument) — 아래 pool 에서 같은 파일을 동시에 두 번 열지 않게
+    const files = req.files || {};
+    const srcDocs = new Map();
+    for (const formKind of ['label', 'manifest']) {
+      for (let i = 0; i < (files[formKind] || []).length; i++) srcDocs.set(`${formKind}:${i}`, await PDFDocument.load(files[formKind][i].buffer));
+    }
+    // 장들을 새 PDF 하나로 (원본 그대로, 도장은 출력 때 찍는다)
+    const extract = async (pages) => {
+      const out = await PDFDocument.create();
+      for (const p of pages) {
+        const [copied] = await out.copyPages(srcDocs.get(p.fileKey), [p.pageIdx]);
+        out.addPage(copied);
+      }
+      return out.save();
+    };
+
+    // 박스별 작업 목록 — 같은 박스가 두 장이면(dupLabel) 먼저 온 장만 쓴다
+    const jobs = [];
+    const seenBox = new Set();
+    const skipped = [];
+    for (const p of plan.labelPages) {
+      if (!p.box) { skipped.push(p); continue; }
+      const key = `${p.box.orderNo}|${p.box.boxNo}`;
+      if (seenBox.has(key)) continue;
+      seenBox.add(key);
+      jobs.push({ orderNo: String(p.box.orderNo), boxNo: p.box.boxNo, label: p, manifest: p.pbl ? (plan.manifestByPbl.get(p.pbl) || []) : [] });
+    }
+    if (!jobs.length) return res.status(400).json({ error: '우리 박스를 찾은 장이 하나도 없습니다. 운송장번호가 저장되지 않은 지난 쉽먼트면 CJ 운송장 엑셀을 같이 올려주세요.' });
+
+    const now = new Date().toISOString();
+    const rows = [];
+    const results = await pool(jobs, 4, async (j) => {
+      const labelPath = docPath(j.orderNo, j.boxNo, 'label');
+      await putDoc(labelPath, await extract([j.label]));
+      rows.push({ order_number: j.orderNo, box_no: j.boxNo, kind: 'label', path: labelPath, pages: 1, pbl: j.label.pbl || null, invoice_no: j.label.invoice || null, uploaded_at: now });
+      let manifest = false;
+      if (j.manifest.length) {
+        const mPath = docPath(j.orderNo, j.boxNo, 'manifest');
+        await putDoc(mPath, await extract(j.manifest));
+        rows.push({ order_number: j.orderNo, box_no: j.boxNo, kind: 'manifest', path: mPath, pages: j.manifest.length, pbl: j.label.pbl || null, invoice_no: j.manifest[0].invoice || j.label.invoice || null, uploaded_at: now });
+        manifest = true;
+      }
+      return { order: j.orderNo, boxNo: j.boxNo, label: true, manifest };
+    });
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await S.supabase.from('rk_ship_docs').upsert(rows.slice(i, i + 200), { onConflict: 'order_number,box_no,kind' });
+      if (error) throw error;
+    }
+
+    const pageInfo = (p) => ({ pbl: p.pbl, order: p.order || null, invoice: p.invoice || null, qty: p.qty });
+    res.json({
+      registered: { label: results.length, manifest: results.filter((r) => r.manifest).length },
+      boxes: results.sort((a, b) => String(a.order).localeCompare(String(b.order)) || a.boxNo - b.boxNo),
+      skipped: skipped.map(pageInfo),
+      dupLabel: plan.dupLabel.map(pageInfo),
+      unpairedManifest: plan.unpairedManifest.map(pageInfo),
+      labelOnly: results.filter((r) => !r.manifest).map((r) => `${r.order}-${r.boxNo}`),   // 동봉문서가 안 올라온 박스
+    });
+  } catch (e) {
+    console.error('[rk] docs/register:', e);
+    res.status(500).json({ error: '서류 등록 실패: ' + e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// [순서대로] 탭 출력 — 순서 지정된 박스의 서류를 Storage 에서 꺼내 순서대로 한 PDF 로
+//   body: { kind:'label'|'manifest', boxes?:[{ orderNumber, boxNo }] }
+//     boxes 가 있으면(탭에서 체크한 박스) 그 박스만, 없으면 순서 있는 박스 전부. 어느 쪽이든 rk_ship_seq 에 있는 박스만 — 순서 없는 박스는 나가지 않는다.
+//   도장: 순번 = 그 박스의 seq(스캔한 순서 그대로) · 발주번호-박스 · N번 · 크기 · 실제/가상. 동봉문서가 여러 장이면 " 1/3" 을 붙인다.
+//   서류가 없는 박스는 건너뛰고 X-Print-Summary 헤더(JSON, encodeURIComponent)로 알린다. 하나도 없으면 400.
+// ══════════════════════════════════════════════════════════════════
+router.post('/api/shipment/docs/print', express.json(), async (req, res) => {
+  try {
+    const kind = req.body.kind === 'manifest' ? 'manifest' : 'label';
+    const want = Array.isArray(req.body.boxes) && req.body.boxes.length
+      ? new Set(req.body.boxes.map((b) => `${String(b.orderNumber || '').trim()}|${parseInt(b.boxNo, 10)}`))
+      : null;
+    const seqRows = (await S.pageAll(() => S.supabase.from('rk_ship_seq')
+      .select('order_number, box_no, seq').not('box_no', 'is', null).order('seq', { ascending: true })))
+      .filter((r) => !want || want.has(`${r.order_number}|${r.box_no}`));
+    if (!seqRows.length) return res.status(400).json({ error: want ? '체크한 박스 중 순서가 지정된 박스가 없습니다.' : '순서가 지정된 박스가 없습니다. [순서지정] 으로 출고 순서를 먼저 스캔하세요.' });
+
+    const orderNos = [...new Set(seqRows.map((r) => r.order_number))];
+    const [docs, ours] = await Promise.all([
+      S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_docs')
+        .select('order_number, box_no, kind, path, pages').in('order_number', nos).eq('kind', kind).order('id', { ascending: true }))),
+      loadOurBoxes(orderNos),
+    ]);
+    const docByKey = new Map(docs.map((d) => [`${d.order_number}|${d.box_no}`, d]));
+    const boxByKey = new Map(ours.boxes.map((b) => [`${b.order_number}|${b.box_no}`, b]));
+
+    const missing = [];
+    const seq = [];   // 출력 순서의 박스
+    for (const r of seqRows) {
+      const d = docByKey.get(`${r.order_number}|${r.box_no}`);
+      if (!d) { missing.push(`${r.order_number}-${r.box_no}`); continue; }
+      seq.push({ r, d });
+    }
+    if (!seq.length) return res.status(400).json({ error: `순서 지정된 박스 ${seqRows.length}개 모두 ${kind === 'label' ? '부착' : '동봉'}문서가 등록되지 않았습니다. [쉽먼트 등록] 으로 먼저 올려주세요.`, missing });
+
+    const bufs = await pool(seq, 4, ({ d }) => getDoc(d.path));
+    const out = await PDFDocument.create();
+    out.registerFontkit(fontkit);
+    const fb = fontBytes();
+    const kr = await out.embedFont(fb.kr, { subset: false });
+    const em = await out.embedFont(fb.emoji, { subset: false });
+    let pages = 0;
+    for (let i = 0; i < seq.length; i++) {
+      const { r } = seq[i];
+      const b = boxByKey.get(`${r.order_number}|${r.box_no}`);
+      const pseudo = { box: { orderNo: String(r.order_number), boxNo: r.box_no, size: b ? b.box_size : null, virt: b ? boxVirtKind(b, ours) : null }, orderSeq: r.seq, pos: r.seq };
+      const st = stampTextOf(pseudo);
+      const src = await PDFDocument.load(bufs[i]);
+      const idx = src.getPageIndices();
+      const copied = await out.copyPages(src, idx);
+      copied.forEach((pg, k) => { out.addPage(pg); drawStamp(pg, st, idx.length > 1 ? ` ${k + 1}/${idx.length}` : '', kr, em); pages++; });
+    }
+    const bytes = await out.save();
+    const d = new Date(Date.now() + 9 * 3600 * 1000);
+    const ymd = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+    const name = `${kind === 'label' ? '부착문서' : '동봉문서'}_출력_${ymd}_${seq.length}박스_${pages}장.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(name)}`);
+    res.setHeader('X-Print-Summary', encodeURIComponent(JSON.stringify({ boxes: seq.length, pages, missing })));
+    res.send(Buffer.from(bytes));
+  } catch (e) {
+    console.error('[rk] docs/print:', e);
+    res.status(500).json({ error: '출력 PDF 를 만들지 못했습니다: ' + e.message });
+  }
+});
 
 router.post('/api/shipment/doc-sort/build', upload.fields(FIELDS), async (req, res) => {
   try {

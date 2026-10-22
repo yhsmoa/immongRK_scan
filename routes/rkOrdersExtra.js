@@ -5,6 +5,7 @@
 const express = require('express');
 const XlsxPopulate = require('xlsx-populate');
 const S = require('./rkShared');
+const { formatCjRef } = require('../cjRef');
 
 const router = express.Router();
 
@@ -22,15 +23,18 @@ async function shipScanOrders(orderNumbers) {
   if (!orderNos.length) return [];
 
   // 1000행씩 나눠 읽으므로 반드시 id 순 정렬 — 정렬 없이 range 를 넘기면 행이 빠지거나 중복될 수 있다
-  const [boxes, boxItems, seqRows, found] = await Promise.all([
+  const [boxes, boxItems, seqRows, found, docRows] = await Promise.all([
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
       .select('id, order_number, box_no, box_size, virtual_confirmed_qty').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
       .select('order_number, box_id, barcode, qty, product_name, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
-    // 출고 순서(rk_ship_seq, [순서저장] 스캔 순서) — 발주서 순서 = 그 발주서 행들의 최소 seq, 박스 순서 = (발주번호, 박스번호) 행의 seq
+    // 출고 순서(rk_ship_seq, [순서지정] 스캔 순서) — 박스 단위 (발주번호, 박스번호). 발주서 순서 = 그 발주서 박스들의 최소 seq
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_seq')
       .select('order_number, box_no, seq').in('order_number', nos).order('id', { ascending: true }))),
     S.mobileFoundByKey(orderNos),   // 모바일 입고([스캔]) 찾음 합 — 가상확정 ✅ 통합 판정용
+    // [쉽먼트 등록] 으로 Storage 에 들어간 서류 (rk_ship_docs) — 박스 배지의 📃 표시
+    S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_docs')
+      .select('order_number, box_no, kind').in('order_number', nos).order('id', { ascending: true }))),
   ]);
   const orderSeq = new Map();   // order_number → min seq
   const boxSeq = new Map();     // `${order_number}|${box_no}` → seq
@@ -38,6 +42,12 @@ async function shipScanOrders(orderNumbers) {
     const cur = orderSeq.get(r.order_number);
     if (cur == null || r.seq < cur) orderSeq.set(r.order_number, r.seq);
     if (r.box_no != null) boxSeq.set(`${r.order_number}|${r.box_no}`, r.seq);
+  }
+  const boxDocs = new Map();    // `${order_number}|${box_no}` → { label, manifest }
+  for (const r of docRows) {
+    const k = `${r.order_number}|${r.box_no}`;
+    if (!boxDocs.has(k)) boxDocs.set(k, { label: false, manifest: false });
+    boxDocs.get(k)[r.kind] = true;
   }
 
   // 박스 헤더: box_id → { order_number, box_no, box_size }
@@ -79,7 +89,9 @@ async function shipScanOrders(orderNumbers) {
         가상수량: parseInt(it.virtual_qty, 10) || 0,   // 이 중 [가상스캔]으로 들어온 개수 (쉽먼트 화면 '가상' 태그)
         가상확정: boxOk(box) || keyOk.has(`${order.발주번호}|${it.barcode}`),   // 박스 라벨 가상확정 또는 모바일 입고로 다 찾음
         박스정보: `${box.box_no}-${box.box_size}`,
-        박스순서: boxSeq.get(`${order.발주번호}|${box.box_no}`) ?? null,   // 박스 단위로 스캔했을 때만 값이 있다
+        박스순서: boxSeq.get(`${order.발주번호}|${box.box_no}`) ?? null,   // [순서지정] 으로 찍은 출고 순서 (박스 단위)
+        서류부착: !!(boxDocs.get(`${order.발주번호}|${box.box_no}`) || {}).label,      // [쉽먼트 등록] 된 부착문서가 있다
+        서류동봉: !!(boxDocs.get(`${order.발주번호}|${box.box_no}`) || {}).manifest,   // 〃 동봉문서
       });
     }
     if (!상품정보.length) continue;
@@ -161,10 +173,12 @@ function seqKeyOf(order, product) {
   return Number.POSITIVE_INFINITY;
 }
 
-// ── 출고 순서 저장 ([순서저장] 모달) ──
-//   body: { codes:[ "144287071", "144287071-1", "144287071 - 2", … ] }  — 박스 라벨/발주서 바코드를 스캔한 순서
-//   발주번호 = 앞의 숫자, 박스번호 = '-' 뒤 숫자(선택). rk_orders 에 있고 처리완료가 아닌 발주서만 저장.
-//   저장할 때마다 기존 순서는 전부 지우고 새로 넣는다 (한 번에 한 회차 — 어제 순서가 오늘 목록에 섞이지 않게).
+// ── 출고 순서 저장 ([순서지정] 모달) ──
+//   body: { codes:[ "144287071-1", "144287071 - 2", … ] }  — 박스 라벨 바코드를 출고할 순서대로 스캔한 것
+//   박스 단위만 받는다 (2026-10-22): 발주번호만 찍은 코드는 invalid 로 돌려보낸다 — 발주서의 박스가 한 번에 다 나가지 않으므로
+//   "이 발주서 전부" 라는 순서는 뜻이 없다. rk_orders 에 있고 처리완료가 아니며, 출고스캔 박스(rk_ship_boxes)가 실제로 있는 것만 저장.
+//   저장할 때마다 기존 순서는 전부 지우고 새로 넣는다 (한 번에 한 회차 — 이미 나간 박스가 오늘 목록에 섞이지 않게).
+//   등록된 서류(rk_ship_docs)는 건드리지 않는다 — 순서를 다시 찍어도 서류는 남고, 순서가 잡히면 그때 출력된다.
 //   응답: { saved, invalid:[코드], orders:[발주번호…] }
 router.post('/api/shipment/sequence', async (req, res) => {
   try {
@@ -174,24 +188,29 @@ router.post('/api/shipment/sequence', async (req, res) => {
     const parsed = [];
     const invalid = [];
     for (const code of codes) {
-      const m = code.replace(/\s+/g, '').match(/^(\d+)(?:-(\d+))?$/);
+      const m = code.replace(/\s+/g, '').match(/^(\d+)-(\d+)$/);   // 박스번호 필수
       if (!m) { invalid.push(code); continue; }
-      parsed.push({ code, orderNumber: m[1], boxNo: m[2] != null ? parseInt(m[2], 10) : null });
+      parsed.push({ code, orderNumber: m[1], boxNo: parseInt(m[2], 10) });
     }
     const orderNos = [...new Set(parsed.map((p) => p.orderNumber))];
-    const headers = orderNos.length
-      ? await S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_orders')
-        .select('order_number, status').in('order_number', nos).order('id', { ascending: true })))
-      : [];
+    const [headers, boxes] = orderNos.length
+      ? await Promise.all([
+        S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_orders')
+          .select('order_number, status').in('order_number', nos).order('id', { ascending: true }))),
+        S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
+          .select('order_number, box_no').in('order_number', nos).order('id', { ascending: true }))),
+      ])
+      : [[], []];
     const validNos = new Set(headers.filter((h) => !S.isDoneOrder({ 상태: h.status })).map((h) => String(h.order_number)));
+    const validBoxes = new Set(boxes.map((b) => `${b.order_number}|${b.box_no}`));
 
     // 같은 (발주번호, 박스번호)를 두 번 찍으면 처음 순서를 쓴다
     const rows = [];
     const seen = new Set();
     let seq = 0;
     for (const p of parsed) {
-      if (!validNos.has(p.orderNumber)) { invalid.push(p.code); continue; }
-      const k = `${p.orderNumber}|${p.boxNo == null ? 0 : p.boxNo}`;
+      const k = `${p.orderNumber}|${p.boxNo}`;
+      if (!validNos.has(p.orderNumber) || !validBoxes.has(k)) { invalid.push(p.code); continue; }
       if (seen.has(k)) continue;
       seen.add(k);
       rows.push({ order_number: p.orderNumber, box_no: p.boxNo, seq: ++seq });
@@ -207,6 +226,18 @@ router.post('/api/shipment/sequence', async (req, res) => {
   } catch (e) {
     console.error('[rk] shipment/sequence:', e);
     res.status(500).json({ error: '순서 저장 실패: ' + e.message });
+  }
+});
+
+// ── 출고 순서 초기화 ([순서대로] 탭의 [초기화]) — rk_ship_seq 를 비운다. 등록된 서류는 그대로 ──
+router.delete('/api/shipment/sequence', async (req, res) => {
+  try {
+    const { count, error } = await S.supabase.from('rk_ship_seq').delete({ count: 'exact' }).gte('id', 0);
+    if (error) throw error;
+    res.json({ ok: true, cleared: count || 0 });
+  } catch (e) {
+    console.error('[rk] shipment/sequence(delete):', e);
+    res.status(500).json({ error: '순서 초기화 실패: ' + e.message });
   }
 });
 
@@ -336,12 +367,20 @@ router.post('/api/shipment/export-cj', async (req, res) => {
       cell.value(header);
       cell.style('fill', 'd3d3d3'); cell.style('border', true); cell.style('borderColor', '000000'); cell.style('borderStyle', 'thin');
     });
-    mainSheet.column(1).width(15); mainSheet.column(2).width(30); mainSheet.column(3).width(75); mainSheet.column(4).width(15); mainSheet.column(5).width(25);
+    mainSheet.column(1).width(15); mainSheet.column(2).width(30); mainSheet.column(3).width(75); mainSheet.column(4).width(15); mainSheet.column(5).width(60);
 
+    // 박스 하나 = 한 행. 발주번호 열 = "[크기] 물류센터 - 발주번호 - N번 (총 M박스) - 수량개" (cjRef.js, 2026-10-22)
+    //   이 값은 CJ 결과 엑셀 Z열로 돌아와 송장번호 자동입력·서류 매칭이 읽는다 — 형식은 cjRef.js 에서만 바꾼다.
     const cjData = [];
     const processedBoxes = new Set();
     orders.forEach((order) => {
       const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-');
+      const qtyByBox = new Map();   // 박스번호 → 그 박스에 담긴 수량
+      for (const p of scannedProducts) {
+        const no = p.박스정보.split('-')[0];
+        qtyByBox.set(no, (qtyByBox.get(no) || 0) + (parseInt(p.스캔수량, 10) || 0));
+      }
+      const boxTotal = qtyByBox.size;
       scannedProducts.forEach((product) => {
         const boxParts = product.박스정보.split('-');
         const boxNumber = boxParts[0];
@@ -350,7 +389,11 @@ router.post('/api/shipment/export-cj', async (req, res) => {
         if (!processedBoxes.has(uniqueKey)) {
           processedBoxes.add(uniqueKey);
           const centerInfo = centerMap.get(order.물류센터);
-          cjData.push({ 물류센터: order.물류센터, 연락처: centerInfo?.contact || '', 주소: centerInfo?.address || '', 박스타입: boxType, 발주번호: `${order.발주번호} - ${boxNumber}`, _seq: seqKeyOf(order, product) });
+          cjData.push({
+            물류센터: order.물류센터, 연락처: centerInfo?.contact || '', 주소: centerInfo?.address || '', 박스타입: boxType,
+            발주번호: formatCjRef({ boxType, center: order.물류센터, orderNo: order.발주번호, boxNo: boxNumber, boxTotal, qty: qtyByBox.get(boxNumber) || 0 }),
+            _order: order.발주번호, _box: boxNumber, _seq: seqKeyOf(order, product),
+          });
         }
       });
     });
@@ -382,11 +425,8 @@ router.post('/api/shipment/export-cj', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename + '.xlsx')}`);
     res.send(buffer);
-    // 내보내기 이력 — 박스 단위(수량 없음), 발주번호 = '144286429 - 1' 의 앞부분, box_info = '박스번호-박스타입'
-    recordExport('CJ', filename + '.xlsx', cjData.map((d) => {
-      const boxNumber = String(d.발주번호).split(' - ')[1] || '';
-      return { order_number: String(d.발주번호).split(' - ')[0], box_info: `${boxNumber}-${d.박스타입}` };
-    }));
+    // 내보내기 이력 — 박스 단위(수량 없음), box_info = '박스번호-박스타입'
+    recordExport('CJ', filename + '.xlsx', cjData.map((d) => ({ order_number: d._order, box_info: `${d._box}-${d.박스타입}` })));
   } catch (e) {
     console.error('[rk] shipment/export-cj:', e);
     res.status(500).json({ error: 'CJ 엑셀 다운로드에 실패했습니다.' });
