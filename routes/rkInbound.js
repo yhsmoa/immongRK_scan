@@ -425,6 +425,9 @@ router.post('/api/inbound/mobile-check', async (req, res) => {
     const worker = String(req.body.worker || '').trim().slice(0, 40);
     if (!Number.isFinite(allocId)) return res.status(400).json({ error: 'allocId 가 필요합니다.' });
     if (status !== null && status !== 'found' && status !== 'missing') return res.status(400).json({ error: 'status 는 found / missing / null 이어야 합니다.' });
+    // 이름 없는 찾음/없음은 받지 않는다 (2026-10-22) — 이름 입력(10-20)이 생기기 전 페이지를 새로고침 없이 계속 쓰는 폰이 이름 없이 저장하고 있었다(처리자 빈 칸 16건).
+    //   새 화면은 이름 없이 여기까지 못 오므로, 이 오류는 "옛 페이지가 열려 있다" 는 뜻 → 새로고침 안내
+    if (status && !worker) return res.status(400).json({ error: '작업자 이름이 없습니다. 페이지를 새로고침한 뒤 첫 화면에서 이름을 입력하세요.' });
     const patch = status ? { mobile_status: status, mobile_at: new Date().toISOString(), mobile_by: worker || null } : { mobile_status: null, mobile_at: null, mobile_by: null };
     const { data, error } = await sb.from('rk_cn_shipping').update(patch).eq('id', allocId).select('id, mobile_status, mobile_at, mobile_by');
     if (error) throw error;
@@ -589,6 +592,9 @@ router.post('/api/mobile/check', async (req, res) => {
     const worker = String(req.body.worker || '').trim().slice(0, 40);
     if (!Number.isFinite(listId)) return res.status(400).json({ error: 'listId 가 필요합니다.' });
     if (status !== null && status !== 'found' && status !== 'missing') return res.status(400).json({ error: 'status 는 found / missing / null 이어야 합니다.' });
+    // 이름 없는 찾음/없음은 받지 않는다 (2026-10-22) — 이름 입력(10-20)이 생기기 전 페이지를 새로고침 없이 계속 쓰는 폰이 이름 없이 저장하고 있었다(처리자 빈 칸 16건).
+    //   새 화면은 이름 없이 여기까지 못 오므로, 이 오류는 "옛 페이지가 열려 있다" 는 뜻 → 새로고침 안내
+    if (status && !worker) return res.status(400).json({ error: '작업자 이름이 없습니다. 페이지를 새로고침한 뒤 첫 화면에서 이름을 입력하세요.' });
     const { data: rs, error: e0 } = await sb.from('rk_shipping_list').select('id, source, cn_shipping_id').eq('id', listId).limit(1);
     if (e0) throw e0;
     if (!rs || !rs.length) return res.status(404).json({ error: '출고리스트 행을 찾을 수 없습니다 (취소됐을 수 있음).' });
