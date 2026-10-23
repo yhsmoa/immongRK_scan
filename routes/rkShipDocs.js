@@ -76,8 +76,30 @@ async function pool(list, n, fn) {
   }));
   return out;
 }
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 40 } });
-const FIELDS = [{ name: 'label', maxCount: 20 }, { name: 'manifest', maxCount: 20 }, { name: 'cj', maxCount: 10 }];
+// 업로드 한도 — 쿠팡은 쉽먼트마다 PDF 를 하나씩 주므로 한 번에 수십 개가 올라온다 (2026-10-23 20개 한도에 걸려 HTML 오류 페이지가 그대로 화면에 뜨던 문제).
+//   화면(shipment.html DS_MAX)도 같은 숫자를 보고 서버에 보내기 전에 막는다. 둘을 같이 고칠 것.
+const MAX_FILES = { label: 200, manifest: 200, cj: 10 };
+const MAX_FILE_MB = 30;
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_MB * 1024 * 1024, files: MAX_FILES.label + MAX_FILES.manifest + MAX_FILES.cj } });
+const FIELDS = [{ name: 'label', maxCount: MAX_FILES.label }, { name: 'manifest', maxCount: MAX_FILES.manifest }, { name: 'cj', maxCount: MAX_FILES.cj }];
+const KIND_LABEL = { label: '부착문서', manifest: '동봉문서', cj: 'CJ 엑셀' };
+/** multer 는 한도를 넘기면 next(err) 로 넘기고, 그러면 Express 기본 HTML 오류 페이지가 나간다 — 화면은 JSON 만 읽으므로 여기서 JSON 으로 바꿔 준다 */
+function uploadFields(req, res, next) {
+  upload.fields(FIELDS)(req, res, (err) => {
+    if (!err) return next();
+    let msg;
+    if (err instanceof multer.MulterError) {
+      const known = err.field in KIND_LABEL;
+      const kind = known ? KIND_LABEL[err.field] : (err.field || '');
+      if (err.code === 'LIMIT_UNEXPECTED_FILE') msg = known ? `${kind}는 한 번에 최대 ${MAX_FILES[err.field]}개까지 올릴 수 있습니다. 나눠서 등록해 주세요.` : `알 수 없는 파일 칸입니다: ${kind}`;
+      else if (err.code === 'LIMIT_FILE_COUNT') msg = `파일이 너무 많습니다. 한 번에 최대 ${MAX_FILES.label + MAX_FILES.manifest + MAX_FILES.cj}개까지 올릴 수 있습니다.`;
+      else if (err.code === 'LIMIT_FILE_SIZE') msg = `파일 하나가 ${MAX_FILE_MB}MB 를 넘습니다${kind ? ' (' + kind + ')' : ''}.`;
+      else msg = '업로드 오류: ' + err.message;
+    } else msg = '업로드 오류: ' + (err.message || String(err));
+    console.error('[rk] upload:', err.code || '', err.message);
+    res.status(400).json({ error: msg });
+  });
+}
 
 // 도장 글꼴 — 나눔고딕·Noto Emoji 를 도장에 쓰는 글자(숫자·괄호·"순서번못찾음박스발주가상실제일부혼합확정극소중대"·"·"·📋📦)만 남겨 pyftsubset 으로 미리 잘라 둔 파일.
 //   pdf-lib 의 런타임 subset(embedFont subset:true)은 이 글꼴들에서 글리프가 깨져 뷰어에 "X"·숫자 일부만 보였다 (2026-10-15).
@@ -435,7 +457,7 @@ function planSummary(plan) {
   };
 }
 
-router.post('/api/shipment/doc-sort/plan', upload.fields(FIELDS), async (req, res) => {
+router.post('/api/shipment/doc-sort/plan', uploadFields, async (req, res) => {
   try {
     const plan = await buildPlan(req);
     plan.cjFilesCount = ((req.files || {}).cj || []).length;
@@ -499,7 +521,7 @@ async function buildPdf(kind, plan, req) {
 //   순서(rk_ship_seq)는 보지 않는다 — 등록은 순서와 무관하고, 출력 때 순서 있는 박스만 고른다.
 //   응답: { registered:{label, manifest}, boxes:[{order, boxNo, label, manifest}], skipped:[장], dupLabel:[장], unpairedManifest:[장] }
 // ══════════════════════════════════════════════════════════════════
-router.post('/api/shipment/docs/register', upload.fields(FIELDS), async (req, res) => {
+router.post('/api/shipment/docs/register', uploadFields, async (req, res) => {
   try {
     const plan = await buildPlan(req);
     if (!plan.labelPages.length) return res.status(400).json({ error: '부착문서가 없습니다. 부착문서 PDF 를 올려주세요.' });
@@ -638,7 +660,7 @@ router.post('/api/shipment/docs/print', express.json(), async (req, res) => {
   }
 });
 
-router.post('/api/shipment/doc-sort/build', upload.fields(FIELDS), async (req, res) => {
+router.post('/api/shipment/doc-sort/build', uploadFields, async (req, res) => {
   try {
     const kind = ['label', 'manifest', 'all'].includes(req.body.kind) ? req.body.kind : 'label';
     const plan = await buildPlan(req);

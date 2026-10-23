@@ -1010,6 +1010,7 @@
         const dsFiles={label:[], manifest:[], cj:[]};
         let dsPlan=null, dsReq=0;
         const DS_LABEL={label:'부착문서', manifest:'동봉문서', cj:'CJ 엑셀'};
+        const DS_MAX={label:200, manifest:200, cj:10};   // 서버(routes/rkShipDocs.js MAX_FILES)와 같은 숫자 — 넘기면 서버가 거부하므로 보내기 전에 막는다
         function openDocSort(){ document.getElementById('dsBack').classList.add('show'); renderDocSort(); }
         function closeDocSort(){ document.getElementById('dsBack').classList.remove('show'); }
         function resetDocSort(){ dsFiles.label=[]; dsFiles.manifest=[]; dsFiles.cj=[]; dsPlan=null; dsReq++; renderDocSort(); }
@@ -1019,6 +1020,7 @@
             for(const f of list||[]){
                 if(!okExt.test(f.name)){ toast(`${DS_LABEL[kind]} 칸에는 ${kind==='cj'?'엑셀':'PDF'} 파일만 올릴 수 있습니다: ${f.name}`); continue; }
                 if(dsFiles[kind].some(x=>x.name===f.name&&x.size===f.size)) continue;   // 같은 파일 두 번 방지
+                if(dsFiles[kind].length>=DS_MAX[kind]){ toast(`${DS_LABEL[kind]}는 한 번에 최대 ${DS_MAX[kind]}개까지 올릴 수 있습니다. 나머지는 등록 후 다시 올려주세요.`); break; }
                 dsFiles[kind].push(f); added++;
             }
             if(added) runDocSortPlan();
@@ -1030,13 +1032,19 @@
             for(const kind of ['label','manifest','cj']) for(const f of dsFiles[kind]) fd.append(kind, f, f.name);
             return fd;
         }
+        /** 응답을 JSON 으로 — JSON 이 아니면(프록시 413·서버 HTML 오류 페이지 등) "Unexpected token '<'" 대신 상태코드로 알려준다 */
+        async function dsJson(res){
+            const text=await res.text();
+            try{ return JSON.parse(text); }
+            catch(_){ return {error:res.status===413?'올린 파일이 너무 커서 서버가 받지 못했습니다. 나눠서 올려주세요.':`서버 응답 오류 (HTTP ${res.status})`}; }
+        }
         async function runDocSortPlan(){
             const my=++dsReq;
             dsPlan=null; renderDocSort(true);
             if(!dsFiles.label.length&&!dsFiles.manifest.length&&!dsFiles.cj.length){ renderDocSort(); return; }
             try{
                 const res=await fetch('/api/shipment/doc-sort/plan',{method:'POST',body:dsForm()});
-                const j=await res.json();
+                const j=await dsJson(res);
                 if(my!==dsReq) return;   // 그사이 파일이 바뀌었으면 버린다
                 if(!res.ok) throw new Error(j.error||'분석 실패');
                 dsPlan=j;
@@ -1102,7 +1110,7 @@
             const org=btn.textContent; btn.textContent='등록 중…';
             try{
                 const res=await fetch('/api/shipment/docs/register',{method:'POST',body:dsForm()});
-                const j=await res.json();
+                const j=await dsJson(res);
                 if(!res.ok) throw new Error(j.error||'등록 실패');
                 let msg=`쉽먼트 등록 완료 — 박스 ${j.registered.label}개 (부착 ${j.registered.label} · 동봉 ${j.registered.manifest})`;
                 if(j.labelOnly.length) msg+=`\n동봉문서 없이 부착만 저장: ${j.labelOnly.join(', ')}`;
