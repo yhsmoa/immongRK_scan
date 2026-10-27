@@ -334,8 +334,6 @@ function assignVirtualBoxes(rows, virtualByBc) {
     return assigned;
   });
 }
-// 입고코드 섞임 판정 — 발주서(boxNo 없음)면 가상 박스 전체에 기록된 입고코드가 둘 이상, 박스 라벨로 들어왔으면 그 박스 안에 둘 이상.
-//   섞였으면 { codes:[…], boxes:[{ boxNo, codes:[…] }] } (코드가 기록된 박스 전부, 번호 순) · 아니면 null. 코드 기록이 없는 예전 저장분은 알 수 없어 null
 // 바코드별 재고 위치 (rk_stocks, 수량 > 0) — 모바일 카드에서 입고 박스 칩 아래에 작게 보여준다 (2026-10-27)
 //   재고정리로 선반에 올린 같은 상품이 어디 있는지 현장에서 바로 보이게. 수량은 배정 예약을 뺀 지금 수량이다.
 async function stockLocsByBarcode(barcodes) {
@@ -353,6 +351,8 @@ async function stockLocsByBarcode(barcodes) {
   for (const list of Object.values(out)) list.sort((a, b) => a.location.localeCompare(b.location, 'ko', { numeric: true }));
   return out;
 }
+// 입고코드 섞임 판정 — 발주서(boxNo 없음)면 가상 박스 전체에 기록된 입고코드가 둘 이상, 박스 라벨로 들어왔으면 그 박스 안에 둘 이상.
+//   섞였으면 { codes:[…], boxes:[{ boxNo, codes:[…] }] } (코드가 기록된 박스 전부, 번호 순) · 아니면 null. 코드 기록이 없는 예전 저장분은 알 수 없어 null
 function mixedInboundCodes(vbOrder, boxNo) {
   const byBox = (vbOrder && vbOrder.codesByBox) || {};
   const sortCodes = (s) => [...s].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
@@ -751,6 +751,67 @@ router.post('/api/inbound/mobile-box-size', async (req, res) => {
   }
 });
 
+// 다음 박스 번호 미리보기 (2026-10-27) — [박스 이동] 화면이 "145530590-4 로 생성" 을 미리 보여준다. 분할 라우트와 같은 규칙(그 발주서의 최대 + 1)
+router.get('/api/inbound/mobile-box-next', async (req, res) => {
+  try {
+    const orderNumber = String(req.query.orderNumber || '').trim();
+    if (!orderNumber) return res.status(400).json({ error: '발주번호가 필요합니다.' });
+    const { data, error } = await sb.from('rk_ship_boxes').select('box_no').eq('order_number', orderNumber);
+    if (error) throw error;
+    const nextBoxNo = Math.max(0, ...(data || []).map(b => parseInt(b.box_no, 10) || 0)) + 1;
+    res.json({ orderNumber, nextBoxNo });
+  } catch (e) {
+    console.error('[rk] inbound/mobile-box-next:', e);
+    res.status(500).json({ error: '다음 박스 번호 조회 실패: ' + e.message });
+  }
+});
+
+// 박스 이동 뒤 박스별 찾음/없음 기록 정리 (2026-10-27) — 옮긴 몫의 기록이 원래 박스에 남아 있으면 행 요약(찾음 판정)이 틀어진다.
+//   cards: [{ listId, allocId, keep, shareTotal }] — keep = 원래 박스에 남는 이 행의 몫. 0 이면 원래 박스 기록을 지우고, 남으면 그 수량으로 줄인다.
+//   새 박스에는 기록을 만들지 않는다(아직 안 담음). 입고 행은 원본(rk_cn_shipping) 기준으로 계산해 미러(rk_shipping_list)에도 같이 쓴다.
+//   박스 이동 자체는 이미 끝났으므로 여기서 실패해도 이동은 되돌리지 않고, 실패 건수만 돌려준다.
+function summarizeMarks(boxes, shareTotal) {
+  const list = Object.values(boxes);
+  if (!list.length) return { mobile_status: null, mobile_at: null, mobile_by: null, mobile_boxes: null };
+  const latest = list.reduce((a, b) => (!a || String(b.at || '') > String(a.at || '')) ? b : a, null);
+  const foundQty = list.filter((e) => e.status === 'found').reduce((s, e) => s + (parseInt(e.qty, 10) || 0), 0);
+  const total = parseInt(shareTotal, 10);
+  const st = list.some((e) => e.status === 'missing') ? 'missing' : (!Number.isFinite(total) || foundQty >= total) ? 'found' : null;
+  return { mobile_status: st, mobile_at: latest.at || null, mobile_by: latest.by || null, mobile_boxes: boxes };
+}
+async function trimMovedMarks(fromBoxNo, cards) {
+  let failed = 0;
+  const key = String(fromBoxNo);
+  for (const c of (Array.isArray(cards) ? cards : [])) {
+    try {
+      const allocId = parseInt(c && c.allocId, 10), listId = parseInt(c && c.listId, 10);
+      const keep = Math.max(0, parseInt(c && c.keep, 10) || 0);
+      let cur = null;
+      if (Number.isFinite(allocId)) {
+        const { data, error } = await sb.from('rk_cn_shipping').select('mobile_boxes').eq('id', allocId).limit(1);
+        if (error) throw error; cur = data && data[0] ? data[0].mobile_boxes : null;
+      } else if (Number.isFinite(listId)) {
+        const { data, error } = await sb.from('rk_shipping_list').select('mobile_boxes').eq('id', listId).limit(1);
+        if (error) throw error; cur = data && data[0] ? data[0].mobile_boxes : null;
+      } else continue;
+      const boxes = { ...boxEntries(cur) };
+      if (!boxes[key]) continue;   // 원래 박스에 기록이 없으면 손댈 것 없음
+      if (keep > 0) boxes[key] = { ...boxes[key], qty: keep }; else delete boxes[key];
+      const patch = summarizeMarks(boxes, c && c.shareTotal);
+      if (Number.isFinite(allocId)) {
+        const { error } = await sb.from('rk_cn_shipping').update(patch).eq('id', allocId); if (error) throw error;
+        const { error: eM } = await sb.from('rk_shipping_list').update(patch).eq('cn_shipping_id', allocId); if (eM) throw eM;
+      } else {
+        const { error } = await sb.from('rk_shipping_list').update(patch).eq('id', listId); if (error) throw error;
+      }
+    } catch (e) {
+      failed++;
+      console.error('[rk] 박스 이동 후 찾음 기록 정리 실패(계속):', e.message);
+    }
+  }
+  return failed;
+}
+
 // 박스 추가하기 (2026-10-22) — 대2로 바꿔도 다 안 들어갈 때, 지금 보는 카드부터 (화면 순서로) 마지막 카드까지의 몫을 **새 가상 박스**로 옮긴다.
 //   카드 순서는 서버 정렬(mobileCmp · [전체]는 박스번호 › 동선)이라 접속할 때마다 같으므로 "이 카드부터 끝까지" 가 뜻이 있다.
 //   화면이 카드마다 (바코드, 출고코드, 그 박스 몫 virtualQty) 를 모아 보내면, 원래 박스(rk_ship_box_items)에서 그만큼 빼고 새 박스(box_no = 최대+1)에 같은 양을 넣는다.
@@ -760,7 +821,10 @@ router.post('/api/inbound/mobile-box-size', async (req, res) => {
 //   · qty 도 같이 줄인다(qty - virtual_qty = 이미 실제 스캔한 개수는 그대로). 옮긴 뒤 0 이 되는 행은 지운다.
 //   · 상품의 찾음/없음(rk_cn_shipping.mobile_*)과 출고개수는 안 건드린다. 원래 박스의 가상확정은 가상 합이 달라져 자동으로 풀린다(라벨 재출력 안내).
 //   · 트랜잭션이 없어 새 박스·아이템을 먼저 넣고 원래 박스를 줄인다. 중간에 실패하면 새 박스를 지워 되돌린다(cascade 로 아이템도).
-//   body: { orderNumber, fromBoxNo, boxSize, worker, moves:[{ barcode, code, qty }] }  → { ok, orderNumber, fromBoxNo, newBoxNo, boxSize, movedQty, movedItems }
+//   body: { orderNumber, fromBoxNo, boxSize, worker, moves:[{ barcode, code, qty }], expectBoxNo?, cards?:[{ listId, allocId, keep, shareTotal }] }
+//     → { ok, orderNumber, fromBoxNo, newBoxNo, boxSize, movedQty, movedItems, markFailed }
+//   2026-10-27 [박스 이동]: 지금 카드는 일부(입력한 개수)만 남기고 나머지를 옮길 수 있다 — moves 의 수량이 그만큼 줄어서 올 뿐 규칙은 같다.
+//     expectBoxNo 가 오면 실제 새 번호와 같을 때만 만든다(409). cards 가 오면 옮긴 몫의 박스별 찾음 기록을 정리한다(trimMovedMarks)
 router.post('/api/inbound/mobile-box-split', async (req, res) => {
   try {
     const orderNumber = String(req.body.orderNumber || '').trim();
@@ -814,6 +878,9 @@ router.post('/api/inbound/mobile-box-split', async (req, res) => {
 
     // 새 박스 + 아이템 넣기
     const newBoxNo = Math.max(0, ...(boxes || []).map(b => parseInt(b.box_no, 10) || 0)) + 1;
+    // 화면이 미리 보여준 번호와 다르면(그사이 다른 폰이 박스를 추가) 만들지 않고 돌려보낸다 — "📦4 로 넘어갑니다" 라고 해 놓고 📦5 가 생기지 않게 (2026-10-27)
+    const expect = parseInt(req.body.expectBoxNo, 10);
+    if (Number.isFinite(expect) && expect !== newBoxNo) return res.status(409).json({ error: `그사이 박스가 추가되어 새 박스 번호가 📦${newBoxNo} 로 바뀌었습니다. 다시 확인해 주세요.`, nextBoxNo: newBoxNo });
     const { data: nb, error: e3 } = await sb.from('rk_ship_boxes').insert({ order_number: orderNumber, box_no: newBoxNo, box_size: boxSize, is_virtual: true }).select('id').single();
     if (e3) throw e3;
     try {
@@ -838,8 +905,9 @@ router.post('/api/inbound/mobile-box-split', async (req, res) => {
       throw err;
     }
     const movedQty = [...newItems.values()].reduce((s, n) => s + n.qty, 0);
-    console.log(`[rk] inbound/mobile-box-split: ${orderNumber}-${fromBoxNo} → 새 📦${newBoxNo}(${boxSize}) ${movedQty}개 · ${newItems.size}종 (${worker || '작업자 미입력'})`);
-    res.json({ ok: true, orderNumber, fromBoxNo, newBoxNo, boxSize, movedQty, movedItems: newItems.size });
+    const markFailed = await trimMovedMarks(fromBoxNo, req.body.cards);
+    console.log(`[rk] inbound/mobile-box-split: ${orderNumber}-${fromBoxNo} → 새 📦${newBoxNo}(${boxSize}) ${movedQty}개 · ${newItems.size}종 (${worker || '작업자 미입력'})${markFailed ? ` · 찾음 기록 정리 실패 ${markFailed}건` : ''}`);
+    res.json({ ok: true, orderNumber, fromBoxNo, newBoxNo, boxSize, movedQty, movedItems: newItems.size, markFailed });
   } catch (e) {
     console.error('[rk] inbound/mobile-box-split:', e);
     res.status(500).json({ error: '박스 추가 실패: ' + e.message });
