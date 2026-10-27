@@ -141,8 +141,12 @@
         .chip.src{background:var(--ink);color:#fff;}
         .chip.none{color:var(--muted2);font-size:15px;font-weight:700;}
         .boxrow .arrow{color:var(--muted2);}
-        .boxrow .srcwrap{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;}
-        .boxrow .srcloc{font-size:13px;font-weight:700;color:var(--muted);line-height:1.35;word-break:keep-all;}
+        .boxrow .srcwrap{display:flex;flex-direction:column;align-items:flex-start;gap:5px;flex:1 1 0;min-width:0;}
+        .boxrow .arrow{flex:none;}
+        .boxrow .srcloc{display:flex;flex-wrap:wrap;gap:4px;max-width:100%;}
+        .boxrow .locbadge{display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:800;color:var(--ink);background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:2px 7px 2px 5px;white-space:nowrap;line-height:1.3;}
+        .boxrow .locbadge small{font-size:11px;font-weight:700;color:var(--muted);}
+        .boxrow .locbadge.more{border-color:var(--line);color:var(--muted);padding:2px 7px;}
         .boxrow .dst{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;min-width:0;}
         .thumb{width:100%;flex:1 1 0;min-height:40px;border-radius:16px;background:var(--fill);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;overflow:hidden;color:var(--muted2);font-size:13px;font-weight:700;}
         .thumb img{width:100%;height:100%;object-fit:contain;background:#fff;}
@@ -283,6 +287,8 @@
             <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 8v8M11 8v8M14 8v8M17 8v8"/></symbol>
             <symbol id="i-img" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5-8 8"/></symbol>
             <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></symbol>
+            <symbol id="i-truck" viewBox="0 0 24 24"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></symbol>
+            <symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></symbol>
         </defs>
     </svg>
 
@@ -720,11 +726,12 @@
             const src=mode==='all'&&r.source==='재고'
                 ? `<span class="chip src stock" title="재고 위치">${ICON('i-search',20,2.2)}${esc(r.위치)||'-'}</span>`
                 : mode==='all'
-                ? `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.출고코드)}-${esc(r.박스명)||'-'}</span>`
-                : `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
+                ? `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-truck',20,2)}${esc(r.출고코드)}-${esc(r.박스명)||'-'}</span>`
+                : `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-truck',20,2)}${esc(r.박스명)||'-'}</span>`;
             // 입고 박스 칩 아래 작은 글씨: 같은 상품의 재고 위치 (2026-10-27 — 재고정리로 선반에 올린 상품이 어디 있는지 보이게)
             const locs=r.source!=='재고'?(r.재고위치||[]):[];
-            const srcLoc=locs.length?`<div class="srcloc" title="${esc(locs.map(l=>`${l.location} ${l.qty}개`).join(', '))}">재고 ${locs.slice(0,3).map(l=>`${esc(l.location)}(${l.qty})`).join(' · ')}${locs.length>3?` 외 ${locs.length-3}곳`:''}</div>`:'';
+            //   위치마다 배지(📍 위치 · 수량), 3곳까지 + "+N"
+            const srcLoc=locs.length?`<div class="srcloc" title="재고 위치: ${esc(locs.map(l=>`${l.location} ${l.qty}개`).join(', '))}">${locs.slice(0,3).map(l=>`<span class="locbadge">${ICON('i-pin',13,2.4)}${esc(l.location)}<small>${l.qty}</small></span>`).join('')}${locs.length>3?`<span class="locbadge more">+${locs.length-3}</span>`:''}</div>`:'';
             const list=(r.boxes||[]);
             const dst=list.length
                 ? list.map(b=>{ const m=boxEntries(r)[String(b.boxNo)]; const mk=m?(m.status==='found'?`<small class="mk ok" title="찾음 · ${esc(m.by||'')}">✓</small>`:`<small class="mk miss" title="없음 · ${esc(m.by||'')}">✕</small>`):'';
