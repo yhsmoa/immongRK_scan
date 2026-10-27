@@ -141,6 +141,8 @@
         .chip.src{background:var(--ink);color:#fff;}
         .chip.none{color:var(--muted2);font-size:15px;font-weight:700;}
         .boxrow .arrow{color:var(--muted2);}
+        .boxrow .srcwrap{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0;}
+        .boxrow .srcloc{font-size:13px;font-weight:700;color:var(--muted);line-height:1.35;word-break:keep-all;}
         .boxrow .dst{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;min-width:0;}
         .thumb{width:100%;flex:1 1 0;min-height:40px;border-radius:16px;background:var(--fill);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;overflow:hidden;color:var(--muted2);font-size:13px;font-weight:700;}
         .thumb img{width:100%;height:100%;object-fit:contain;background:#fff;}
@@ -720,12 +722,15 @@
                 : mode==='all'
                 ? `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.출고코드)}-${esc(r.박스명)||'-'}</span>`
                 : `<span class="chip src" title="중국 입고 박스 ${esc(r.중국번호||'')}">${ICON('i-box',20,2)}${esc(r.박스명)||'-'}</span>`;
+            // 입고 박스 칩 아래 작은 글씨: 같은 상품의 재고 위치 (2026-10-27 — 재고정리로 선반에 올린 상품이 어디 있는지 보이게)
+            const locs=r.source!=='재고'?(r.재고위치||[]):[];
+            const srcLoc=locs.length?`<div class="srcloc" title="${esc(locs.map(l=>`${l.location} ${l.qty}개`).join(', '))}">재고 ${locs.slice(0,3).map(l=>`${esc(l.location)}(${l.qty})`).join(' · ')}${locs.length>3?` 외 ${locs.length-3}곳`:''}</div>`:'';
             const list=(r.boxes||[]);
             const dst=list.length
                 ? list.map(b=>{ const m=boxEntries(r)[String(b.boxNo)]; const mk=m?(m.status==='found'?`<small class="mk ok" title="찾음 · ${esc(m.by||'')}">✓</small>`:`<small class="mk miss" title="없음 · ${esc(m.by||'')}">✕</small>`):'';
                     return `<span class="chip pick" onclick="openSizeSheet(${b.boxNo},${i})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}${mk}</span>`; }).join('')
                 : `<span class="chip none">${ICON('i-box',18,2)}박스 미정 · 직접 스캔</span>`;
-            return `<div class="boxrow">${src}<span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
+            return `<div class="boxrow"><div class="srcwrap">${src}${srcLoc}</div><span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
         }
         function fmtAt(ts){ if(!ts) return ''; const d=new Date(ts); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
         function cardHtml(r,i){

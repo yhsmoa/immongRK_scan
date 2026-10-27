@@ -336,6 +336,23 @@ function assignVirtualBoxes(rows, virtualByBc) {
 }
 // 입고코드 섞임 판정 — 발주서(boxNo 없음)면 가상 박스 전체에 기록된 입고코드가 둘 이상, 박스 라벨로 들어왔으면 그 박스 안에 둘 이상.
 //   섞였으면 { codes:[…], boxes:[{ boxNo, codes:[…] }] } (코드가 기록된 박스 전부, 번호 순) · 아니면 null. 코드 기록이 없는 예전 저장분은 알 수 없어 null
+// 바코드별 재고 위치 (rk_stocks, 수량 > 0) — 모바일 카드에서 입고 박스 칩 아래에 작게 보여준다 (2026-10-27)
+//   재고정리로 선반에 올린 같은 상품이 어디 있는지 현장에서 바로 보이게. 수량은 배정 예약을 뺀 지금 수량이다.
+async function stockLocsByBarcode(barcodes) {
+  const out = {};
+  const rows = await S.chunked(barcodes, 200, async (part) => {
+    const { data, error } = await sb.from('rk_stocks').select('barcode, location, qty').in('barcode', part).gt('qty', 0);
+    if (error) throw error;
+    return data || [];
+  });
+  for (const r of rows) {
+    const loc = String(r.location || '').trim();
+    if (!r.barcode || !loc || loc === '-') continue;
+    (out[r.barcode] ||= []).push({ location: loc, qty: parseInt(r.qty, 10) || 0 });
+  }
+  for (const list of Object.values(out)) list.sort((a, b) => a.location.localeCompare(b.location, 'ko', { numeric: true }));
+  return out;
+}
 function mixedInboundCodes(vbOrder, boxNo) {
   const byBox = (vbOrder && vbOrder.codesByBox) || {};
   const sortCodes = (s) => [...s].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
@@ -425,9 +442,10 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
     const rows = buildArranged(items, allocs).shipping.sort(mobileCmp);
     const barcodes = [...new Set(rows.map(r => r.바코드).filter(Boolean))];
     // 이미지(rk_inventories.img) + 이 발주서의 출고스캔 가상 박스 (가상 박스에 잡힌 상품은 어느 박스에 몇 개인지 카드에 보여준다)
-    const [imgRows, vb] = await Promise.all([
+    const [imgRows, vb, stockLocs] = await Promise.all([
       S.chunked(barcodes, 200, async (part) => { const { data, error } = await sb.from('rk_inventories').select('barcode, img').in('barcode', part); if (error) throw error; return data || []; }),
       loadVirtualBoxes([orderNumber]),
+      stockLocsByBarcode(barcodes),
     ]);
     const img = {};
     for (const r of imgRows) { const u = String(r.img || '').trim(); if (r.barcode && u && !img[r.barcode]) img[r.barcode] = u; }
@@ -443,7 +461,7 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
       else if (boxNo != null) { mine = mine.filter(b => b.boxNo === boxNo); if (!mine.length) return; }
       // shareTotal: 이 행이 가상 박스들에 잡힌 몫의 합(박스 보기로 걸러내기 전) — 박스별 찾음을 모아 행 요약을 낼 때 쓴다. 박스가 없으면 행의 출고개수
       const shareTotal = assigned[i].length ? assigned[i].reduce((s, b) => s + (b.virtualQty || 0), 0) : (parseInt(r.출고개수, 10) || 0);
-      out.push({ ...r, img: img[r.바코드] || null, boxes: mine, shareTotal });
+      out.push({ ...r, img: img[r.바코드] || null, boxes: mine, shareTotal, 재고위치: stockLocs[r.바코드] || [] });
     });
     // mixed: 입고코드가 둘 이상 섞인 발주서/박스면 { codes, boxes } — 화면이 카드 진입 전에 "입고일자 확인" 모달을 띄운다 (2026-10-15)
     res.json({ rows: out, boxNo, boxExists, mixed: mixedInboundCodes(vb[orderNumber], boxNo) });
@@ -602,7 +620,10 @@ router.get('/api/mobile/all-list', async (req, res) => {
     const [rows, vb] = await Promise.all([loadAllModeRows([orderNumber]), loadVirtualBoxes([orderNumber], { includeStock: true })]);
     if (!rows.length) return res.json({ rows: [], boxNo, boxExists: true, mixed: null });
     const barcodes = [...new Set(rows.map((r) => r.바코드).filter(Boolean))];
-    const imgRows = await S.chunked(barcodes, 200, async (part) => { const { data, error } = await sb.from('rk_inventories').select('barcode, img').in('barcode', part); if (error) throw error; return data || []; });
+    const [imgRows, stockLocs] = await Promise.all([
+      S.chunked(barcodes, 200, async (part) => { const { data, error } = await sb.from('rk_inventories').select('barcode, img').in('barcode', part); if (error) throw error; return data || []; }),
+      stockLocsByBarcode(barcodes),
+    ]);
     const img = {};
     for (const r of imgRows) { const u = String(r.img || '').trim(); if (r.barcode && u && !img[r.barcode]) img[r.barcode] = u; }
     const boxes = (vb[orderNumber] || {}).boxes || [];
@@ -614,7 +635,7 @@ router.get('/api/mobile/all-list', async (req, res) => {
       if (boxNo === 0) { if (mine.length) return; }
       else if (boxNo != null) { mine = mine.filter((b) => b.boxNo === boxNo); if (!mine.length) return; }
       const shareTotal = assigned[i].length ? assigned[i].reduce((s, b) => s + (b.virtualQty || 0), 0) : (parseInt(r.출고개수, 10) || 0);
-      out.push({ ...r, img: img[r.바코드] || null, boxes: mine, shareTotal });
+      out.push({ ...r, img: img[r.바코드] || null, boxes: mine, shareTotal, 재고위치: stockLocs[r.바코드] || [] });
     });
     // 박스 번호 순 → 같은 박스 안은 위 동선 순서 그대로 (stable sort)
     out.sort((a, b) => firstBoxNo(a.boxes) - firstBoxNo(b.boxes));
