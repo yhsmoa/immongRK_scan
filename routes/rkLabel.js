@@ -123,29 +123,54 @@ router.post('/api/label/items', async (req, res) => {
 const mmdd = (ymd) => { const m = String(ymd || '').match(/^\d{4}(\d{2})(\d{2})$/); return m ? m[1] + m[2] : ''; };
 // ── 찾아야 할 곳 (2026-10-20, 신규 발주서 가상버전 세로 박스 라벨) ──
 //   박스 안 가상 분량의 출처 = rk_ship_box_items.virtual_codes 키 ('재고' | 입고코드). 실제 스캔 분량은 출처 기록이 없어 세지 않는다.
-//   bx_source_count 2 · bx_source_badge ❷ · bx_sources "▲재고 ▲1011" · bx_sources_qty "▲재고 8 ▲1011 4" · bx_sources_line "❷ ▲재고 ▲1011"
-//   bx_inbound_boxes "▲1011-BR3 ▲1011-BR7" — 그 박스의 입고 분량이 배정된 입고 박스(rk_cn_shipping → 아이템 박스명)
-//   항목마다 앞에 ▲ (2026-10-20): 가운뎃점은 잘 안 보이고, '-' 는 입고 박스 표기(1011-BR3)와, '/' 는 숫자 1 과 헷갈렸다.
-//   ▲ 는 일반 글꼴의 도형 문자라 1비트 인쇄에서도 또렷하다 (컬러 이모지 🔎 는 뭉개짐)
+//   2026-10-27 (현장 의견): "재고" 한 단어로는 어디서 찾을지 모른다 → 재고는 위치로 층을 나눈다.
+//     위치 101A11 처럼 1+두 자리+영문 = 1층, 301A01 = 3층, 그 밖(바구니·박스·BOX·25겨울22 …) = 재고(기타). 위치는 rk_shipping_list 재고 행에서.
+//     표시: 1층·3층 = 📍, 재고(기타) = ★, 입고 = 🚚입고코드 → "📍1층 📍3층 ★재고(기타) 🚚1011". 흑원 숫자(❷)는 뺐다.
+//     📍·🚚 는 라벨 서비스가 흑백 벡터 아이콘으로 그린다(컬러 이모지는 1비트에서 뭉개져서). ★ 는 글꼴 문자라 그대로 또렷하다.
+//   bx_source_count · bx_source_badge 는 쓰는 템플릿을 위해 남긴다(찾을 곳 수 = 층 + 입고코드 개수).
+//   bx_inbound_boxes "🚚1011-BR3 🚚1011-BR7" — 그 박스의 입고 분량이 배정된 입고 박스(rk_cn_shipping → 아이템 박스명)
 const CIRCLED = ['❶', '❷', '❸', '❹', '❺', '❻', '❼', '❽', '❾', '❿', '⓫', '⓬', '⓭', '⓮', '⓯', '⓰', '⓱', '⓲', '⓳', '⓴'];
 const circled = (n) => (n > 0 ? (CIRCLED[n - 1] || `(${n})`) : '');
 const STOCK_KEY = '재고';
-function sourceFields(codeQty, inboundBoxes) {
-  const keys = Object.keys(codeQty).filter((k) => codeQty[k] > 0)
-    .sort((a, b) => ((a === STOCK_KEY ? 0 : 1) - (b === STOCK_KEY ? 0 : 1)) || a.localeCompare(b, 'ko', { numeric: true }));
-  const n = keys.length;
-  const MARK = '▲';
-  const names = keys.map((k) => MARK + k).join(' ');
+const ETC_FLOOR = '재고(기타)';
+const FLOOR_ORDER = ['1층', '3층', ETC_FLOOR];
+const stockFloor = (loc) => {
+  const m = /^([13])\d{2}[A-Za-z]/.exec(String(loc || '').trim());
+  return m ? `${m[1]}층` : ETC_FLOOR;
+};
+const MARK_FLOOR = '📍', MARK_ETC = '★', MARK_INBOUND = '🚚';
+function sourceFields(stockQty, inboundQty, inboundBoxes) {
+  const floors = FLOOR_ORDER.filter((f) => stockQty[f] != null);
+  const codes = Object.keys(inboundQty).filter((k) => inboundQty[k] > 0).sort((a, b) => a.localeCompare(b, 'ko', { numeric: true }));
+  const entries = [
+    ...floors.map((f) => ({ name: (f === ETC_FLOOR ? MARK_ETC : MARK_FLOOR) + f, qty: stockQty[f] })),
+    ...codes.map((c) => ({ name: MARK_INBOUND + c, qty: inboundQty[c] })),
+  ];
+  const n = entries.length;
+  const names = entries.map((e) => e.name).join(' ');
   return {
     bx_source_count: n ? n : '',
     bx_source_badge: circled(n),
     bx_sources: names,
-    bx_sources_qty: keys.map((k) => `${MARK}${k} ${codeQty[k]}`).join(' '),
-    bx_sources_line: n ? `${circled(n)} ${names}` : '',
-    bx_inbound_boxes: (inboundBoxes || []).map((b) => MARK + b).join(' '),
+    bx_sources_qty: entries.map((e) => (e.qty ? `${e.name} ${e.qty}` : e.name)).join(' '),
+    bx_sources_line: names,
+    bx_inbound_boxes: (inboundBoxes || []).map((b) => MARK_INBOUND + b).join(' '),
   };
 }
-const EMPTY_SOURCES = sourceFields({}, []);
+// 출력 묶음 (groupBySource) — 1층 › 1층+3층 › 3층 › 재고(기타) › 입고 › 출처 없음(실제 스캔·가상스캔 전)
+//   층이 있으면 층으로 묶는다(1층+재고(기타)는 1층 묶음, 1층+입고도 1층 묶음). 층이 없고 재고(기타)가 있으면 기타, 입고만이면 입고
+const SOURCE_GROUPS = ['1층', '1층+3층', '3층', ETC_FLOOR, '입고', '출처 없음'];
+function sourceGroup(data) {
+  const s = String(data.bx_sources || '');
+  const has1 = s.includes(MARK_FLOOR + '1층'), has3 = s.includes(MARK_FLOOR + '3층');
+  if (has1 && !has3) return 0;
+  if (has1 && has3) return 1;
+  if (has3) return 2;
+  if (s.includes(MARK_ETC + ETC_FLOOR)) return 3;
+  if (s.includes(MARK_INBOUND)) return 4;
+  return 5;
+}
+const EMPTY_SOURCES = sourceFields({}, {}, []);
 const orderBoxDate = (no, boxNo, ymd) => { const d = mmdd(ymd); return `${no}-${boxNo}${d ? ` (${d})` : ''}`; };
 router.post('/api/label/order-boxes', async (req, res) => {
   try {
@@ -153,9 +178,10 @@ router.post('/api/label/order-boxes', async (req, res) => {
       .map((v) => String(v == null ? '' : v).trim()).filter(Boolean))];
     if (!orderNumbers.length) return res.status(400).json({ error: '발주번호가 없습니다.' });
     const skipPrinted = req.body.skipPrinted !== false;
+    const groupBySource = req.body.groupBySource === true;   // 찾을 곳별로 모아 출력 (신규 발주서 [박스라벨], 2026-10-27)
 
     // 1000행씩 나눠 읽으므로 id 순 정렬 (정렬 없는 range 는 행이 빠지거나 겹칠 수 있다)
-    const [headers, boxes, boxItems, found] = await Promise.all([
+    const [headers, boxes, boxItems, found, stockRows] = await Promise.all([
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_orders')
         .select('order_number, logistics_center, arrival_date, order_qty').in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
@@ -163,6 +189,8 @@ router.post('/api/label/order-boxes', async (req, res) => {
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
         .select('box_id, order_number, barcode, qty, virtual_qty, virtual_codes').in('order_number', nos).order('id', { ascending: true }))),
       skipPrinted ? S.mobileFoundByKey(orderNumbers) : Promise.resolve(new Map()),
+      S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_shipping_list')
+        .select('order_number, barcode, location').eq('source', STOCK_KEY).in('order_number', nos).order('id', { ascending: true }))),
     ]);
     // 가상 준비완료 판정(가상확정 ✅ 통합 규칙) — 라벨 확정 또는 모바일 입고로 그 박스의 가상 상품을 다 찾음
     const readiness = S.virtualReadiness(boxItems, found);
@@ -176,7 +204,17 @@ router.post('/api/label/order-boxes', async (req, res) => {
     const headerByNo = new Map();
     for (const h of headers) { const k = String(h.order_number); if (!headerByNo.has(k)) headerByNo.set(k, h); }
     // 찾아야 할 곳 — 박스별 출처 개수({코드: n}) + 입고 분량의 입고코드-박스명
-    const codeQtyByBox = new Map();   // box_id → {코드: n}
+    const codeQtyByBox = new Map();   // box_id → {코드: n}  (입고코드만 — 재고는 아래 stockByBox 로 층별)
+    const stockByBox = new Map();     // box_id → {'1층'|'3층'|'재고(기타)': n}
+    // 재고 위치: 발주번호+바코드 → 층 구분들 (한 바코드가 두 위치에서 나가면 둘 다)
+    const floorsByKey = new Map();
+    for (const r of stockRows) {
+      const k = `${r.order_number}|${r.barcode}`;
+      const f = stockFloor(r.location);
+      const list = floorsByKey.get(k) || floorsByKey.set(k, []).get(k);
+      if (!list.includes(f)) list.push(f);
+    }
+    for (const l of floorsByKey.values()) l.sort((x, y) => FLOOR_ORDER.indexOf(x) - FLOOR_ORDER.indexOf(y));
     const inbBcByBox = new Map();     // box_id → [{barcode, code}]
     for (const it of boxItems) {
       const vq = parseInt(it.virtual_qty, 10) || 0;
@@ -187,7 +225,15 @@ router.post('/api/label/order-boxes', async (req, res) => {
       for (const k of Object.keys(codes)) {
         const q = Math.min(left, Math.max(0, parseInt(codes[k], 10) || 0));
         if (q <= 0) continue;
-        m[k] = (m[k] || 0) + q; left -= q;
+        left -= q;
+        if (k === STOCK_KEY) {
+          // 재고 분량 → 층. 바코드가 여러 층에서 나가면 각 층을 다 표시하고 개수는 첫 층에 (어느 위치 몫이 이 박스에 담겼는지는 기록이 없다)
+          const floors = floorsByKey.get(`${it.order_number}|${it.barcode}`) || [ETC_FLOOR];
+          const sm = stockByBox.get(it.box_id) || stockByBox.set(it.box_id, {}).get(it.box_id);
+          floors.forEach((f, i) => { sm[f] = (sm[f] || 0) + (i === 0 ? q : 0); });
+          continue;
+        }
+        m[k] = (m[k] || 0) + q;
         if (k !== STOCK_KEY) (inbBcByBox.get(it.box_id) || inbBcByBox.set(it.box_id, []).get(it.box_id)).push({ barcode: it.barcode, code: k });
       }
       codeQtyByBox.set(it.box_id, m);
@@ -220,7 +266,7 @@ router.post('/api/label/order-boxes', async (req, res) => {
         const v = `${x.code}-${bn}`; if (!list.includes(v)) list.push(v);
       }
       list.sort((p, q) => p.localeCompare(q, 'ko', { numeric: true }));
-      return sourceFields(codeQtyByBox.get(b.id) || {}, list);
+      return sourceFields(stockByBox.get(b.id) || {}, codeQtyByBox.get(b.id) || {}, list);
     };
     // 박스별 상품 합계 — box_id → { qty, barcodes }
     const sumByBox = new Map();
@@ -309,7 +355,15 @@ router.post('/api/label/order-boxes', async (req, res) => {
         });
       }
     }
-    res.json({ items, orderCount, noBox, notFound, skipPrinted, skipped, allPrinted });
+    // 찾을 곳별로 모으기 — 1층 › 1층+3층 › 3층 › 재고(기타) › 입고 › 출처 없음. 같은 묶음 안은 원래 순서(발주서 › 박스번호) 그대로
+    let groups = null;
+    if (groupBySource) {
+      const ranked = items.map((it, i) => ({ it, i, g: sourceGroup(it.data) }));
+      ranked.sort((x, y) => (x.g - y.g) || (x.i - y.i));
+      items.splice(0, items.length, ...ranked.map((r) => r.it));
+      groups = SOURCE_GROUPS.map((label, g) => ({ label, count: ranked.filter((r) => r.g === g).length })).filter((x) => x.count);
+    }
+    res.json({ items, orderCount, noBox, notFound, skipPrinted, skipped, allPrinted, groups });
   } catch (e) {
     console.error('[rk] label/order-boxes:', e);
     res.status(500).json({ error: '박스 라벨 데이터 조회 중 오류가 발생했습니다: ' + e.message });

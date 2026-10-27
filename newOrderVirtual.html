@@ -1008,13 +1008,15 @@
             try{
                 const cfg=await getLabelCfg();
                 const skipPrinted=document.getElementById('labelSkipPrinted').checked;
-                const j=await postJson('/api/label/order-boxes',{orderNumbers, skipPrinted});
+                // groupBySource (2026-10-27): 찾을 곳별로 모아 출력 — 1층 › 1층+3층 › 3층 › 재고(기타) › 입고 (묶음 안은 발주서 › 박스번호 순)
+                const j=await postJson('/api/label/order-boxes',{orderNumbers, skipPrinted, groupBySource:true});
                 const skippedN=(j.skipped||[]).length, allPrintedN=(j.allPrinted||[]).length;
                 if(!j.items.length && !skippedN){ toast('선택한 발주번호를 발주서에서 찾지 못했습니다.'); return; }
                 if(j.noBox.length) toast(`가상스캔 전 발주서 ${j.noBox.length}건은 박스 정보 없이(박스 1/1) 발주번호 라벨 1장만 나갑니다.\n${j.noBox.join(', ')}`, 5000);
                 else if(skippedN) toast(`이미 뽑힌 박스 ${skippedN}개(실제 스캔·가상확정)는 제외했습니다.${allPrintedN?` 발주서 ${allPrintedN}건은 전부 제외.`:''}`);
                 labelPending={ type:'label-print:print', requestId:String(Date.now()), source:cfg.source, userId:cfg.userId, labelType:'box', autoPrint:false, printerMap:loadLabelPrinterMap(), items:j.items };
-                document.getElementById('labelPrintSub').textContent=`박스 ${j.items.length}개 · 발주서 ${j.orderCount}건${skippedN?` · 제외 ${skippedN}`:''}`;
+                const grp=(j.groups||[]).map(g=>`${g.label} ${g.count}`).join(' › ');
+                document.getElementById('labelPrintSub').textContent=`박스 ${j.items.length}개 · 발주서 ${j.orderCount}건${skippedN?` · 제외 ${skippedN}`:''}${grp?` · 출력 순서 ${grp}`:''}`;
                 document.getElementById('labelPrintStatus').textContent=(!j.items.length&&skippedN)?`선택한 발주서의 박스 라벨은 모두 이미 뽑힌 것으로 봅니다 (${skippedN}박스). 전부 뽑으려면 위 체크를 푸세요.`:'';
                 document.getElementById('labelBack').classList.add('show');
                 const frame=document.getElementById('labelPrintFrame');
