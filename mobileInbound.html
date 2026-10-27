@@ -244,17 +244,14 @@
         .sz-grid button.cur{border-color:#3C3489;background:#EEEDFE;color:#3C3489;}
         .sz-grid button:disabled{opacity:.45;}
         .sz-sheet{max-height:92vh;overflow-y:auto;}
-        /* 담는 박스 시트 (2026-10-27) — 첫 화면은 [박스 크기 변경] [박스 이동] 두 버튼만. 크기 변경 = 고르고 [저장] · 박스 이동 = 새 박스 크기 + 이 상품을 지금 박스에 남길 개수 */
-        .sz-menu{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
-        .sz-opt{display:flex;align-items:center;gap:14px;width:100%;text-align:left;border:1.5px solid var(--line);background:#fff;border-radius:16px;padding:14px 16px;font:inherit;cursor:pointer;color:var(--ink);}
-        .sz-opt:active{background:var(--fill);}
-        .sz-opt:disabled{opacity:.5;cursor:default;}
-        .sz-opt .ic{flex:none;width:46px;height:46px;border-radius:13px;background:#EEEDFE;color:#3C3489;display:flex;align-items:center;justify-content:center;}
-        .sz-opt b{display:block;font-size:17px;font-weight:900;letter-spacing:-.01em;}
-        .sz-opt small{display:block;font-size:13px;font-weight:600;line-height:1.4;color:var(--muted);margin-top:2px;}
-        .sz-opt small em{font-style:normal;font-weight:800;color:#3C3489;}
+        /* 담는 박스 시트 (2026-10-27) — 위 탭 [박스 크기 변경] [박스 이동]. 크기 변경 = 고르고 [저장] · 박스 이동 = 이 상품을 지금 박스에 남길 개수(숫자 패드) + 새 박스 크기 */
+        .sz-tabs{display:flex;gap:6px;background:#F1F0F5;border-radius:14px;padding:4px;margin-bottom:12px;}
+        .sz-tabs button{flex:1;height:46px;border:0;border-radius:11px;background:transparent;font:inherit;font-size:16px;font-weight:900;color:var(--muted);cursor:pointer;}
+        .sz-tabs button.on{background:#fff;color:#3C3489;box-shadow:0 1px 4px rgba(0,0,0,.12);}
+        .sz-tabs button.off{opacity:.45;}
         .sz-sec{font-size:13px;font-weight:800;color:var(--muted);margin:2px 2px 8px;}
         .sz-actions{display:flex;gap:8px;margin-bottom:4px;}
+        .sz-actions.stick{position:sticky;bottom:-16px;background:#fff;padding:8px 0 10px;margin-bottom:0;}   /* 시트가 길어 스크롤돼도 [박스 생성] 이 늘 보이게 */
         .sz-actions .btn{height:54px;font-size:17px;}
         .sz-actions .btn.back{flex:0 0 96px;}
         .mv-new{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#F7F6FF;border:1.5px solid #C7C3F5;border-radius:14px;padding:10px 14px;margin-bottom:12px;}
@@ -263,14 +260,17 @@
         .mv-new .sz{flex:none;font-size:15px;font-weight:900;color:#3C3489;background:#fff;border:1.5px solid #C7C3F5;border-radius:10px;padding:4px 10px;}
         .mv-new .sz.none{color:#B23A2E;border-color:#F3C4BE;}
         .mv-item{font-size:13.5px;font-weight:700;color:var(--ink2);margin:0 2px 8px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-        .mv-qty{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
-        .mv-qty button{flex:none;width:54px;height:54px;border-radius:14px;border:1.5px solid var(--line);background:#fff;font:inherit;font-size:26px;font-weight:900;color:var(--ink2);cursor:pointer;}
-        .mv-qty button:disabled{opacity:.4;}
-        .mv-qty input{flex:1;min-width:0;height:54px;border:1.5px solid var(--line);border-radius:14px;text-align:center;font:inherit;font-size:26px;font-weight:900;color:var(--ink);outline:none;background:#fff;}
-        .mv-qty input:focus{border-color:#3C3489;box-shadow:0 0 0 4px rgba(60,52,137,.12);}
-        .mv-qty input::-webkit-outer-spin-button,.mv-qty input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
-        .mv-qty input[type=number]{-moz-appearance:textfield;appearance:textfield;}
-        .mv-qty .of{flex:none;font-size:15px;font-weight:800;color:var(--muted);}
+        /* 남길 개수 — 화면 숫자 패드 (폰 키보드가 시트를 가리지 않게). 몫을 넘는 자리는 받지 않고 흔들어 알린다 */
+        .mv-keep{display:flex;align-items:center;justify-content:center;gap:8px;height:58px;border:2px solid #3C3489;border-radius:14px;background:#F7F6FF;font-size:32px;font-weight:900;color:#3C3489;line-height:1;}
+        .mv-keep.empty{color:#A9A6C9;font-size:20px;}
+        .mv-keep small{font-size:15px;font-weight:800;color:var(--muted);}
+        .mv-keep.shake{animation:mvShake .25s;border-color:#B23A2E;}
+        @keyframes mvShake{25%{transform:translateX(-6px);}75%{transform:translateX(6px);}}
+        .mv-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0 12px;}
+        .mv-pad button{height:48px;border:1.5px solid var(--line);border-radius:12px;background:#fff;font:inherit;font-size:22px;font-weight:900;color:var(--ink);cursor:pointer;-webkit-tap-highlight-color:transparent;}
+        .mv-pad button:active{background:#EEEDFE;}
+        .mv-pad button.fn{font-size:16px;color:var(--muted);background:#F7F7F9;}
+        .mv-pad button:disabled{opacity:.45;}
         .mv-sum{background:var(--fill);border-radius:14px;padding:10px 14px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;}
         .mv-sum .ln{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:14.5px;font-weight:700;color:var(--ink2);}
         .mv-sum .ln b{font-size:16px;font-weight:900;color:var(--ink);white-space:nowrap;}
@@ -438,8 +438,8 @@
 
     <!-- 박스 크기 변경 시트 — 덱 제목 📦N 또는 카드 담는 곳 칩을 누르면 (2026-10-20). 바뀌는 건 rk_ship_boxes.box_size 뿐 -->
     <div class="sz-back" id="szBack" onclick="if(event.target.id==='szBack')closeSizeSheet()">
-        <div class="sz-sheet" role="dialog" aria-labelledby="szTitle">
-            <h2 id="szTitle">담는 박스</h2>
+        <div class="sz-sheet" role="dialog" aria-label="담는 박스 — 박스 크기 변경 · 박스 이동">
+            <div class="sz-tabs" id="szTabs" role="tablist"></div>
             <p id="szSub"></p>
             <div id="szBody"></div>
             <button class="btn ghost" onclick="closeSizeSheet()">닫기</button>
@@ -929,15 +929,15 @@
         }
 
         // ── 담는 박스 시트 (2026-10-27 개편) — 덱 제목 📦N · 카드의 담는 곳 칩 · 완료 카드의 박스 버튼에서 연다 ──
-        //   첫 화면(menu): [박스 크기 변경] [박스 이동] 두 버튼만 — 예전엔 크기 버튼과 박스 추가하기가 한 화면에 있어 헷갈렸다.
+        //   위 탭 [박스 크기 변경] [박스 이동] — 고르면 아래 내용이 바뀐다. 카드가 없으면(완료 카드에서 열면) 박스 이동 탭은 흐리게 + 누르면 이유.
         //   size: 크기를 고르고 [저장] (POST /api/inbound/mobile-box-size). rk_ship_boxes.box_size 만 바뀐다
-        //   move: 새 박스 크기 + "이 상품을 지금 박스에 몇 개 담나요" → 입력한 개수만 남기고, 이 상품의 나머지와 이후 카드의 이 박스 몫을 새 박스로
+        //   move: "이 상품을 지금 박스에 몇 개 담나요"(화면 숫자 패드) + 새 박스 크기 → 입력한 개수만 남기고, 이 상품의 나머지와 이후 카드의 이 박스 몫을 새 박스로
         //         (POST /api/inbound/mobile-box-split · 새 번호 = 그 발주서의 최대 + 1, 화면에 미리 보여준 번호와 다르면 서버가 409)
         //         [박스 생성] → 확인 모달 [넘어가기] → 만들고 새 박스 카드로 바로 이동
         //   카드 순서는 서버가 정한 고정 순서라 "이 카드 이후" 가 매번 같다. 옮기는 건 가상 박스 배정뿐 — 출고개수는 그대로,
         //   옮긴 몫의 박스별 찾음 기록은 서버가 정리한다(원래 박스에 남는 몫만 남김).
         const BOX_SIZES=['극소','소','중','대','대2'];
-        let szBox=null, szBusy=false, szIdx=null, szView='menu', szPick=null;
+        let szBox=null, szBusy=false, szIdx=null, szView='size', szPick=null;
         let mvSize=null, mvKeep='', mvNext=null, mvNextErr='';
         function sizeOfBox(boxNo){ for(const r of rows) for(const b of (r.boxes||[])) if(b.boxNo===boxNo) return b.boxSize||''; const o=orders.find(o=>o.orderNumber===curOrder&&o.boxNo===boxNo); return o?(o.boxSize||''):''; }
         const shareIn=(r,boxNo)=>{ const b=r&&(r.boxes||[]).find(b=>b.boxNo===boxNo); return b?Math.max(0,Number(b.virtualQty)||0):0; };
@@ -947,39 +947,30 @@
             // 칩에서 열면 그 카드, 제목에서 열면 지금 보고 있는 카드(그 박스에 몫이 있을 때만). 완료 카드에서 열면 카드 없음 → 박스 이동 불가
             const ci=Number.isInteger(cardIdx)?cardIdx:idx;
             szIdx=rows[ci]&&shareIn(rows[ci],boxNo)>0?ci:null;
-            szView='menu'; szPick=null; mvSize=null; mvKeep=''; mvNext=null; mvNextErr='';
+            szView='size'; szPick=sizeOfBox(boxNo)||null; mvSize=null; mvKeep=''; mvNext=null; mvNextErr='';
             renderSizeSheet();
             $('szBack').classList.add('show');
         }
-        function closeSizeSheet(){ if(szBusy) return; $('szBack').classList.remove('show'); szBox=null; szIdx=null; szView='menu'; }
+        function closeSizeSheet(){ if(szBusy) return; $('szBack').classList.remove('show'); szBox=null; szIdx=null; szView='size'; }
+        const NO_CARD_MSG='상품 카드의 담는 박스 칩을 눌러야 그 상품부터 나눌 수 있습니다';
         function szGo(view){
-            if(szBusy) return;
+            if(szBusy||szView===view) return;
+            if(view==='move'&&szIdx==null){ playWarn(); toast(NO_CARD_MSG); return; }
             szView=view;
             if(view==='size') szPick=sizeOfBox(szBox)||null;
             if(view==='move'){ mvSize=null; mvKeep=''; loadNextBoxNo(); }
             renderSizeSheet();
-            if(view==='move') setTimeout(()=>{ const i=$('mvKeep'); if(i) i.focus(); },60);
         }
         function renderSizeSheet(){
             const cur=sizeOfBox(szBox), label=`${esc(curOrder)}-${szBox}`;
             const body=$('szBody');
-            if(szView==='size'){
-                $('szTitle').textContent='박스 크기 변경';
-                $('szSub').innerHTML=`<b>${label}</b> · 지금 <b>${esc(cur)||'크기 없음'}</b> — 바꿀 크기를 고르고 저장하세요`;
-                body.innerHTML=`<div class="sz-grid">${BOX_SIZES.map(sz=>`<button class="${sz===szPick?'cur':''}" ${szBusy?'disabled':''} onclick="szPick='${sz}';renderSizeSheet()">${sz}</button>`).join('')}</div>
-                    <div class="sz-actions"><button class="btn back" ${szBusy?'disabled':''} onclick="szGo('menu')">뒤로</button><button class="btn primary" ${szBusy||!szPick||szPick===cur?'disabled':''} onclick="changeBoxSize()">${szBusy?'저장 중…':'저장'}</button></div>`;
-                return;
-            }
+            if(szView==='move'&&szIdx==null) szView='size';
+            $('szTabs').innerHTML=[['size','박스 크기 변경'],['move','박스 이동']].map(([k,t])=>
+                `<button role="tab" aria-selected="${szView===k}" class="${szView===k?'on':''}${k==='move'&&szIdx==null?' off':''}" ${szBusy?'disabled':''} onclick="szGo('${k}')">${t}</button>`).join('');
             if(szView==='move'){ renderMoveView(); return; }
-            // menu
-            $('szTitle').textContent='담는 박스';
-            $('szSub').innerHTML=`<b>${label}</b> · 지금 <b>${esc(cur)||'크기 없음'}</b>`;
-            const r=szIdx!=null?rows[szIdx]:null;
-            const moveSub=r?`이 상품부터 새 박스로 나눠 담기 <em>· 이 상품 ${shareIn(r,szBox)}개</em>`:'상품 카드의 담는 박스 칩을 눌러야 그 상품부터 나눌 수 있습니다';
-            body.innerHTML=`<div class="sz-menu">
-                <button class="sz-opt" onclick="szGo('size')"><span class="ic">${ICON('i-box',24,2)}</span><span><b>박스 크기 변경</b><small>📦${szBox} 상자 크기만 바꿉니다 · 지금 <em>${esc(cur)||'크기 없음'}</em></small></span></button>
-                <button class="sz-opt" ${r?'':'disabled'} onclick="szGo('move')"><span class="ic">${ICON('i-arrow',24,2.4)}</span><span><b>박스 이동</b><small>${moveSub}</small></span></button>
-            </div>`;
+            $('szSub').innerHTML=`<b>${label}</b> · 지금 <b>${esc(cur)||'크기 없음'}</b> — 바꿀 크기를 고르고 저장하세요`;
+            body.innerHTML=`<div class="sz-grid">${BOX_SIZES.map(sz=>`<button class="${sz===szPick?'cur':''}" ${szBusy?'disabled':''} onclick="szPick='${sz}';renderSizeSheet()">${sz}</button>`).join('')}</div>
+                <div class="sz-actions"><button class="btn primary" ${szBusy||!szPick||szPick===cur?'disabled':''} onclick="changeBoxSize()">${szBusy?'저장 중…':'저장'}</button></div>`;
         }
         async function loadNextBoxNo(){
             mvNext=null; mvNextErr='';
@@ -1021,25 +1012,25 @@
         }
         function renderMoveView(){
             const r=rows[szIdx];
-            if(!r){ szView='menu'; renderSizeSheet(); return; }
-            $('szTitle').textContent='박스 이동';
+            if(!r){ szView='size'; renderSizeSheet(); return; }
             $('szSub').innerHTML=`<b>${esc(curOrder)}-${szBox}</b> 에서 이 상품부터 새 박스로 나눕니다`;
             const share=shareIn(r,szBox);
             const nm=String(r.상품명||'').split(',')[0].slice(0,40);
             $('szBody').innerHTML=`<div class="mv-new"><span><small>새 박스</small><span class="no">${esc(curOrder)}-${mvNext!=null?mvNext:'…'}</span></span><span class="sz ${mvSize?'':'none'}">${mvSize?esc(mvSize):'크기 선택'}</span></div>
-                <div class="sz-sec">새 박스 크기</div>
-                <div class="sz-grid">${BOX_SIZES.map(sz=>`<button class="${sz===mvSize?'cur':''}" ${szBusy?'disabled':''} onclick="mvSize='${sz}';renderMoveView()">${sz}</button>`).join('')}</div>
                 <div class="sz-sec">이 상품을 📦${szBox} 에 몇 개 담나요?</div>
                 <div class="mv-item" title="${esc(r.상품명||'')}">${esc(nm)} · ${esc(r.바코드||'')}</div>
-                <div class="mv-qty"><button type="button" ${szBusy?'disabled':''} onclick="mvStep(-1)" aria-label="하나 빼기">−</button>
-                    <input id="mvKeep" type="number" inputmode="numeric" min="0" max="${share}" placeholder="개수" value="${esc(mvKeep)}" ${szBusy?'disabled':''} oninput="mvInput(this.value)">
-                    <button type="button" ${szBusy?'disabled':''} onclick="mvStep(1)" aria-label="하나 더하기">+</button><span class="of">/ ${share}개</span></div>
+                <div class="mv-keep" id="mvKeepNum"><span id="mvKeepVal"></span><small>/ ${share}개</small></div>
+                <div class="mv-pad">${PAD_KEYS.map(k=>`<button type="button" class="${k==='C'||k==='B'?'fn':''}" ${szBusy?'disabled':''} onclick="padKey('${k}')" aria-label="${k==='C'?'지우기':k==='B'?'한 자리 지우기':k}">${k==='C'?'지우기':k==='B'?'⌫':k}</button>`).join('')}</div>
+                <div class="sz-sec">새 박스 크기</div>
+                <div class="sz-grid">${BOX_SIZES.map(sz=>`<button class="${sz===mvSize?'cur':''}" ${szBusy?'disabled':''} onclick="mvSize='${sz}';renderMoveView()">${sz}</button>`).join('')}</div>
                 <div id="mvSum"></div>`;
             renderMoveSummary();
         }
         // 요약·버튼만 다시 그린다 (입력칸은 그대로 → 키보드가 닫히지 않게)
         function renderMoveSummary(){
             const el=$('mvSum'); if(!el) return;
+            const kn=$('mvKeepNum'), kv=$('mvKeepVal');
+            if(kn&&kv){ kv.textContent=mvKeep===''?'숫자를 누르세요':mvKeep+'개'; kn.classList.toggle('empty',mvKeep===''); }
             const keep=mvKeep===''?null:Number(mvKeep);
             const p=movePlan(keep), share=p?p.share:0;
             const prob=p?moveProblem(p):'카드를 찾을 수 없습니다';
@@ -1050,14 +1041,20 @@
                     <div class="ln to"><span>${nb} 로 넘어감<small>이 상품 나머지 ${p.curMove}개${p.laterCards?` + 이후 상품 ${p.laterCards}장 ${p.laterQty}개`:''}</small></span><b>${p.total}개</b></div>
                 </div>`:'')
                 +(prob?`<div class="mv-err">${esc(prob)}</div>`:'')
-                +`<div class="sz-actions"><button class="btn back" ${szBusy?'disabled':''} onclick="szGo('menu')">뒤로</button><button class="btn primary" ${szBusy||prob?'disabled':''} onclick="openMoveConfirm()">박스 생성</button></div>`;
+                +`<div class="sz-actions stick"><button class="btn primary" ${szBusy||prob?'disabled':''} onclick="openMoveConfirm()">박스 생성</button></div>`;
         }
-        function mvInput(v){ mvKeep=String(v==null?'':v).replace(/[^0-9]/g,''); renderMoveSummary(); }
-        function mvStep(d){
+        const PAD_KEYS=['1','2','3','4','5','6','7','8','9','C','0','B'];   // C = 지우기 · B = 한 자리 지우기(⌫)
+        function padKey(k){
+            if(szBusy) return;
             const r=rows[szIdx]; if(!r) return; const share=shareIn(r,szBox);
-            const cur=mvKeep===''?(d>0?-1:share+1):Number(mvKeep);
-            mvKeep=String(Math.max(0,Math.min(share,cur+d)));
-            const i=$('mvKeep'); if(i) i.value=mvKeep; renderMoveSummary();
+            if(k==='C') mvKeep='';
+            else if(k==='B') mvKeep=mvKeep.slice(0,-1);
+            else{
+                const v=Number((mvKeep==='0'?'':mvKeep)+k);
+                if(v>share){ const n=$('mvKeepNum'); if(n){ n.classList.remove('shake'); void n.offsetWidth; n.classList.add('shake'); } playWarn(); toast(`이 박스 몫은 ${share}개까지예요`); return; }
+                mvKeep=String(v);
+            }
+            renderMoveSummary();
         }
         function openMoveConfirm(){
             const keep=mvKeep===''?null:Number(mvKeep), p=movePlan(keep);
