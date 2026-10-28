@@ -112,14 +112,15 @@
                 padding: 8px;
             }
             /* 모바일에서 숨길 열 (⚠ 열 순서가 바뀌면 번호도 같이 바꿔야 한다)
-               1 체크 · 2 SKU · 3 상품명 · 4 바코드 · 5 혼용률 · 6 권장연령 · 7 발주가능상태 · 8 재고 · 9 매입가 · 10 최근발주 */
+               1 체크 · 2 SKU · 3 상품명 · 4 바코드 · 5 혼용률 · 6 권장연령 · 7 발주가능상태 · 8 재고 · 9 매입가 · 10 최근발주 · 11 위해주문 */
             th:nth-child(2), td:nth-child(2), /* SKU ID */
             th:nth-child(5), td:nth-child(5), /* 혼용률 */
             th:nth-child(6), td:nth-child(6), /* 권장연령 */
             th:nth-child(7), td:nth-child(7), /* 발주가능상태 */
             th:nth-child(8), td:nth-child(8), /* 재고 */
             th:nth-child(9), td:nth-child(9), /* 매입가 */
-            th:nth-child(10), td:nth-child(10) { /* 최근발주 */
+            th:nth-child(10), td:nth-child(10), /* 최근발주 */
+            th:nth-child(11), td:nth-child(11) { /* 위해주문 */
                 display: none;
             }
             .mobile-wrap {
@@ -435,6 +436,7 @@
                             <th>재고</th>
                             <th class="col-price" title="신규발주서 등록 시 최신 발주 상품의 매입가 (공급가·부가세는 칸에 마우스를 올리면 표시)">매입가</th>
                             <th class="col-last" title="그 상품이 마지막으로 발주된 발주등록일 (신규발주서 등록 시 갱신)">최근발주</th>
+                            <th class="col-weihai" title="🌳 = 항상 위해로 주문 (weihai_order = true) — 상품부족에서 주문을 넣을 때 그 행의 표시대로 바뀐다">위해주문</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -643,7 +645,7 @@
         async function loadInventoryData() {
             const token = ++invLoadToken;
             const tbody = document.querySelector('#inventoryTable tbody');
-            if (tbody && !tbody.children.length) tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#888;padding:24px">불러오는 중…</td></tr>';
+            if (tbody && !tbody.children.length) tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#888;padding:24px">불러오는 중…</td></tr>';
             const params = new URLSearchParams({ page: String(invPage), size: String(invPageSize) });
             if (invFilter.status) params.set('status', invFilter.status);
             if (invFilter.q) params.set('q', invFilter.q);
@@ -661,7 +663,7 @@
             } catch (error) {
                 if (token !== invLoadToken) return;
                 console.error('Error:', error);
-                if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#c00;padding:24px">${esc(error.message)}</td></tr>`;
+                if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#c00;padding:24px">${esc(error.message)}</td></tr>`;
             }
         }
 
@@ -712,6 +714,7 @@
                     <td>${item.quantity}</td>
                     <td class="col-price" title="${item.purchasePrice == null ? '' : `공급가 ${fmtPrice(item.supplyPrice)} · 부가세 ${fmtPrice(item.vat)}`}">${fmtPrice(item.purchasePrice)}</td>
                     <td class="col-last">${fmtDate(item.lastOrderedAt)}</td>
+                    <td class="col-weihai">${item.weihaiOrder ? '🌳' : ''}</td>
                 `;
                 tbody.appendChild(tr);
             });

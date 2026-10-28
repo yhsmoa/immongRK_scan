@@ -2999,7 +2999,7 @@ app.get('/api/shortage', async (req, res) => {
         const cutoff56 = new Date(now); cutoff56.setDate(cutoff56.getDate() - 56);
 
         const invP = rkShared.chunkedPool(bcAll, 200, (batch) => pageAllRetry(
-            () => supabase.from('rk_inventories').select('barcode, sku_id, img, purchase_price').in('barcode', batch).order('id', { ascending: true })), POOL);
+            () => supabase.from('rk_inventories').select('barcode, sku_id, img, purchase_price, weihai_order').in('barcode', batch).order('id', { ascending: true })), POOL);
         const [scanRows, invRows, forecastRows, yiwuRows, stockRows, weihai, histRows, cn] = await Promise.all([
             rkShared.chunkedPool(bcAll, 200, (batch) => pagedQuery(
                 () => supabase.from('rk_ship_box_items').select('order_number, barcode, qty').in('barcode', batch),
@@ -3063,7 +3063,10 @@ app.get('/api/shortage', async (req, res) => {
         const barcodeToImg = new Map();
         // barcode → 매입가 (rk_inventories.purchase_price) — 화면이 쿠팡 판매가(광고결과)와 비교해 [가격오류]를 표시한다 (2026-10-20)
         const barcodeToPurchase = new Map();
+        // barcode → 위해주문(항상 위해) — 상품정보에 없는 바코드는 없음(null): 화면이 🌳·이우 를 막는다 (2026-10-28)
+        const barcodeToWeihai = new Map();
         invRows.forEach(r => {
+            if (r.barcode) barcodeToWeihai.set(r.barcode, barcodeToWeihai.get(r.barcode) === true || r.weihai_order === true);
             if (r.barcode && r.sku_id) barcodeToSku.set(r.barcode, r.sku_id);
             if (r.barcode && r.img) barcodeToImg.set(r.barcode, r.img);
             if (r.barcode && r.purchase_price != null) barcodeToPurchase.set(r.barcode, Number(r.purchase_price));
@@ -3145,6 +3148,7 @@ app.get('/api/shortage', async (req, res) => {
             item.remainQty = remainMap.get(item.상품바코드) || 0;
             item.img = barcodeToImg.get(item.상품바코드) || '';
             item.purchasePrice = barcodeToPurchase.has(item.상품바코드) ? barcodeToPurchase.get(item.상품바코드) : null;
+            item.weihaiOrder = barcodeToWeihai.has(item.상품바코드) ? barcodeToWeihai.get(item.상품바코드) : null;
         });
 
         // 6단계 병합: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
@@ -3498,7 +3502,7 @@ app.get('/api/shortage/save-temp', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('coupang_order_save_temp')
-            .select('barcode, qty');
+            .select('barcode, qty, route_mark');
         if (error) throw error;
         res.json(data || []);
     } catch (error) {
@@ -3507,12 +3511,28 @@ app.get('/api/shortage/save-temp', async (req, res) => {
     }
 });
 
-// POST: 입력값 일괄 저장 (DELETE-all + INSERT)
+// 위해주문 표시 — none(빈칸·항상 이우) | tree(🌳 항상 위해) | sprout(🌱 이번만 위해) | yiwu(이번만 이우) · 정의: supabase/rk_weihai_route.sql
+const ROUTE_MARKS = ['none', 'tree', 'sprout', 'yiwu'];
+const routeMarkOf = v => (ROUTE_MARKS.includes(v) ? v : null);
+
+// POST: 입력값 일괄 저장 (DELETE-all + INSERT)  items:[{ barcode, qty, route_mark }]
+//   수량이 있거나 표시를 고른 행만 남긴다 (둘 다 없으면 저장할 것이 없다)
 app.post('/api/shortage/save-temp', async (req, res) => {
     try {
-        const { items } = req.body;
-        if (!items || !Array.isArray(items)) {
+        const { items: raw } = req.body;
+        if (!raw || !Array.isArray(raw)) {
             return res.status(400).json({ error: '저장할 데이터가 없습니다.' });
+        }
+        const seen = new Set();
+        const items = [];
+        for (const it of raw) {
+            const barcode = String((it && it.barcode) || '').trim();
+            const qty = Number(it && it.qty);
+            const route_mark = routeMarkOf(it && it.route_mark);
+            const hasQty = Number.isInteger(qty) && qty > 0;
+            if (!barcode || seen.has(barcode) || (!hasQty && !route_mark)) continue;
+            seen.add(barcode);
+            items.push({ barcode, qty: hasQty ? qty : null, route_mark });
         }
 
         // 1단계: 기존 데이터 전체 삭제
@@ -3621,6 +3641,7 @@ app.post('/api/shortage/snapshots', async (req, res) => {
                 scan_qty: snapInt(row.총스캔수량),
                 shortage_qty: snapInt(row.부족수량),
                 input_qty: snapInt(r.inputQty),
+                route_mark: routeMarkOf(r.routeMark),
                 remain_qty: snapInt(row.remainQty),
                 yiwu_qty: snapInt(row.yiwuTotalQty),
                 stock_qty: snapInt(row.재고),
@@ -3663,12 +3684,12 @@ app.get('/api/shortage/snapshots/:id', async (req, res) => {
         for (let from = 0; ; from += SNAPSHOT_PAGE) {
             const { data, error } = await supabase
                 .from('rk_shortage_snapshot_items')
-                .select('row, input_qty')
+                .select('row, input_qty, route_mark')
                 .eq('snapshot_id', snapshot.id)
                 .order('seq', { ascending: true })
                 .range(from, from + SNAPSHOT_PAGE - 1);
             if (error) throw error;
-            (data || []).forEach(d => rows.push({ row: d.row, inputQty: d.input_qty }));
+            (data || []).forEach(d => rows.push({ row: d.row, inputQty: d.input_qty, routeMark: d.route_mark || null }));
             if (!data || data.length < SNAPSHOT_PAGE) break;
         }
         res.json({ snapshot, rows });

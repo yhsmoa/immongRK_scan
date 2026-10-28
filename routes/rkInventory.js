@@ -32,11 +32,13 @@ function invToKorean(r) {
     lastOrderedAt: r.last_ordered_at || null,
     img: r.img || null,
     createdAt: r.created_at || null,
+    // 위해주문 — true 면 상품부족에서 항상 위해로 주문 (🌳). 상품부족에서 주문을 넣을 때 바뀐다
+    weihaiOrder: r.weihai_order === true,
   };
 }
 
 // 목록 조회에 쓰는 열 — 화면 표에 필요한 것만 (긴 텍스트·이미지는 빼지 않는다: 혼용률·권장연령은 표에 보이고 img 는 짧은 URL)
-const LIST_COLS = 'id, mongo_id, sku_id, name, barcode, order_status, composition, recommanded_age, quantity, location, last_update, purchase_price, supply_price, vat, last_ordered_at, img, created_at';
+const LIST_COLS = 'id, mongo_id, sku_id, name, barcode, order_status, composition, recommanded_age, quantity, location, last_update, purchase_price, supply_price, vat, last_ordered_at, img, created_at, weihai_order';
 
 // 검색 조건 적용 — 상태(발주가능상태) + 검색어(콤마로 여러 개, SKU/바코드/상품명 ilike)
 function applyInvFilter(q, { orderStatus, searchTerm }) {

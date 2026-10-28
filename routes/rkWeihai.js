@@ -259,6 +259,39 @@ router.post('/api/shortage/weihai-cart', async (req, res) => {
   }
 });
 
+// ── 상품정보 위해주문(항상 위해) 저장 ── (2026-10-28)
+//   /shortage 에서 주문을 넣은 뒤(이우·위해 복사, 장바구니 담기) 그 행의 표시대로 rk_inventories.weihai_order 를 바꾼다
+//   body: { items:[{ barcode, weihaiOrder: true|false }] } → { updated, missing:[바코드] }
+//   같은 값으로 다시 보내도 결과가 같다 (실패하면 화면이 다시 보낸다)
+router.post('/api/shortage/weihai-flag', async (req, res) => {
+  const { items } = req.body || {};
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: '바꿀 상품이 없습니다.' });
+  const want = new Map();   // barcode → boolean
+  for (const it of items) {
+    const barcode = String((it && it.barcode) || '').trim();
+    const v = it && it.weihaiOrder;
+    if (!barcode || typeof v !== 'boolean') return res.status(400).json({ error: '바코드나 값이 올바르지 않습니다.' });
+    if (want.has(barcode) && want.get(barcode) !== v) return res.status(400).json({ error: `${barcode} 값이 서로 다릅니다.` });
+    want.set(barcode, v);
+  }
+  try {
+    const found = new Set();
+    for (const v of [true, false]) {
+      const bcs = [...want].filter(([, x]) => x === v).map(([b]) => b);
+      for (let i = 0; i < bcs.length; i += CHUNK) {
+        const { data, error } = await sb.from('rk_inventories').update({ weihai_order: v }).in('barcode', bcs.slice(i, i + CHUNK)).select('barcode');
+        if (error) throw error;
+        (data || []).forEach((d) => found.add(d.barcode));
+      }
+    }
+    const missing = [...want.keys()].filter((b) => !found.has(b));
+    res.json({ success: true, updated: want.size - missing.length, missing });
+  } catch (error) {
+    console.error('위해주문 저장 오류:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
 module.exports.weihaiQtyByBarcode = weihaiQtyByBarcode;
 module.exports.isConfigured = () => Boolean(odb && ACCOUNT);
