@@ -139,6 +139,17 @@
             border-color: #c7d2fe;
             box-shadow: 0 0 0 3px rgba(99,102,241,.10);
         }
+        /* 브랜드 · Ord 필터 */
+        .seg .cnt { margin-left: 2px; font-size: 12px; font-weight: 600; color: #94a3b8; font-variant-numeric: tabular-nums; }
+        .seg button.on .cnt { color: var(--primary); }
+        .ord-filter { display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 3px 0 10px; background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; }
+        .ord-filter label { font-size: 12.5px; font-weight: 700; color: #64748b; }
+        .ord-filter input { width: 64px; height: 28px; border: 0; outline: none; background: none; font: inherit; font-size: 13.5px; color: var(--ink); text-align: right; }
+        .ord-filter input::-webkit-outer-spin-button, .ord-filter input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .ord-filter input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+        .ord-filter .seg { padding: 2px; border-radius: 8px; }
+        .ord-filter .seg button { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 6px; }
+        .ord-filter.active { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
         /* 스냅샷 — 불러오기 select + 저장(+) 한 덩어리 */
         .snap { display: inline-flex; height: 38px; background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; overflow: hidden; }
         .snap select { border: 0; outline: none; background: none; padding: 0 8px 0 12px; font: inherit; font-size: 13px; color: #334155; cursor: pointer; max-width: 210px; }
@@ -451,7 +462,8 @@
         .order-tip.show { visibility: visible; opacity: 1; transform: none; }
         .order-tip .ln { display: flex; justify-content: space-between; gap: 16px; line-height: 1.75; }
         .order-tip .ln b { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-        .order-tip .ln.zero b { color: #cbd5e1; font-weight: 500; }
+        .order-tip .ln.zero { opacity: .4; }   /* 0건 — 이모지·글자·숫자 모두 연하게 */
+        .order-tip .ln.zero b { font-weight: 500; }
         .order-tip .ln.sum { border-top: 1px solid #eef2f7; margin-top: 4px; padding-top: 4px; }
         .order-tip .ln.na b { color: #dc2626; font-weight: 600; font-size: 12px; }
         #tableMore td { text-align: center; padding: 14px; color: #94a3b8; font-size: 12.5px; background: #f8fafc; }
@@ -682,7 +694,7 @@
         <div id="yiwuPopupContent"></div>
     </div>
 
-    <!-- ===== '주문' 셀 hover — 출처별 수량 (위해 🛒 · 위해 📦 · 이우 📦) ===== -->
+    <!-- ===== '주문' 셀 hover — 출처별 수량 (위해 🛒 장바구니 · 위해 🛍️ 주문 · 이우 🛍️ 주문) ===== -->
     <div class="order-tip" id="orderTip" role="tooltip"></div>
 
     <!-- ===== 이미지 미리보기 (img 셀 hover) ===== -->
@@ -816,6 +828,21 @@
                 <div class="search-area">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
                     <input type="text" id="searchInput" placeholder="SKU, 상품바코드 또는 상품이름 검색">
+                </div>
+                <!-- 브랜드 — 상품이름에 '아이엠몽' / '이유몽' 이 들어 있는지 ([가격오류] 와 같은 기준). 숫자 = 다른 조건(검색·Ord·가격오류)을 거친 행 수 -->
+                <div class="seg" id="brandSeg" role="tablist" aria-label="브랜드">
+                    <button type="button" role="tab" data-brand="all" onclick="setBrand('all')">전체 <span class="cnt"></span></button>
+                    <button type="button" role="tab" data-brand="immong" onclick="setBrand('immong')">아이엠몽 <span class="cnt"></span></button>
+                    <button type="button" role="tab" data-brand="iyoumong" onclick="setBrand('iyoumong')">이유몽 <span class="cnt"></span></button>
+                </div>
+                <!-- Ord(총발주수량) 이상/이하 — 비우면 조건 없음 -->
+                <div class="ord-filter" title="Ord(발주수량) 기준으로 거르기 — 비우면 전체">
+                    <label for="ordValue">Ord</label>
+                    <input type="number" id="ordValue" min="0" step="1" inputmode="numeric" placeholder="수량" oninput="onOrdInput()">
+                    <div class="seg" id="ordOpSeg" role="radiogroup" aria-label="Ord 조건">
+                        <button type="button" role="radio" data-op="gte" onclick="setOrdOp('gte')">이상</button>
+                        <button type="button" role="radio" data-op="lte" onclick="setOrdOp('lte')">이하</button>
+                    </div>
                 </div>
                 <!-- 스냅샷: 지금 화면(행 전체 + 입력값 + 조회조건)을 이름 붙여 보관 / 드롭다운에서 골라 그대로 복원 -->
                 <div class="snap" title="스냅샷 — 지금 화면을 이름 붙여 보관하고 다시 불러온다">
@@ -1099,6 +1126,7 @@
             } catch (e) { /* 무시 */ }
 
             setupTableEvents();
+            updateFilterUI({ all: 0, immong: 0, iyoumong: 0 }, null);   // 브랜드·Ord 선택 표시 (건수는 불러온 뒤)
 
             setupImgPreview();
             setupBadgeCopy();
@@ -1206,27 +1234,79 @@
                 weihaiErrMsg = readWeihaiError(response);
                 loadWarnMsg = readHeaderMsg(response, 'X-Shortage-Warn');
                 allData = json;
-                filteredData = viewRows(allData);
-                sortData();
-                renderTable({ reset: true });
+                applyFilter();
             } catch (error) {
                 console.error('데이터 로드 오류:', error);
                 document.getElementById('loadingArea').innerHTML = '<p style="color:#dc3545;">데이터를 불러오는데 실패했습니다.</p>';
             }
         }
 
-        /* ========== 검색 필터 ========== */
-        function applyFilter() {
-            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
-            filteredData = viewRows(allData).filter(item => {
-                if (!keyword) return true;
+        /* ========== 거르기 (2026-10-28) — 가격오류 · Ord 이상/이하 · 검색 · 브랜드 를 한 곳에서 ==========
+           불러오기·검색·필터 변경·스냅샷 복원이 모두 applyFilter 를 지난다 → 같은 조건이면 언제나 같은 목록.
+           복사·장바구니 담기 대상도 이 목록(filteredData) 기준이다. */
+        let brandFilter = 'all';      // all | immong | iyoumong
+        let ordOp = 'gte';            // gte(이상) | lte(이하)
+        let ordTimer = null;
+        // 브랜드 — [가격오류] 와 같은 기준 (이유몽 먼저)
+        function brandOf(item) {
+            const name = String(item && item.상품이름 || '');
+            if (name.includes('이유몽')) return 'iyoumong';
+            if (name.includes('아이엠몽')) return 'immong';
+            return 'other';
+        }
+        function ordLimit() {
+            const raw = String(document.getElementById('ordValue').value || '').trim();
+            if (raw === '') return null;
+            const n = Number(raw);
+            return Number.isFinite(n) && n >= 0 ? n : null;
+        }
+        // 브랜드를 뺀 나머지 조건 — 브랜드별 건수도 이걸로 센다
+        function passOthers(item, keyword, limit) {
+            if (priceErrOnly) { const pc = priceCheck(item); if (!(pc && pc.err)) return false; }
+            if (limit != null) {
+                const ord = Number(item.총발주수량) || 0;
+                if (ordOp === 'gte' ? ord < limit : ord > limit) return false;
+            }
+            if (keyword) {
                 return (item.상품바코드 || '').toLowerCase().includes(keyword)
                     || (item.상품이름 || '').toLowerCase().includes(keyword)
                     || (item.skuId || '').toLowerCase().includes(keyword);
+            }
+            return true;
+        }
+        function applyFilter() {
+            const keyword = document.getElementById('searchInput').value.trim().toLowerCase();
+            const limit = ordLimit();
+            const counts = { all: 0, immong: 0, iyoumong: 0 };
+            filteredData = allData.filter(item => {
+                if (!passOthers(item, keyword, limit)) return false;
+                const b = brandOf(item);
+                counts.all++;
+                if (b !== 'other') counts[b]++;
+                return brandFilter === 'all' || b === brandFilter;
             });
+            updateFilterUI(counts, limit);
             sortData();
             renderTable({ reset: true });   // 목록이 바뀌었으니 맨 위부터
         }
+        function updateFilterUI(counts, limit) {
+            document.querySelectorAll('#brandSeg button').forEach(b => {
+                const on = b.dataset.brand === brandFilter;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-selected', on);
+                b.querySelector('.cnt').textContent = allData.length ? counts[b.dataset.brand].toLocaleString() : '';
+            });
+            document.querySelectorAll('#ordOpSeg button').forEach(b => {
+                const on = b.dataset.op === ordOp;
+                b.classList.toggle('on', on);
+                b.setAttribute('aria-checked', on);
+            });
+            document.querySelector('.ord-filter').classList.toggle('active', limit != null);
+        }
+        function setBrand(b) { if (brandFilter === b) return; brandFilter = b; applyFilter(); }
+        function setOrdOp(op) { if (ordOp === op) return; ordOp = op; applyFilter(); }
+        // 숫자를 칠 때마다 다시 거르지 않게 잠깐 기다린다
+        function onOrdInput() { clearTimeout(ordTimer); ordTimer = setTimeout(applyFilter, 250); }
 
         /* ========== 유틸: 콤마 앞 기본 상품명 추출 ========== */
         function getBaseName(name) {
@@ -1371,10 +1451,6 @@
 판매가가 ${won(diff)} 더 높음` : ''}` };
         }
         let priceErrOnly = false;
-        // 화면에 올릴 행 — [가격오류] 가 켜져 있으면 가격오류 행만
-        function viewRows(list) {
-            return priceErrOnly ? list.filter(it => { const pc = priceCheck(it); return pc && pc.err; }) : [...list];
-        }
         function updatePriceErrBtn() {
             const btn = document.getElementById('priceErrBtn');
             if (!btn) return;
@@ -1816,8 +1892,8 @@
                 : v === undefined ? `<div class="ln old"><span>${label}</span><b>정보 없음</b></div>`
                 : line(label, v);
             tip.innerHTML = weihai('위해 🛒', item.weihaiCartQty)
-                + weihai('위해 📦', item.weihaiOrderQty)
-                + line('이우 📦', item.yiwuTotalQty)
+                + weihai('위해 🛍️', item.weihaiOrderQty)
+                + line('이우 🛍️', item.yiwuTotalQty)
                 + `<div class="ln sum"><span>합계</span><b>${fmt(orderQtyOf(item))}</b></div>`;
             tip.classList.add('show');
             placeOrderTip(e);
@@ -2465,9 +2541,7 @@
                     if (r.row && r.row.상품바코드 && qty > 0) savedInputs.set(r.row.상품바코드, qty);
                 });
                 document.getElementById('searchInput').value = '';
-                filteredData = viewRows(allData);
-                sortData();
-                renderTable({ reset: true });
+                applyFilter();
 
 
                 // 임시저장도 스냅샷 입력값으로 교체 → 복사·입력목록·저장이 전부 이 상태로 동작
