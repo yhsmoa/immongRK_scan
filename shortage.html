@@ -454,6 +454,7 @@
         .order-tip .ln.zero b { color: #cbd5e1; font-weight: 500; }
         .order-tip .ln.sum { border-top: 1px solid #eef2f7; margin-top: 4px; padding-top: 4px; }
         .order-tip .ln.na b { color: #dc2626; font-weight: 600; font-size: 12px; }
+        #tableMore td { text-align: center; padding: 14px; color: #94a3b8; font-size: 12.5px; background: #f8fafc; }
         .order-tip .ln.old b { color: #94a3b8; font-weight: 500; font-size: 12px; }
         /* 위해 장바구니 담기 모달 */
         .upload-modal.cart-modal { text-align: left; width: 400px; max-width: calc(100vw - 32px); padding: 20px 22px 18px; border-radius: 14px; }
@@ -471,7 +472,7 @@
         .cart-modal .cm-note.err { color: #dc2626; }
         .cart-modal .cm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
         .cart-modal .btn:disabled { opacity: .5; cursor: default; }
-        .weihai-notice { margin: -2px 0 12px; padding: 9px 12px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-size: 13px; }
+        .weihai-notice { white-space: pre-line; margin: -2px 0 12px; padding: 9px 12px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-size: 13px; }
         .yiwu-popup h4 {
             margin: 0 0 8px;
             font-size: 12px;
@@ -1053,8 +1054,8 @@
     <script>
         /* ========== 상태 변수 ========== */
         let allData = [];
-        const CACHE_VERSION = 2;   // shortageCache 형식 — 2 = 모드 없음(2026-10-28). 다르면 버린다
         let weihaiErrMsg = '';   // 마지막 [불러오기] 때 위해 주문 데이터를 못 읽은 이유 (서버 X-Weihai-Error 헤더) — 비면 정상
+        let loadWarnMsg = '';    // 마지막 [불러오기] 때 비어 있는 보조 열(C예상·주간) (서버 X-Shortage-Warn 헤더) — 비면 정상
         let filteredData = [];
         let loadToken = 0;   // 로드 경쟁 방지: 최신 로드만 화면에 반영
         let currentSort = { key: '부족수량', order: 'desc' };
@@ -1085,16 +1086,19 @@
             });
             startEl.addEventListener('focus', () => { startJumped = false; });
 
-            // 저장된 기간 복원 + 캐시된 데이터 그대로 표시 (네트워크 재조회 없음)
-            //   → 데이터는 [불러오기] 로만 최신화되어, 잠시 나갔다 와도 유지됨
+            // 저장된 기간만 복원 — 목록은 [불러오기] 를 눌러야 읽는다 (2026-10-28)
+            //   예전엔 마지막 결과(3~5MB)를 localStorage 에 통째로 두고 들어올 때마다 다시 그렸다 → 들어올 때·불러올 때 멈춤,
+            //   5MB 를 넘으면 조용히 저장 실패. 남아 있는 예전 캐시는 지운다.
+            try { localStorage.removeItem('shortageCache'); } catch (e) { /* 무시 */ }
             try {
                 const saved = JSON.parse(localStorage.getItem('shortageDateRange') || 'null');
                 if (saved) {
                     if (saved.startDate) startEl.value = saved.startDate;
                     if (saved.endDate) endEl.value = saved.endDate;
                 }
-                restoreFromCache();   // 캐시가 있으면 그대로 렌더 (fetch 안 함)
             } catch (e) { /* 무시 */ }
+
+            setupTableEvents();
 
             setupImgPreview();
             setupBadgeCopy();
@@ -1200,44 +1204,15 @@
                 const json = await response.json();
                 if (myToken !== loadToken) return;   // 더 최신 로드가 시작됨 → 이 결과 폐기
                 weihaiErrMsg = readWeihaiError(response);
+                loadWarnMsg = readHeaderMsg(response, 'X-Shortage-Warn');
                 allData = json;
                 filteredData = viewRows(allData);
                 sortData();
-                renderTable();
-                saveCache();
+                renderTable({ reset: true });
             } catch (error) {
                 console.error('데이터 로드 오류:', error);
                 document.getElementById('loadingArea').innerHTML = '<p style="color:#dc3545;">데이터를 불러오는데 실패했습니다.</p>';
             }
-        }
-
-        /* ========== 데이터 캐시 (재접속·페이지 이동 시 유지 · [불러오기]로만 최신화) ========== */
-        function saveCache() {
-            try {
-                localStorage.setItem('shortageCache', JSON.stringify({
-                    v: CACHE_VERSION,
-                    startDate: document.getElementById('startDate').value,
-                    endDate: document.getElementById('endDate').value,
-                    data: allData,
-                    savedAt: new Date().toISOString(),
-                }));
-            } catch (e) { /* 용량 초과 등은 무시 (다음 불러오기 때 재조회) */ }
-        }
-        function restoreFromCache() {
-            try {
-                const raw = localStorage.getItem('shortageCache');
-                if (!raw) return false;
-                const cache = JSON.parse(raw);
-                // v2(2026-10-28) 전 캐시는 재고부족·입고재고 모드로 걸러진 목록일 수 있다 → 쓰지 않고 [불러오기] 를 기다린다
-                if (!cache || cache.v !== CACHE_VERSION || !Array.isArray(cache.data) || cache.data.length === 0) return false;
-                document.getElementById('startDate').value = cache.startDate || '';
-                document.getElementById('endDate').value = cache.endDate || '';
-                allData = cache.data;
-                filteredData = viewRows(allData);
-                sortData();
-                renderTable();
-                return true;
-            } catch (e) { return false; }
         }
 
         /* ========== 검색 필터 ========== */
@@ -1250,7 +1225,7 @@
                     || (item.skuId || '').toLowerCase().includes(keyword);
             });
             sortData();
-            renderTable();
+            renderTable({ reset: true });   // 목록이 바뀌었으니 맨 위부터
         }
 
         /* ========== 유틸: 콤마 앞 기본 상품명 추출 ========== */
@@ -1328,7 +1303,7 @@
                 currentSort.order = (key === '상품바코드' || key === '상품이름') ? 'asc' : 'desc';
             }
             sortData();
-            renderTable();
+            renderTable({ reset: true });   // 정렬이 바뀌었으니 맨 위부터
             updateSortIcons();
         }
 
@@ -1526,33 +1501,18 @@
         }
 
         /* ========== 테이블 렌더링 ========== */
-        function renderTable() {
-            const tbody = document.getElementById('tableBody');
-            const loadingArea = document.getElementById('loadingArea');
-            const emptyArea = document.getElementById('emptyArea');
-            const tableArea = document.getElementById('tableArea');
+        /* ========== 표 그리기 (2026-10-28) ==========
+           한 번에 전부 그리면 수천 행 × 18칸이라 스크롤·입력·검색이 버벅인다 → RENDER_CHUNK 행씩 그리고,
+           표 스크롤이 아래 끝 근처(600px)에 오면 다음 묶음을 이어 붙인다 (이어보기 줄 #tableMore 는 남은 행 수 안내). 데이터(filteredData)는 그대로 전부 — 정렬·검색·입력·저장·복사·
+           장바구니는 데이터 기준이라 그려진 행 수와 무관하다. 특정 행이 필요할 때(입력목록에서 이동·Enter 로 다음 칸)는
+           ensureRendered(idx) 로 그 행까지 먼저 그린다.
+           클릭·hover 는 표(tbody)에 한 번만 건다 (setupTableEvents) — 행을 다시 그려도 다시 걸 필요가 없다. */
+        const RENDER_CHUNK = 200;
+        let renderedCount = 0;
 
-            document.getElementById('initArea').style.display = 'none';
-            loadingArea.style.display = 'none';
-            updateWeihaiNotice();
-
-            if (filteredData.length === 0) {
-                emptyArea.style.display = '';
-                tableArea.style.display = 'none';
-                updatePriceErrBtn();
-                return;
-            }
-
-            emptyArea.style.display = 'none';
-            tableArea.style.display = '';
-
-            let prevBase = null;
-            tbody.innerHTML = filteredData.map((item, idx) => {
-                const curBase = getBaseName(item.상품이름);
-                const isGroupFirst = curBase !== prevBase && idx > 0;
-                prevBase = curBase;
-
-                return `<tr class="${isGroupFirst ? 'group-first' : ''}" data-idx="${idx}">
+        function rowHtml(item, idx) {
+            const isGroupFirst = idx > 0 && getBaseName(item.상품이름) !== getBaseName(filteredData[idx - 1].상품이름);
+            return `<tr class="${isGroupFirst ? 'group-first' : ''}" data-idx="${idx}">
                     <td class="col-no">${idx + 1}</td>
                     <td class="img-cell">${item.img ? `<span class="img-emoji" data-img="${String(item.img).replace(/"/g, '&quot;')}">🖼️</span>` : ''}</td>
                     <td>${item.skuId || ''}</td>
@@ -1572,14 +1532,107 @@
                     <td class="ds-cell col-week" data-barcode="${item.상품바코드}" style="${weekColor(item.w34, item.w56)}">${item.w34 ? Number(item.w34).toLocaleString() : ''}</td>
                     <td class="ds-cell col-week" data-barcode="${item.상품바코드}" style="${weekColor(item.w12, item.w34)}">${item.w12 ? Number(item.w12).toLocaleString() : ''}</td>
                 </tr>`;
-            }).join('');
+        }
+        function moreRowHtml() {
+            const left = filteredData.length - renderedCount;
+            return left > 0
+                ? `<tr id="tableMore"><td colspan="18">${renderedCount.toLocaleString()} / ${filteredData.length.toLocaleString()}행 표시 중 — 스크롤하면 이어서 보여요</td></tr>`
+                : '';
+        }
+        // 첫 renderedCount 행 + (남았으면) 이어보기 줄을 그린다
+        //   reset: 새로 불러왔을 때 — 맨 위 RENDER_CHUNK 행부터. 아니면(정렬·검색·저장 뒤) 보고 있던 만큼 그대로 다시 그려 스크롤 위치를 지킨다
+        function renderTable(opts = {}) {
+            const tbody = document.getElementById('tableBody');
+            const loadingArea = document.getElementById('loadingArea');
+            const emptyArea = document.getElementById('emptyArea');
+            const tableArea = document.getElementById('tableArea');
+
+            document.getElementById('initArea').style.display = 'none';
+            loadingArea.style.display = 'none';
+            updateWeihaiNotice();
+            hideOrderTip();
+
+            if (filteredData.length === 0) {
+                emptyArea.style.display = '';
+                tableArea.style.display = 'none';
+                tbody.innerHTML = '';
+                renderedCount = 0;
+                updatePriceErrBtn();
+                updateInputHeaderCount();
+                return;
+            }
+
+            emptyArea.style.display = 'none';
+            tableArea.style.display = '';
+
+            const want = opts.reset ? RENDER_CHUNK : Math.max(renderedCount, RENDER_CHUNK);
+            renderedCount = Math.min(filteredData.length, want);
+            let html = '';
+            for (let i = 0; i < renderedCount; i++) html += rowHtml(filteredData[i], i);
+            tbody.innerHTML = html + moreRowHtml();
+            if (opts.reset) document.querySelector('.table-container').scrollTop = 0;
 
             updatePriceErrBtn();
             updateSortIcons();
-            bindInputCells();
-            bindDsCells();
-            bindYiwuCells();
             updateInputHeaderCount();
+            fillToScroll();
+        }
+        // 다음 묶음을 이어 붙인다 (upTo 가 있으면 그 행이 포함될 때까지)
+        function appendRows(upTo) {
+            if (renderedCount >= filteredData.length) return;
+            const tbody = document.getElementById('tableBody');
+            const end = Math.min(filteredData.length, Math.max(renderedCount + RENDER_CHUNK, upTo == null ? 0 : upTo + 1));
+            let html = '';
+            for (let i = renderedCount; i < end; i++) html += rowHtml(filteredData[i], i);
+            const more = document.getElementById('tableMore');
+            if (more) more.remove();
+            tbody.insertAdjacentHTML('beforeend', html);
+            renderedCount = end;
+            tbody.insertAdjacentHTML('beforeend', moreRowHtml());
+            fillToScroll();
+        }
+        function ensureRendered(idx) {
+            if (idx >= renderedCount && idx < filteredData.length) appendRows(idx);
+        }
+        // 표 스크롤 영역의 아래 끝 근처면 다음 묶음 — 붙인 뒤에도 아직 끝 근처면(화면이 길면) 또 붙인다
+        function fillToScroll() {
+            const box = document.querySelector('.table-container');
+            if (!box || renderedCount >= filteredData.length || box.clientHeight === 0) return;
+            if (box.scrollTop + box.clientHeight >= box.scrollHeight - 600) appendRows();
+        }
+
+        // 표 클릭·hover — tbody 에 한 번만 (행을 몇 번 다시 그려도 그대로 동작)
+        function setupTableEvents() {
+            const tbody = document.getElementById('tableBody');
+            document.querySelector('.table-container').addEventListener('scroll', fillToScroll, { passive: true });
+            let tipCell = null;
+            tbody.addEventListener('click', (e) => {
+                const input = e.target.closest('td.input-cell');
+                if (input) { activateCell(input); return; }
+                const ds = e.target.closest('td.ds-cell');
+                if (ds) { if (ds.dataset.barcode) showMonthlyModal(ds.dataset.barcode); return; }
+                const yiwu = e.target.closest('td.yiwu-cell');
+                if (yiwu) {
+                    e.stopPropagation();
+                    tipCell = null;
+                    hideOrderTip();
+                    if (yiwu.dataset.barcode) showYiwuPopup(yiwu.dataset.barcode, e.clientX, e.clientY);
+                }
+            });
+            // '주문' 셀 hover 카드
+            tbody.addEventListener('mouseover', (e) => {
+                const td = e.target.closest('td.yiwu-cell');
+                if (!td || td === tipCell) return;
+                tipCell = td;
+                showOrderTip(filteredData[Number(td.dataset.row)], e);
+            });
+            tbody.addEventListener('mousemove', (e) => { if (tipCell) placeOrderTip(e); });
+            tbody.addEventListener('mouseout', (e) => {
+                if (!tipCell) return;
+                if (e.relatedTarget && tipCell.contains(e.relatedTarget)) return;   // 셀 안에서 움직임
+                tipCell = null;
+                hideOrderTip();
+            });
         }
 
         /* ========== C예상 소수점 연하게 포맷 ========== */
@@ -1668,16 +1721,7 @@
             return str.substring(0, dotIdx) + '<span class="decimal-dim">' + str.substring(dotIdx) + '</span>';
         }
 
-        /* ========== Ds 셀 클릭 → 월별 발주량 모달 ========== */
-        function bindDsCells() {
-            document.querySelectorAll('td.ds-cell').forEach(cell => {
-                cell.addEventListener('click', () => {
-                    const barcode = cell.dataset.barcode;
-                    if (barcode) showMonthlyModal(barcode);
-                });
-            });
-        }
-
+        /* ========== Ds 셀 클릭 → 월별 발주량 모달 (클릭은 setupTableEvents) ========== */
         async function showMonthlyModal(barcode) {
             const overlay = document.getElementById('monthlyModal');
             const titleEl = document.getElementById('monthlyTitle');
@@ -1740,27 +1784,14 @@
         }
 
         /* ========== 입고 셀 클릭 → yiwu 팝업 ========== */
-        function bindYiwuCells() {
-            document.querySelectorAll('td.yiwu-cell').forEach(cell => {
-                cell.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    hideOrderTip();
-                    const barcode = cell.dataset.barcode;
-                    if (barcode) showYiwuPopup(barcode, e.clientX, e.clientY);
-                });
-                cell.addEventListener('mouseenter', (e) => showOrderTip(filteredData[Number(cell.dataset.row)], e));
-                cell.addEventListener('mousemove', placeOrderTip);
-                cell.addEventListener('mouseleave', hideOrderTip);
-            });
-        }
-
         /* ========== '주문' 열 = 이우 + 위해 🛒 장바구니 + 위해 📦 주문 (2026-10-28, 서버 routes/rkWeihai.js) ==========
            orderTotalQty 가 없는 행(이 기능 전에 저장한 스냅샷·캐시)은 이우 값만 있다 → 이우만 보여 준다 */
-        function readWeihaiError(res) {
-            const h = res.headers.get('X-Weihai-Error');
+        function readHeaderMsg(res, name) {
+            const h = res.headers.get(name);
             if (!h) return '';
             try { return decodeURIComponent(h); } catch (e) { return h; }
         }
+        function readWeihaiError(res) { return readHeaderMsg(res, 'X-Weihai-Error'); }
         function orderQtyOf(item) {
             const n = item.orderTotalQty != null ? Number(item.orderTotalQty) : Number(item.yiwuTotalQty);
             return Number.isFinite(n) ? n : 0;
@@ -1770,8 +1801,11 @@
             if (!el) return;
             // 행에 null(불러오기 실패로 모름)이 있으면 캐시·스냅샷에서 다시 보여 줄 때도 알린다
             const failed = weihaiErrMsg || (allData.some(it => it && it.weihaiCartQty === null) ? '불러올 때 위해 데이터를 읽지 못했습니다' : '');
-            el.hidden = !failed;
-            el.textContent = failed ? `위해 주문·장바구니 수량을 불러오지 못했습니다 — '주문' 열에 이우만 반영됐습니다. (${failed})` : '';
+            const lines = [];
+            if (failed) lines.push(`위해 주문·장바구니 수량을 불러오지 못했습니다 — '주문' 열에 이우만 반영됐습니다. (${failed})`);
+            if (loadWarnMsg) lines.push(`${loadWarnMsg} — 그 열은 비어 있습니다. [불러오기] 를 다시 눌러 주세요.`);
+            el.hidden = !lines.length;
+            el.textContent = lines.join('\n');
         }
         function showOrderTip(item, e) {
             const tip = document.getElementById('orderTip');
@@ -1878,12 +1912,7 @@
             }
         }
 
-        /* ========== 입력 셀 인터랙션 ========== */
-        function bindInputCells() {
-            document.querySelectorAll('td.input-cell').forEach(cell => {
-                cell.addEventListener('click', () => activateCell(cell));
-            });
-        }
+        /* ========== 입력 셀 인터랙션 (클릭은 setupTableEvents) ========== */
 
         function activateCell(cell) {
             // 이미 편집 중이면 무시
@@ -1911,6 +1940,7 @@
                     cell.blur();
                     // 다음 행의 입력 셀 활성화
                     const rowIdx = Number(cell.dataset.row);
+                    ensureRendered(rowIdx + 1);
                     const nextCell = document.querySelector(`td.input-cell[data-row="${rowIdx + 1}"]`);
                     if (nextCell) activateCell(nextCell);
                 }
@@ -2039,6 +2069,7 @@
 
         // 해당 행으로 스크롤 + 반짝 효과
         function flashRow(idx) {
+            ensureRendered(idx);
             const row = document.querySelector(`tr[data-idx="${idx}"]`);
             if (!row) return;
 
@@ -2426,6 +2457,7 @@
 
                 // 행 + 입력값 복원 (저장 당시 전부)
                 weihaiErrMsg = '';
+                loadWarnMsg = '';
                 allData = rows.map(r => r.row);
                 savedInputs.clear();
                 rows.forEach(r => {
@@ -2435,8 +2467,8 @@
                 document.getElementById('searchInput').value = '';
                 filteredData = viewRows(allData);
                 sortData();
-                renderTable();
-                saveCache();   // 새로고침해도 이 상태 유지
+                renderTable({ reset: true });
+
 
                 // 임시저장도 스냅샷 입력값으로 교체 → 복사·입력목록·저장이 전부 이 상태로 동작
                 const items = [];

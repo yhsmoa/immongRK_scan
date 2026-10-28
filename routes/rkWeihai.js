@@ -43,18 +43,44 @@ const ACCOUNT_TTL_MS = 10 * 60 * 1000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cartLocks = new Map();   // cartId → 그 카트에 대한 마지막 담기 요청이 끝나는 Promise
 
+// 우리 DB 등 다른 클라이언트에도 같은 방식 (정렬은 pageAll 이 id 로 붙인다)
+const pageAllOn = (client, build) => pageAll(() => build(client));
 const isSetChild = (r) => r.set_seq != null && Number(r.set_seq) !== 1;
 const toInt = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.trunc(n) : 0; };
 
-// 1000행 넘게 이어 읽기 — 페이지 사이 겹침/빠짐이 없도록 id 로 정렬
-const pageAll = (build) => S.pageAll(() => build().order('id', { ascending: true }));
+// 읽기 재시도 — 일시적 네트워크 오류는 같은 요청을 다시 보낸다 (읽기라 안전). 3번 모두 실패하면 오류를 돌려준다
+async function readPage(makeQuery) {
+  let lastError = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await makeQuery();
+      if (!r.error) return r;
+      lastError = r.error;
+    } catch (e) {
+      lastError = e;
+    }
+    if (i < 2) await new Promise((ok) => setTimeout(ok, 400 * (i + 1)));
+  }
+  return { data: null, error: lastError };
+}
+// 1000행 넘게 이어 읽기 — 페이지 사이 겹침/빠짐이 없도록 id 로 정렬, 페이지마다 재시도
+async function pageAll(build) {
+  const all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await readPage(() => build().order('id', { ascending: true }).range(from, from + 999));
+    if (error) throw error;
+    all.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return all;
+}
 
 let accountCache = null;   // { id, at }
 async function accountId() {
   if (!odb) throw new Error('위해 주문 DB 설정이 없습니다 (ORDER_SUPABASE_URL · ORDER_SUPABASE_KEY)');
   if (!ACCOUNT) throw new Error('위해 계정 설정이 없습니다 (ORDER_ACCOUNT_USERNAME)');
   if (accountCache && Date.now() - accountCache.at < ACCOUNT_TTL_MS) return accountCache.id;
-  const { data, error } = await odb.from('ft_users').select('id').eq('username', ACCOUNT);
+  const { data, error } = await readPage(() => odb.from('ft_users').select('id').eq('username', ACCOUNT));
   if (error) throw error;
   if (!data || data.length !== 1) {
     throw new Error(`위해 계정 '${ACCOUNT}' 을 ${data && data.length ? '하나로 특정할 수 없습니다' : '찾을 수 없습니다'}`);
@@ -160,8 +186,8 @@ router.post('/api/shortage/weihai-cart', async (req, res) => {
     const uid = await accountId();
 
     // 2) 상품 정보 — 우리 rk_inventories (sku_id · 상품명 · 혼용률 · 권장연령)
-    const inv = await S.chunkedPool(lines.map((l) => l.barcode), 200, (bcs) => S.pageAll(() => sb.from('rk_inventories')
-      .select('id, barcode, sku_id, name, composition, recommanded_age').in('barcode', bcs).order('id', { ascending: true })));
+    const inv = await S.chunkedPool(lines.map((l) => l.barcode), 200, (bcs) => pageAllOn(sb, (c) => c.from('rk_inventories')
+      .select('id, barcode, sku_id, name, composition, recommanded_age').in('barcode', bcs)));
     const invByBc = new Map();
     inv.forEach((r) => { if (!invByBc.has(r.barcode) || (!invByBc.get(r.barcode).sku_id && r.sku_id)) invByBc.set(r.barcode, r); });
 
