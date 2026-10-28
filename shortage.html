@@ -287,7 +287,7 @@
 
         /* ========== 테이블 헤더 (rocket) ========== */
         th {
-            color: #8b94a3;
+            color: #111827;
             font-weight: 600;
             font-size: 12px;
             cursor: pointer;
@@ -298,7 +298,7 @@
             border: 1px solid #dfe3ea;
             background: #f1f3f6;
         }
-        th:hover { color: #64748b; }
+        th:hover { color: #000; }
         th .sort-icon { font-size: 9px; margin-left: 3px; color: #cbd5e1; }
         th .sort-icon.active { color: #64748b; }
 
@@ -381,14 +381,13 @@
             outline: none;
         }
         /* ========== 위해주문 셀 — 클릭할 때마다 빈칸 → 🌳 → 🌱 → 이우 → 빈칸 ========== */
-        th.col-wh, td.wh-cell { background: #fff7ee; }
-        td.wh-cell { cursor: pointer; user-select: none; min-width: 56px; font-size: 14px; line-height: 1; }
+        td.wh-cell { background: #fff; }
+        th.col-wh { line-height: 1.25; }   /* 위해 / 주문 두 줄 — 열 너비를 늘리지 않는다 */
+        td.wh-cell { cursor: pointer; user-select: none; font-size: 14px; line-height: 1; }
         .mk-yiwu { display: inline-block; padding: 2px 6px; border-radius: 5px; background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 11px; font-weight: 700; line-height: 1.3; }
 
         /* ========== 열별 배경색 / 구분선 — 보기만 하는 칸은 회색 톤 ========== */
-        .col-remain { background: #eef1f5; }   /* 잔여 = 푸른 회색 */
-        .col-order  { background: #f3f0eb; }   /* 주문 = 따뜻한 회색 */
-        .col-stock  { background: #e9ebee; }   /* 재고 = 중간 회색 */
+        .col-remain, .col-order, .col-stock { background: #f5f6f8; }   /* 잔여·주문·재고 = 같은 연한 회색 */
         /* 구분선 살짝 굵게: 재고 | 입력·위해주문 | C 예상 | 주간 */
         th.col-stock, td.col-stock { border-right: 2px solid #cbd5e1; }
         th.col-wh,    td.wh-cell   { border-right: 2px solid #cbd5e1; }
@@ -942,7 +941,7 @@
                                 <th class="col-order">주문</th>
                                 <th class="col-stock">재고</th>
                                 <th id="inputHeader" class="col-input">입력</th>
-                                <th id="whHeader" class="col-wh" title="칸을 클릭할 때마다 빈칸 → 🌳 → 🌱 → 이우 → 빈칸 (칸에 마우스를 올리면 뜻이 보여요)">위해주문</th>
+                                <th id="whHeader" class="col-wh" title="칸을 클릭할 때마다 빈칸 → 🌳 → 🌱 → 이우 → 빈칸 (칸에 마우스를 올리면 뜻이 보여요)">위해<br>주문</th>
                                 <th class="col-cf">C 예상<br><span class="cf-sub">w | 2w</span></th>
                                 <th class="col-week">-7-8W</th>
                                 <th class="col-week">-5-6W</th>
@@ -1246,7 +1245,7 @@
             const wh = document.getElementById('whHeader');
             if (wh) {
                 const n = allData.filter(it => (savedInputs.get(it.상품바코드) || 0) > 0 && routeOf(it) === 'weihai').length;
-                wh.textContent = n > 0 ? `위해주문(${n})` : '위해주문';
+                wh.innerHTML = n > 0 ? `위해<br>주문(${n})` : '위해<br>주문';
             }
         }
 
