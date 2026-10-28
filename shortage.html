@@ -42,21 +42,94 @@
             text-align: left;
         }
 
-        /* ========== 검색 영역 ========== */
-        .search-area {
+        /* ========== 머리 (2026-10-28) — 제목·설명 | 도구 · 주문 복사 · 입력목록/저장 ========== */
+        .page-head {
             display: flex;
-            justify-content: center;
-            margin: 0 auto 16px;
-            width: 66.67%;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
         }
+        .ph-title h1 { margin: 0; }
+        .ph-title p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+        .ph-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .btn-ghost { border-color: transparent; background: transparent; color: #475569; }
+        .btn-ghost:hover, .btn-ghost[aria-expanded="true"] { background: #f1f5f9; border-color: transparent; }
+        /* 이어 붙은 버튼 묶음 (이우 | 위해) */
+        .btn-group { display: inline-flex; }
+        .btn-group .btn { border-radius: 0; }
+        .btn-group > .btn:first-child { border-radius: 9px 0 0 9px; }
+        .btn-group > :last-child { margin-left: -1px; }   /* 붙은 테두리 한 줄로 */
+        .btn-group > .btn:last-child, .btn-group > .menu-wrap:last-child > .btn { border-radius: 0 9px 9px 0; }
+        /* [도구] 메뉴 */
+        .menu-wrap { position: relative; }
+        .menu {
+            display: none;
+            position: absolute; left: 0; top: calc(100% + 6px); z-index: 30;
+            min-width: 210px; padding: 6px;
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+            box-shadow: 0 12px 32px rgba(15,23,42,.12), 0 2px 6px rgba(15,23,42,.06);
+        }
+        .menu.open { display: block; }
+        .menu-label { padding: 8px 10px 4px; font-size: 11.5px; font-weight: 600; color: var(--muted); }
+        .menu-item {
+            display: block; width: 100%; text-align: left;
+            padding: 8px 10px; border: 0; border-radius: 8px; background: none;
+            font: inherit; font-size: 13.5px; color: #334155; cursor: pointer;
+        }
+        .menu-item:hover { background: #f1f5f9; }
+        .menu-item:disabled { color: var(--muted); cursor: default; }
+        .menu-item.danger { color: #dc2626; }
+        .menu-item.danger:hover { background: #fef2f2; }
+        .menu-sep { height: 1px; margin: 6px 4px; background: #eef2f7; }
+
+        /* ========== 조회 패널 — 기간·불러오기 | 모드 · 가격오류 | 검색(남는 폭) | 스냅샷 ========== */
+        .filter-panel {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 10px;
+            margin-bottom: 12px;
+            background: #f8fafc;
+            border: 1px solid #eef2f7;
+            border-radius: 12px;
+        }
+        .fp-group { display: flex; align-items: center; gap: 8px; }
+        .date-range {
+            display: inline-flex; align-items: center; gap: 4px;
+            height: 38px; padding: 0 10px;
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; color: #94a3b8;
+        }
+        .date-range:focus-within { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+        .date-range input { border: 0; outline: none; background: none; font: inherit; font-size: 13px; color: #334155; cursor: pointer; }
+        .date-range input:disabled { color: #cbd5e1; cursor: default; }
+        .date-range .tilde { color: #cbd5e1; padding: 0 2px; }
+        /* 모드 세그먼트 */
+        .seg { display: inline-flex; padding: 3px; background: #e7ebf1; border-radius: 10px; }
+        .seg button {
+            height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: none;
+            font: inherit; font-size: 13.5px; font-weight: 500; color: #64748b; cursor: pointer;
+        }
+        .seg button:hover { color: #334155; }
+        .seg button.on { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(15,23,42,.10); }
+        /* ========== 검색 — 패널에서 남는 폭을 채운다 ========== */
+        .search-area {
+            position: relative;
+            display: flex;
+            flex: 1 1 260px;
+            min-width: 220px;
+        }
+        .search-area svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
         .search-area input {
             width: 100%;
-            height: 44px;
-            padding: 0 16px;
-            border: 1px solid #e5e9f0;
-            border-radius: 10px;
+            height: 38px;
+            padding: 0 14px 0 36px;
+            border: 1px solid #e2e8f0;
+            border-radius: 9px;
             background: #fff;
-            font-size: 14px;
+            font-size: 13.5px;
             color: var(--ink);
             outline: none;
             transition: border-color .12s, box-shadow .12s;
@@ -64,8 +137,13 @@
         .search-area input::placeholder { color: var(--muted); }
         .search-area input:focus {
             border-color: #c7d2fe;
-            box-shadow: 0 0 0 4px rgba(99,102,241,.10);
+            box-shadow: 0 0 0 3px rgba(99,102,241,.10);
         }
+        /* 스냅샷 — 불러오기 select + 저장(+) 한 덩어리 */
+        .snap { display: inline-flex; height: 38px; background: #fff; border: 1px solid #e2e8f0; border-radius: 9px; overflow: hidden; }
+        .snap select { border: 0; outline: none; background: none; padding: 0 8px 0 12px; font: inherit; font-size: 13px; color: #334155; cursor: pointer; max-width: 210px; }
+        .snap button { width: 38px; border: 0; border-left: 1px solid #e2e8f0; background: none; color: #475569; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .snap button:hover { background: #f1f5f9; color: var(--primary); }
 
         /* ========== 액션 버튼 영역 ========== */
         .action-bar {
@@ -361,6 +439,39 @@
             font-size: 11px;
         }
         .yiwu-popup.active { display: block; }
+        /* '주문' 셀 hover 카드 — 마우스 옆에 살짝 */
+        .order-tip {
+            position: fixed; z-index: 5001; pointer-events: none;
+            min-width: 150px; padding: 8px 12px;
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(15,23,42,.12);
+            font-size: 13px; color: #334155;
+            visibility: hidden; opacity: 0; transform: translateY(2px); transition: opacity .12s, transform .12s;
+        }
+        .order-tip.show { visibility: visible; opacity: 1; transform: none; }
+        .order-tip .ln { display: flex; justify-content: space-between; gap: 16px; line-height: 1.75; }
+        .order-tip .ln b { font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+        .order-tip .ln.zero b { color: #cbd5e1; font-weight: 500; }
+        .order-tip .ln.sum { border-top: 1px solid #eef2f7; margin-top: 4px; padding-top: 4px; }
+        .order-tip .ln.na b { color: #dc2626; font-weight: 600; font-size: 12px; }
+        .order-tip .ln.old b { color: #94a3b8; font-weight: 500; font-size: 12px; }
+        /* 위해 장바구니 담기 모달 */
+        .upload-modal.cart-modal { text-align: left; width: 400px; max-width: calc(100vw - 32px); padding: 20px 22px 18px; border-radius: 14px; }
+        .cart-modal .cm-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .cart-modal .cm-head h3 { margin: 0; font-size: 16px; color: var(--ink); }
+        .cart-modal .cm-x { width: 30px; height: 30px; border: 0; border-radius: 8px; background: none; font-size: 20px; color: #94a3b8; cursor: pointer; }
+        .cart-modal .cm-x:hover { background: #f1f5f9; color: #334155; }
+        .cart-modal .cm-label { display: block; margin: 12px 0 6px; font-size: 12.5px; font-weight: 600; color: #475569; }
+        .cart-modal .cm-field { width: 100%; box-sizing: border-box; height: 38px; padding: 0 10px; border: 1px solid #e2e8f0; border-radius: 9px; background: #fff; font: inherit; font-size: 13.5px; color: var(--ink); outline: none; }
+        .cart-modal .cm-field:focus { border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,.1); }
+        .cart-modal .cm-field:disabled { background: #f8fafc; color: #94a3b8; }
+        .cart-modal .cm-types { display: flex; }
+        .cart-modal .cm-types button { flex: 1; }
+        .cart-modal .cm-note { min-height: 18px; margin-top: 12px; font-size: 12px; line-height: 1.5; color: #64748b; }
+        .cart-modal .cm-note.err { color: #dc2626; }
+        .cart-modal .cm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+        .cart-modal .btn:disabled { opacity: .5; cursor: default; }
+        .weihai-notice { margin: -2px 0 12px; padding: 9px 12px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; font-size: 13px; }
         .yiwu-popup h4 {
             margin: 0 0 8px;
             font-size: 12px;
@@ -570,6 +681,9 @@
         <div id="yiwuPopupContent"></div>
     </div>
 
+    <!-- ===== '주문' 셀 hover — 출처별 수량 (위해 🛒 · 위해 📦 · 이우 📦) ===== -->
+    <div class="order-tip" id="orderTip" role="tooltip"></div>
+
     <!-- ===== 이미지 미리보기 (img 셀 hover) ===== -->
     <div id="imgPreview"><img alt="상품 이미지"></div>
 
@@ -600,18 +714,53 @@
     <div id="header-container"></div>
     <div class="container">
         <div class="content">
-            <!-- ===== 제목 + 이우/위해 주문 (같은 줄, 버튼 우측 정렬) ===== -->
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-                <h1 style="margin:0;">상품부족 현황</h1>
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn btn-copy" onclick="handleCopy()">이우 주문</button>
-                    <button class="btn btn-copy" onclick="handleCopyWeihai()">위해 주문</button>
+            <!-- ===== 머리 (2026-10-28 재배치) — 제목 | 작업 흐름 순서대로: 도구 · 주문 복사 · 입력목록/저장 ===== -->
+            <div class="page-head">
+                <div class="ph-title">
+                    <h1>상품부족 현황</h1>
+                    <p>기간을 불러와 주문할 수량을 입력하고 저장한 뒤, 이우·위해 주문으로 복사하세요</p>
+                </div>
+                <div class="ph-actions">
+                    <button type="button" class="btn btn-price-err" id="priceErrBtn" onclick="togglePriceErr()" title="쿠팡 판매가가 적정판매가(이유몽 매입가÷0.6 · 아이엠몽 매입가÷0.65~÷0.6)보다 높은 상품만 보기 — 1,000원 미만 주황 · 이상 빨강">가격오류</button>
+                    <!-- 가끔 쓰는 업로드·광고·초기화는 [도구] 메뉴 안으로 -->
+                    <div class="menu-wrap">
+                        <button type="button" class="btn btn-ghost" id="toolMenuBtn" onclick="toggleMenu('toolMenu', event)" aria-haspopup="true" aria-expanded="false">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>도구
+                        </button>
+                        <div class="menu" id="toolMenu" role="menu">
+                            <div class="menu-label">쿠팡 데이터 업로드</div>
+                            <button type="button" class="menu-item btn-forecast" role="menuitem" onclick="closeMenus(); document.getElementById('forecastFileInput').click()">쿠팡주간예상 xlsx</button>
+                            <button type="button" class="menu-item btn-order-history" role="menuitem" onclick="closeMenus(); document.getElementById('orderHistoryFileInput').click()">쿠팡발주내역 xlsx</button>
+                            <div class="menu-sep"></div>
+                            <div class="menu-label">광고</div>
+                            <button type="button" class="menu-item" role="menuitem" onclick="closeMenus(); copyAdConsole()">추출 콘솔 복사</button>
+                            <button type="button" class="menu-item" role="menuitem" onclick="closeMenus(); document.getElementById('adResultFileInput').click()">광고결과 업로드</button>
+                            <div class="menu-sep"></div>
+                            <button type="button" class="menu-item danger" role="menuitem" onclick="closeMenus(); handleReset()">기간·입력값 초기화</button>
+                        </div>
+                        <input type="file" id="forecastFileInput" accept=".xlsx" style="display: none">
+                        <input type="file" id="orderHistoryFileInput" accept=".xlsx" style="display: none">
+                        <input type="file" id="adResultFileInput" accept=".csv,.xlsx,.xls" style="display: none" onchange="uploadAdResult(this)">
+                    </div>
                     <span class="btn-separator"></span>
-                    <!-- 스냅샷: 지금 화면(행 전체 + 입력값 + 조회조건)을 이름 붙여 보관 / 드롭다운에서 골라 그대로 복원 -->
-                    <select id="snapshotSelect" class="date-filter" onchange="onSnapshotSelect(this)" style="cursor:pointer; max-width:220px;" title="저장된 스냅샷 불러오기">
-                        <option value="">스냅샷 불러오기</option>
-                    </select>
-                    <button class="btn btn-copy" onclick="openSnapshotModal()">스냅샷</button>
+                    <!-- 주문 — 이우: 구글 시트 붙여넣기 복사 · 위해: purchase-agent 장바구니(immongbr)에 담기 또는 복사 -->
+                    <div class="btn-group" role="group" aria-label="주문">
+                        <button class="btn btn-copy" onclick="handleCopy()" title="이우 주문 형식으로 클립보드 복사">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>이우 주문
+                        </button>
+                        <div class="menu-wrap">
+                            <button type="button" class="btn btn-copy" onclick="toggleMenu('weihaiMenu', event)" aria-haspopup="true" aria-expanded="false">
+                                위해 주문<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                            </button>
+                            <div class="menu" id="weihaiMenu" role="menu">
+                                <button type="button" class="menu-item" role="menuitem" onclick="closeMenus(); openCartModal()">🛒 장바구니 담기</button>
+                                <button type="button" class="menu-item" role="menuitem" onclick="closeMenus(); handleCopyWeihai()">복사 (구글 시트 붙여넣기)</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="btn-separator"></span>
+                    <button class="btn btn-input-list" onclick="openInputPanel()">입력목록</button>
+                    <button class="btn btn-save" onclick="handleSave()">저장</button>
                 </div>
             </div>
 
@@ -631,42 +780,55 @@
                 </div>
             </div>
 
-            <!-- ===== 검색 ===== -->
-            <div class="search-area">
-                <input type="text" id="searchInput" placeholder="SKU, 상품바코드 또는 상품이름 검색">
+            <!-- ===== 위해 장바구니 담기 모달 — stock_management [주문 ▸ 장바구니] 와 같은 구성 + 배송유형. 계정은 서버가 immongbr 로 고정 ===== -->
+            <div class="upload-modal-overlay" id="cartModal" onclick="if(event.target===this && !cartBusy) closeCartModal()" onkeydown="onCartModalKey(event)">
+                <div class="upload-modal cart-modal" role="dialog" aria-modal="true" aria-labelledby="cartModalTitle">
+                    <div class="cm-head">
+                        <h3 id="cartModalTitle">장바구니 추가</h3>
+                        <button type="button" class="cm-x" onclick="closeCartModal()" aria-label="닫기">×</button>
+                    </div>
+                    <label class="cm-label" for="cartSelect">카트</label>
+                    <select id="cartSelect" class="cm-field" onchange="onCartSelect()"></select>
+                    <label class="cm-label" for="cartNameInput">새 카트 이름</label>
+                    <input type="text" id="cartNameInput" class="cm-field" maxlength="100" disabled oninput="refreshCartSubmit()">
+                    <div class="cm-label" id="cartTypeLabel">배송유형</div>
+                    <div class="seg cm-types" id="cartTypes" role="radiogroup" aria-labelledby="cartTypeLabel"></div>
+                    <div class="cm-note" id="cartNote"></div>
+                    <div class="cm-actions">
+                        <button type="button" class="btn" id="cartCloseBtn" onclick="closeCartModal()">닫기</button>
+                        <button type="button" class="btn btn-save" id="cartSubmitBtn" onclick="submitCart()">저장</button>
+                    </div>
+                </div>
             </div>
 
-            <!-- ===== 액션 버튼 (항상 표시) ===== -->
-            <div class="action-bar" style="justify-content: space-between;">
-                <!-- 좌측: 기간 필터 + 불러오기 -->
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <input type="date" class="date-filter" id="startDate" min="2020-01-01" max="2099-12-31">
-                    <span style="color:#999; font-size:10pt;">~</span>
-                    <input type="date" class="date-filter" id="endDate" min="2020-01-01" max="2099-12-31">
+            <!-- ===== 조회 패널 — 무엇을 볼지: 기간·불러오기 | 검색 | 스냅샷 (2026-10-28 전체/재고부족/입고재고 모드 없앰 — 기간 안 발주 상품 전부, 처리완료 포함) ===== -->
+            <div class="filter-panel">
+                <div class="fp-group">
+                    <div class="date-range" title="조회 기간">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+                        <input type="date" id="startDate" min="2020-01-01" max="2099-12-31" aria-label="시작일">
+                        <span class="tilde">~</span>
+                        <input type="date" id="endDate" min="2020-01-01" max="2099-12-31" aria-label="종료일">
+                    </div>
                     <button class="btn btn-load" onclick="loadData()">불러오기</button>
-                    <select id="viewMode" class="date-filter" onchange="onModeChange()" style="cursor:pointer;">
-                        <option value="all">전체</option>
-                        <option value="shortage" selected>재고부족</option>
-                        <option value="pending">입고재고</option>
-                    </select>
-                    <button type="button" class="btn btn-price-err" id="priceErrBtn" onclick="togglePriceErr()" title="쿠팡 판매가가 적정판매가(이유몽 매입가÷0.6 · 아이엠몽 매입가÷0.65~÷0.6)보다 높은 상품만 보기 — 1,000원 미만 주황 · 이상 빨강">가격오류</button>
                 </div>
-                <!-- 우측: 초기화 | xlsx업로드 | 입력목록+저장 | 사입복사 -->
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button class="btn btn-reset" onclick="handleReset()">초기화</button>
-                    <span class="btn-separator"></span>
-                    <button class="btn btn-forecast" onclick="document.getElementById('forecastFileInput').click()">쿠팡주간예상 xlsx</button>
-                    <input type="file" id="forecastFileInput" accept=".xlsx" style="display: none">
-                    <button class="btn btn-order-history" onclick="document.getElementById('orderHistoryFileInput').click()">쿠팡발주내역 xlsx</button>
-                    <input type="file" id="orderHistoryFileInput" accept=".xlsx" style="display: none">
-                    <button class="btn" onclick="copyAdConsole()">추출 콘솔(광고)</button>
-                    <button class="btn" onclick="document.getElementById('adResultFileInput').click()">광고결과 업로드</button>
-                    <input type="file" id="adResultFileInput" accept=".csv,.xlsx,.xls" style="display: none" onchange="uploadAdResult(this)">
-                    <span class="btn-separator"></span>
-                    <button class="btn btn-input-list" onclick="openInputPanel()">입력목록</button>
-                    <button class="btn btn-save" onclick="handleSave()">저장</button>
+                <div class="search-area">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input type="text" id="searchInput" placeholder="SKU, 상품바코드 또는 상품이름 검색">
+                </div>
+                <!-- 스냅샷: 지금 화면(행 전체 + 입력값 + 조회조건)을 이름 붙여 보관 / 드롭다운에서 골라 그대로 복원 -->
+                <div class="snap" title="스냅샷 — 지금 화면을 이름 붙여 보관하고 다시 불러온다">
+                    <select id="snapshotSelect" onchange="onSnapshotSelect(this)" title="저장된 스냅샷 불러오기">
+                        <option value="">스냅샷 불러오기</option>
+                    </select>
+                    <button type="button" onclick="openSnapshotModal()" title="지금 화면을 스냅샷으로 저장" aria-label="스냅샷 저장">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                    </button>
                 </div>
             </div>
+
+            <!-- ===== 위해 주문 데이터를 못 불러왔을 때 — '주문' 열이 이우만 더한 값이다 ===== -->
+            <div class="weihai-notice" id="weihaiNotice" role="alert" hidden></div>
 
             <!-- ===== 데이터 영역 ===== -->
             <div id="loadingArea" class="loading" style="display:none;">
@@ -679,7 +841,7 @@
             </div>
 
             <div id="emptyArea" class="empty-state" style="display:none;">
-                <p>부족한 상품이 없습니다.</p>
+                <p>기간 안에 발주된 상품이 없습니다.</p>
             </div>
 
             <div id="tableArea" style="display:none;">
@@ -891,6 +1053,8 @@
     <script>
         /* ========== 상태 변수 ========== */
         let allData = [];
+        const CACHE_VERSION = 2;   // shortageCache 형식 — 2 = 모드 없음(2026-10-28). 다르면 버린다
+        let weihaiErrMsg = '';   // 마지막 [불러오기] 때 위해 주문 데이터를 못 읽은 이유 (서버 X-Weihai-Error 헤더) — 비면 정상
         let filteredData = [];
         let loadToken = 0;   // 로드 경쟁 방지: 최신 로드만 화면에 반영
         let currentSort = { key: '부족수량', order: 'desc' };
@@ -921,18 +1085,14 @@
             });
             startEl.addEventListener('focus', () => { startJumped = false; });
 
-            // 저장된 모드/기간 복원 + 캐시된 데이터 그대로 표시 (네트워크 재조회 없음)
-            //   → 데이터는 [불러오기](또는 모드 변경) 로만 최신화되어, 잠시 나갔다 와도 유지됨
+            // 저장된 기간 복원 + 캐시된 데이터 그대로 표시 (네트워크 재조회 없음)
+            //   → 데이터는 [불러오기] 로만 최신화되어, 잠시 나갔다 와도 유지됨
             try {
-                const savedMode = localStorage.getItem('shortageViewMode');
-                const modeEl = document.getElementById('viewMode');
-                if (savedMode && modeEl) modeEl.value = savedMode;
                 const saved = JSON.parse(localStorage.getItem('shortageDateRange') || 'null');
                 if (saved) {
                     if (saved.startDate) startEl.value = saved.startDate;
                     if (saved.endDate) endEl.value = saved.endDate;
                 }
-                updateModeUI();
                 restoreFromCache();   // 캐시가 있으면 그대로 렌더 (fetch 안 함)
             } catch (e) { /* 무시 */ }
 
@@ -945,8 +1105,7 @@
         /* ========== 다른 화면에서 넘어온 조건 적용 (예: 발주 랭킹 카드 클릭) ==========
            /shortage?search=상품명&days=30
              · search : 검색창에 넣고 바로 검색
-             · days   : 오늘 포함 최근 N일로 기간을 잡고 '전체' 조건으로 새로 불러온다 (없으면 지금 보이는 데이터에서 검색만)
-                        — 재고부족이 아닌 상품도 찾을 수 있어야 하므로 전체로 조회
+             · days   : 오늘 포함 최근 N일로 기간을 잡고 새로 불러온다 (없으면 지금 보이는 데이터에서 검색만)
            적용한 뒤에는 주소에서 조건을 지운다 — 새로고침할 때마다 다시 불러오지 않도록. */
         const LINK_DAYS_MAX = 366;
         const toDateInputValue = (d) =>
@@ -965,8 +1124,6 @@
             if (hasDays) {
                 const end = new Date();
                 const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - (days - 1));
-                document.getElementById('viewMode').value = 'all';
-                updateModeUI();
                 document.getElementById('startDate').value = toDateInputValue(start);
                 document.getElementById('endDate').value = toDateInputValue(end);
                 await loadData();
@@ -1001,33 +1158,25 @@
             }
         }
 
-        /* ========== 조회 모드 (전체 / 재고부족 / 입고재고) ==========
-           전체 = 재고부족과 같은 기간·발주서 기준이되, 재고부족 판정으로 거르지 않고 전부 표시 */
-        function getViewMode() {
-            const el = document.getElementById('viewMode');
-            return el ? el.value : 'shortage';
+        /* ========== 드롭다운 메뉴 — [도구] · [위해 주문 ▾] (한 번에 하나만 열림) ========== */
+        function toggleMenu(id, e) {
+            e.stopPropagation();
+            const menu = document.getElementById(id);
+            const open = !menu.classList.contains('open');
+            closeMenus();
+            if (!open) return;
+            menu.classList.add('open');
+            e.currentTarget.setAttribute('aria-expanded', true);
         }
-        function updateModeUI() {
-            const pending = getViewMode() === 'pending';
-            // 입고재고 모드는 기간 필터를 쓰지 않음 → 날짜 입력 비활성
-            document.getElementById('startDate').disabled = pending;
-            document.getElementById('endDate').disabled = pending;
+        function closeMenus() {
+            document.querySelectorAll('.menu.open').forEach(m => m.classList.remove('open'));
+            document.querySelectorAll('.menu-wrap > [aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', false));
         }
-        function onModeChange() {
-            try { localStorage.setItem('shortageViewMode', getViewMode()); } catch (e) { /* 무시 */ }
-            updateModeUI();
-            loadData();
-        }
+        document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap')) closeMenus(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenus(); });
 
-        /* ========== 데이터 로드 (모드 분기) ========== */
+        /* ========== 데이터 로드 — 기간 안의 발주 상품 전부 (처리완료 발주서 포함) ========== */
         async function loadData() {
-            const mode = getViewMode();
-            try { localStorage.setItem('shortageViewMode', mode); } catch (e) { /* 무시 */ }
-            // 정렬 기준: 입고재고=잔여 내림차순 / 재고부족=부족수량(기본)
-            if (mode === 'pending') currentSort = { key: 'remainQty', order: 'desc' };
-            else if (currentSort.key === 'remainQty') currentSort = { key: '부족수량', order: 'desc' };
-
-            if (mode === 'pending') { await loadPendingData(); return; }
 
             const myToken = ++loadToken;
             try {
@@ -1035,7 +1184,6 @@
 
                 // 기간 필터 파라미터 구성
                 const params = new URLSearchParams();
-                if (mode === 'all') params.set('mode', 'all');
                 const startDate = document.getElementById('startDate').value;
                 const endDate = document.getElementById('endDate').value;
                 if (startDate) params.set('startDate', startDate);
@@ -1051,6 +1199,7 @@
 
                 const json = await response.json();
                 if (myToken !== loadToken) return;   // 더 최신 로드가 시작됨 → 이 결과 폐기
+                weihaiErrMsg = readWeihaiError(response);
                 allData = json;
                 filteredData = viewRows(allData);
                 sortData();
@@ -1066,7 +1215,7 @@
         function saveCache() {
             try {
                 localStorage.setItem('shortageCache', JSON.stringify({
-                    mode: getViewMode(),
+                    v: CACHE_VERSION,
                     startDate: document.getElementById('startDate').value,
                     endDate: document.getElementById('endDate').value,
                     data: allData,
@@ -1079,40 +1228,16 @@
                 const raw = localStorage.getItem('shortageCache');
                 if (!raw) return false;
                 const cache = JSON.parse(raw);
-                if (!cache || !Array.isArray(cache.data) || cache.data.length === 0) return false;
-                const modeEl = document.getElementById('viewMode');
-                if (modeEl && cache.mode) modeEl.value = cache.mode;
+                // v2(2026-10-28) 전 캐시는 재고부족·입고재고 모드로 걸러진 목록일 수 있다 → 쓰지 않고 [불러오기] 를 기다린다
+                if (!cache || cache.v !== CACHE_VERSION || !Array.isArray(cache.data) || cache.data.length === 0) return false;
                 document.getElementById('startDate').value = cache.startDate || '';
                 document.getElementById('endDate').value = cache.endDate || '';
-                updateModeUI();
-                if (cache.mode === 'pending') currentSort = { key: 'remainQty', order: 'desc' };
                 allData = cache.data;
                 filteredData = viewRows(allData);
                 sortData();
                 renderTable();
                 return true;
             } catch (e) { return false; }
-        }
-
-        /* ========== 입고재고 로드 (stockArrange 처리중 전체 · 주문~주간 열 포함 보강) ========== */
-        async function loadPendingData() {
-            const myToken = ++loadToken;
-            try {
-                showLoading();
-                // 서버가 pending 바코드로 목록을 구성하고 주문/재고/예상/주간까지 보강해서 내려줌
-                const [res] = await Promise.all([fetch('/api/shortage?mode=pending'), loadCoupangInfo()]);
-                if (!res.ok) throw new Error('API 호출 실패');
-                const json = await res.json();
-                if (myToken !== loadToken) return;   // 더 최신 로드가 시작됨 → 이 결과 폐기
-                allData = json;
-                filteredData = viewRows(allData);
-                sortData();
-                renderTable();
-                saveCache();
-            } catch (error) {
-                console.error('입고재고 로드 오류:', error);
-                document.getElementById('loadingArea').innerHTML = '<p style="color:#dc3545;">데이터를 불러오는데 실패했습니다.</p>';
-            }
         }
 
         /* ========== 검색 필터 ========== */
@@ -1409,6 +1534,7 @@
 
             document.getElementById('initArea').style.display = 'none';
             loadingArea.style.display = 'none';
+            updateWeihaiNotice();
 
             if (filteredData.length === 0) {
                 emptyArea.style.display = '';
@@ -1437,7 +1563,7 @@
                     <td class="col-narrow"><strong>${Number(item.부족수량).toLocaleString()}</strong></td>
                     <td class="input-cell" data-row="${idx}">${savedInputs.get(item.상품바코드) || ''}</td>
                     <td class="col-remain">${item.remainQty ? Number(item.remainQty).toLocaleString() : ''}</td>
-                    <td class="yiwu-cell col-order" data-barcode="${item.상품바코드}">${item.yiwuTotalQty ? Number(item.yiwuTotalQty).toLocaleString() : ''}</td>
+                    <td class="yiwu-cell col-order" data-barcode="${item.상품바코드}" data-row="${idx}">${orderQtyOf(item) ? orderQtyOf(item).toLocaleString() : ''}</td>
                     <td class="col-stock">${item.재고 == null ? '' : Number(item.재고).toLocaleString()}</td>
                     <td>${formatRounded(item.cForecast)}</td>
                     <td class="col-cf2w">${formatRounded(item.cForecast2W)}</td>
@@ -1618,10 +1744,63 @@
             document.querySelectorAll('td.yiwu-cell').forEach(cell => {
                 cell.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    hideOrderTip();
                     const barcode = cell.dataset.barcode;
                     if (barcode) showYiwuPopup(barcode, e.clientX, e.clientY);
                 });
+                cell.addEventListener('mouseenter', (e) => showOrderTip(filteredData[Number(cell.dataset.row)], e));
+                cell.addEventListener('mousemove', placeOrderTip);
+                cell.addEventListener('mouseleave', hideOrderTip);
             });
+        }
+
+        /* ========== '주문' 열 = 이우 + 위해 🛒 장바구니 + 위해 📦 주문 (2026-10-28, 서버 routes/rkWeihai.js) ==========
+           orderTotalQty 가 없는 행(이 기능 전에 저장한 스냅샷·캐시)은 이우 값만 있다 → 이우만 보여 준다 */
+        function readWeihaiError(res) {
+            const h = res.headers.get('X-Weihai-Error');
+            if (!h) return '';
+            try { return decodeURIComponent(h); } catch (e) { return h; }
+        }
+        function orderQtyOf(item) {
+            const n = item.orderTotalQty != null ? Number(item.orderTotalQty) : Number(item.yiwuTotalQty);
+            return Number.isFinite(n) ? n : 0;
+        }
+        function updateWeihaiNotice() {
+            const el = document.getElementById('weihaiNotice');
+            if (!el) return;
+            // 행에 null(불러오기 실패로 모름)이 있으면 캐시·스냅샷에서 다시 보여 줄 때도 알린다
+            const failed = weihaiErrMsg || (allData.some(it => it && it.weihaiCartQty === null) ? '불러올 때 위해 데이터를 읽지 못했습니다' : '');
+            el.hidden = !failed;
+            el.textContent = failed ? `위해 주문·장바구니 수량을 불러오지 못했습니다 — '주문' 열에 이우만 반영됐습니다. (${failed})` : '';
+        }
+        function showOrderTip(item, e) {
+            const tip = document.getElementById('orderTip');
+            if (!item || !tip) return;
+            const fmt = n => Number(n || 0).toLocaleString();
+            const line = (label, n) => `<div class="ln${n ? '' : ' zero'}"><span>${label}</span><b>${fmt(n)}</b></div>`;
+            const weihai = (label, v) => v === null ? `<div class="ln na"><span>${label}</span><b>불러오지 못함</b></div>`
+                : v === undefined ? `<div class="ln old"><span>${label}</span><b>정보 없음</b></div>`
+                : line(label, v);
+            tip.innerHTML = weihai('위해 🛒', item.weihaiCartQty)
+                + weihai('위해 📦', item.weihaiOrderQty)
+                + line('이우 📦', item.yiwuTotalQty)
+                + `<div class="ln sum"><span>합계</span><b>${fmt(orderQtyOf(item))}</b></div>`;
+            tip.classList.add('show');
+            placeOrderTip(e);
+        }
+        function placeOrderTip(e) {
+            const tip = document.getElementById('orderTip');
+            if (!tip || !tip.classList.contains('show')) return;
+            const w = tip.offsetWidth, h = tip.offsetHeight;
+            let x = e.clientX + 14, y = e.clientY + 14;
+            if (x + w > window.innerWidth - 8) x = e.clientX - w - 14;
+            if (y + h > window.innerHeight - 8) y = e.clientY - h - 14;
+            tip.style.left = Math.max(8, x) + 'px';
+            tip.style.top = Math.max(8, y) + 'px';
+        }
+        function hideOrderTip() {
+            const tip = document.getElementById('orderTip');
+            if (tip) tip.classList.remove('show');
         }
 
         async function showYiwuPopup(barcode, mouseX, mouseY) {
@@ -1972,6 +2151,132 @@
             copyToClipboard(rows.join('\n'), `${rows.length}건 복사 완료 (위해)`);
         }
 
+        /* ========== [위해 주문 ▸ 🛒 장바구니 담기] (2026-10-28) ==========
+           stock_management [주문 ▸ 장바구니] 와 같은 흐름 — 대상 = 지금 화면에 보이는 행 중 입력 수량 > 0 (위해 복사와 같은 범위)
+           카트: immongbr 의 NEW 카트 중 고르거나 ➕ NEW 로 새로 만든다 · 배송유형: 서버가 정한 목록(첫 값 기본)
+           저장은 서버(POST /api/shortage/weihai-cart)가 한다 — 계정 고정, rk_inventories 에서 sku_id·혼용률·권장연령을 채움 */
+        const CART_NEW = '__NEW__';
+        let cartBusy = false;        // 저장 중
+        let cartLoading = false;     // 카트 목록 읽는 중
+        let cartTargets = [];
+        let cartType = 'DIRECT';
+        let cartTypeList = ['DIRECT', 'COUPANG'];
+        function weihaiCartTargets() {
+            return filteredData
+                .filter(it => (savedInputs.get(it.상품바코드) || 0) > 0)
+                .map(it => ({ barcode: it.상품바코드, qty: Number(savedInputs.get(it.상품바코드)), skuId: it.skuId || '', name: it.상품이름 || '' }));
+        }
+        async function openCartModal() {
+            cartTargets = weihaiCartTargets();
+            if (!cartTargets.length) { alert('입력 값이 있는 행이 없습니다.'); return; }
+            const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+            const sel = document.getElementById('cartSelect');
+            const name = document.getElementById('cartNameInput');
+            document.getElementById('cartModalTitle').textContent = `장바구니 추가 (${cartTargets.length}건)`;
+            sel.innerHTML = '<option value="">불러오는 중...</option>';
+            name.value = '';
+            cartType = cartTypeList[0];
+            renderCartTypes();
+            setCartNote('');
+            cartLoading = true;
+            onCartSelect();
+            document.getElementById('cartModal').classList.add('active');
+            setTimeout(() => sel.focus(), 50);
+            let carts = [];
+            try {
+                const res = await fetch('/api/shortage/weihai-carts');
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || '카트 목록을 불러오지 못했습니다');
+                carts = data.carts || [];
+                if (Array.isArray(data.shipmentTypes) && data.shipmentTypes.length) {
+                    cartTypeList = data.shipmentTypes;
+                    if (!cartTypeList.includes(cartType)) cartType = cartTypeList[0];
+                    renderCartTypes();
+                }
+                setCartNote(`${data.account} 계정 장바구니에 담깁니다. 같은 상품이 이미 있어도 새 행으로 추가돼요.`);
+            } catch (e) {
+                setCartNote('카트 목록을 불러오지 못했습니다: ' + e.message, true);
+            } finally {
+                cartLoading = false;
+            }
+            sel.innerHTML = '<option value="">선택</option>'
+                + carts.map(c => `<option value="${esc(c.id)}">${esc(c.cart_name)} · ${esc(c.status)} · ${esc(String(c.created_at || '').slice(0, 10))}</option>`).join('')
+                + `<option value="${CART_NEW}">➕ NEW</option>`;
+            onCartSelect();
+        }
+        function renderCartTypes() {
+            document.getElementById('cartTypes').innerHTML = cartTypeList.map(t =>
+                `<button type="button" role="radio" aria-checked="${t === cartType}" class="${t === cartType ? 'on' : ''}" onclick="setCartType('${t}')">${t}</button>`).join('');
+        }
+        function setCartType(t) { if (cartBusy) return; cartType = t; renderCartTypes(); }
+        function setCartNote(msg, isErr) {
+            const el = document.getElementById('cartNote');
+            el.textContent = msg;
+            el.classList.toggle('err', !!isErr);
+        }
+        function onCartSelect() {
+            const isNew = document.getElementById('cartSelect').value === CART_NEW;
+            const name = document.getElementById('cartNameInput');
+            name.disabled = !isNew || cartBusy;
+            name.placeholder = isNew ? '예) 2026-08-11 정기발주' : '신규를 선택하면 활성화됩니다';
+            if (isNew) setTimeout(() => name.focus(), 0);
+            refreshCartSubmit();
+        }
+        function canSubmitCart() {
+            const v = document.getElementById('cartSelect').value;
+            const isNew = v === CART_NEW;
+            return !cartLoading && !cartBusy && (isNew ? document.getElementById('cartNameInput').value.trim().length > 0 : v !== '');
+        }
+        function refreshCartSubmit() {
+            const btn = document.getElementById('cartSubmitBtn');
+            btn.disabled = !canSubmitCart();
+            btn.textContent = cartBusy ? '전송 중...' : '저장';
+        }
+        function closeCartModal() {
+            if (cartBusy) return;
+            document.getElementById('cartModal').classList.remove('active');
+        }
+        function onCartModalKey(e) {
+            if (e.key === 'Escape') { e.preventDefault(); closeCartModal(); }
+            else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); submitCart(); }
+        }
+        async function submitCart() {
+            if (!canSubmitCart()) return;
+            const v = document.getElementById('cartSelect').value;
+            const isNew = v === CART_NEW;
+            const body = isNew
+                ? { mode: 'new', cartName: document.getElementById('cartNameInput').value.trim() }
+                : { mode: 'existing', cartId: v };
+            body.shipmentType = cartType;
+            body.items = cartTargets;
+            cartBusy = true;
+            document.getElementById('cartCloseBtn').disabled = true;
+            document.getElementById('cartSelect').disabled = true;
+            onCartSelect();
+            try {
+                const res = await fetch('/api/shortage/weihai-cart', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || '전송 실패');
+                cartBusy = false;
+                closeCartModal();
+                alert(`${data.count}건 전송 완료 (${data.cartName})`
+                    + (cartType === 'COUPANG' ? '\n\npurchase-agent 장바구니에서 쿠팡 사이즈를 채워야 [주문]할 수 있어요.' : ''));
+                // 🛒 를 바로 반영 — '주문' 열을 다시 계산
+                loadData();
+            } catch (e) {
+                alert('주문 전송 실패: ' + e.message);
+            } finally {
+                cartBusy = false;
+                document.getElementById('cartCloseBtn').disabled = false;
+                document.getElementById('cartSelect').disabled = false;
+                onCartSelect();
+            }
+        }
+
         // 클립보드 복사 (HTTP 환경 호환)
         function copyToClipboard(text, successMsg) {
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2039,10 +2344,9 @@
                 return;
             }
             const inputCount = Array.from(savedInputs.values()).filter(q => q > 0).length;
-            const modeLabel = { all: '전체', shortage: '재고부족', pending: '입고재고' }[getViewMode()] || getViewMode();
             const s = document.getElementById('startDate').value, e = document.getElementById('endDate').value;
             document.getElementById('snapshotModalInfo').textContent =
-                `${allData.length.toLocaleString()}행 · 입력 ${inputCount}건 · ${modeLabel}${(s || e) ? ` · ${s || ''} ~ ${e || ''}` : ''}`;
+                `${allData.length.toLocaleString()}행 · 입력 ${inputCount}건${(s || e) ? ` · ${s || ''} ~ ${e || ''}` : ''}`;
             const input = document.getElementById('snapshotNameInput');
             input.value = '';
             document.getElementById('snapshotSaveBtn').disabled = false;
@@ -2060,7 +2364,7 @@
             btn.disabled = true;
             const payload = {
                 name,
-                mode: getViewMode(),
+                mode: 'all',   // 모드는 없어졌다 (예전 스냅샷과 구분용으로만 남김)
                 startDate: document.getElementById('startDate').value || null,
                 endDate: document.getElementById('endDate').value || null,
                 rows: allData.map(row => ({ row, inputQty: savedInputs.get(row.상품바코드) || null })),
@@ -2111,21 +2415,17 @@
                 const { snapshot, rows } = await res.json();
                 if (myToken !== loadToken) return;
 
-                // 조회 조건 복원
-                const modeEl = document.getElementById('viewMode');
-                if (snapshot.mode && modeEl) modeEl.value = snapshot.mode;
+                // 조회 조건 복원 (기간) — 예전 스냅샷의 재고부족·입고재고 모드는 저장 당시 행 그대로 보여 준다
                 document.getElementById('startDate').value = snapshot.start_date || '';
                 document.getElementById('endDate').value = snapshot.end_date || '';
-                updateModeUI();
                 try {
-                    localStorage.setItem('shortageViewMode', getViewMode());
                     localStorage.setItem('shortageDateRange', JSON.stringify({
                         startDate: snapshot.start_date || '', endDate: snapshot.end_date || '' }));
                 } catch (e) { /* 무시 */ }
-                currentSort = snapshot.mode === 'pending'
-                    ? { key: 'remainQty', order: 'desc' } : { key: '부족수량', order: 'desc' };
+                currentSort = { key: '부족수량', order: 'desc' };
 
                 // 행 + 입력값 복원 (저장 당시 전부)
+                weihaiErrMsg = '';
                 allData = rows.map(r => r.row);
                 savedInputs.clear();
                 rows.forEach(r => {

@@ -22,6 +22,7 @@ const XlsxPopulate = require('xlsx-populate');
 const fs = require('fs');
 const ChinaImport = require('./models/chinaImport');
 const { createClient } = require('@supabase/supabase-js');
+const { weihaiQtyByBarcode } = require('./routes/rkWeihai');
 
 const app = express();
 const server = http.createServer(app);
@@ -116,6 +117,7 @@ app.use(require('./routes/rkAdItems'));
 app.use(require('./routes/rkLabel'));   // 라벨 출력 연동 (label-service 임베드)
 app.use(require('./routes/rkShipDocs')); // 쉽먼트 [순서정리] — 쿠팡 부착문서·동봉문서 PDF 재정렬
 app.use(require('./routes/rkRanking')); // 발주 랭킹 (/ranking · /api/ranking)
+app.use(require('./routes/rkWeihai')); // 상품부족 위해 주문·장바구니 (purchase-agent DB · immongbr)
 
 // 발주서 목록 가져오기
 app.get('/api/orders', async (req, res) => {
@@ -2774,25 +2776,19 @@ app.post('/api/neworders/register', async (req, res) => {
 // ✅ 상품부족 API - 바코드 기준 발주수량 vs 스캔수량 부족 데이터 조회
 app.get('/api/shortage', async (req, res) => {
     try {
-        // 0단계: 기간 필터 파라미터 파싱
-        const { startDate, endDate } = req.query;
-        const filterStart = startDate ? new Date(startDate) : null;
-        const filterEnd = endDate ? new Date(endDate + 'T23:59:59') : null;
-
-        // 날짜 필터 함수 (발주등록일시 String → Date 변환 후 범위 체크)
-        function isInDateRange(product) {
-            if (!filterStart && !filterEnd) return true;
-            const regDateStr = product.발주등록일시;
-            if (!regDateStr) return !filterStart && !filterEnd ? true : false;
-            const regDate = new Date(regDateStr);
-            if (isNaN(regDate.getTime())) return false;
-            if (filterStart && regDate < filterStart) return false;
-            if (filterEnd && regDate > filterEnd) return false;
-            return true;
-        }
+        // 0단계: 기간 (2026-10-28) — 발주등록일시(registered_at)의 한국 날짜로 거른다. 형식이 틀린 값은 조건 없음으로 본다.
+        //   예전엔 발주서를 전부 읽은 뒤 메모리에서 걸렀다. 처리완료 발주서까지 보이게 되면서 읽는 양이 7배라
+        //   DB 조회 단계에서 바로 건다 (끝 날짜는 그날 23:59:59 까지 = 다음 날 00:00 미만).
+        const YMD = /^\d{4}-\d{2}-\d{2}$/;
+        const startDate = YMD.test(String(req.query.startDate || '')) ? String(req.query.startDate) : null;
+        const endDate = YMD.test(String(req.query.endDate || '')) ? String(req.query.endDate) : null;
+        const kstDayStart = (ymd, addDays = 0) => {
+            const d = new Date(ymd + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() + addDays);
+            return d.toISOString().slice(0, 10) + 'T00:00:00+09:00';
+        };
 
         const rkShared = require('./routes/rkShared');
-        const viewMode = (req.query.mode || '').trim();
 
         // 바코드 조각 조회 공통 — 1000행 넘으면 페이지를 이어 읽는다.
         // ⚠ 페이지를 나눠 읽으므로 반드시 id 로 정렬 (정렬이 없으면 페이지 사이에 행이 겹치거나 빠질 수 있다)
@@ -2811,16 +2807,76 @@ app.get('/api/shortage', async (req, res) => {
         };
         const POOL = 4;   // 조각 조회 동시 개수
 
-        // 1단계: 진행중 발주서 + 재고정리(잔여) 원천 3테이블을 동시에 조회 [전환] Mongo → Supabase(rk_*)
-        //   처리완료(DONE) 발주서는 DB 조회 단계에서 제외한다 (집계에서 어차피 빠지므로 결과 동일, 읽는 양은 1/6).
-        //   재고정리 3테이블은 발주서와 무관하므로 여기서 같이 읽어 두고 3.5·5.7단계에서 쓴다.
+        // 1단계: 발주서(처리완료 포함) + 재고정리(잔여) 원천 3테이블을 동시에 조회
+        //   처리완료(DONE) 발주서도 집계한다 (2026-10-28 — 끝난 발주도 발주는 발주). 기간은 상품 행 조회에 바로 건다.
+        //   재고정리 3테이블은 발주서와 무관하므로 여기서 같이 읽어 두고 5.7단계(잔여 열)에서 쓴다.
         //   실패해도 상품부족 조회 전체를 막지 않는다 (기존: 잔여 집계만 비우고 계속).
         const cnPromise = Promise.all([
             rkShared.pageAll(() => supabase.from('rk_cn_shipment_items').select('id, barcode, quantity, product_name').order('id', { ascending: true })),
             rkShared.pageAll(() => supabase.from('rk_cn_shipping').select('shipment_item_id, ship_qty').order('id', { ascending: true })),
             rkShared.pageAll(() => supabase.from('rk_cn_stock_arranges').select('shipment_item_id, qty').order('id', { ascending: true })),
         ]).then(([items, shipping, arranges]) => ({ items, shipping, arranges }), (err) => ({ err }));
-        const orders = await rkShared.listOrdersFull('rk_orders', 'rk_order_items', { excludeDone: true });
+        const orders = await loadOrdersForShortage();
+
+        // 발주서 상품 — 기간 안의 행만, 필요한 열만. 행이 많아(3.8만) 개수를 먼저 세고 페이지를 동시에 읽는다.
+        //   순서는 예전 listOrdersFull 과 같다 (입고예정일 › 물류센터 › 발주번호, 발주서 안에서는 상품 행 id 순)
+        //   — 같은 바코드의 상품번호·상품이름은 먼저 나온 행 값을 쓰므로 순서가 바뀌면 표시값이 달라진다.
+        async function loadOrdersForShortage() {
+            const ITEM_COLS = 'id, order_id, barcode, product_number, product_name, order_qty, scanned_qty, box_info';
+            const itemQuery = (cols, opts) => {
+                let q = supabase.from('rk_order_items').select(cols, opts);
+                if (startDate) q = q.gte('registered_at', kstDayStart(startDate));
+                if (endDate) q = q.lt('registered_at', kstDayStart(endDate, 1));
+                return q;
+            };
+            const PAGE = 1000;
+            const { count, error: cntErr } = await itemQuery('id', { count: 'exact', head: true });
+            if (cntErr) throw cntErr;
+            const pageNos = Array.from({ length: Math.ceil((count || 0) / PAGE) }, (_, i) => i);
+            const pages = await rkShared.chunkedPool(pageNos, 1, async ([n]) => {
+                const { data, error } = await itemQuery(ITEM_COLS).order('id', { ascending: true }).range(n * PAGE, n * PAGE + PAGE - 1);
+                if (error) throw error;
+                return [data || []];
+            }, 6);
+            const items = pages.flat();
+            // 세는 사이에 새로 들어온 행 — 마지막 페이지 뒤를 이어 읽는다
+            for (let from = pageNos.length * PAGE; ; from += PAGE) {
+                const { data, error } = await itemQuery(ITEM_COLS).order('id', { ascending: true }).range(from, from + PAGE - 1);
+                if (error) throw error;
+                items.push(...(data || []));
+                if (!data || data.length < PAGE) break;
+            }
+            const byOrder = new Map();
+            const seenItem = new Set();   // 페이지 경계에서 행이 겹쳐 읽혀도 한 번만
+            for (const it of items) {
+                if (seenItem.has(it.id)) continue;
+                seenItem.add(it.id);
+                if (!byOrder.has(it.order_id)) byOrder.set(it.order_id, []);
+                byOrder.get(it.order_id).push(it);
+            }
+            if (!byOrder.size) return [];
+            const headers = await rkShared.pageAll(() => supabase.from('rk_orders')
+                .select('id, order_number, logistics_center, arrival_date')
+                .order('arrival_date', { ascending: true })
+                .order('logistics_center', { ascending: true })
+                .order('order_number', { ascending: true })
+                .order('id', { ascending: true }));
+            return headers.filter(h => byOrder.has(h.id)).map(h => ({
+                발주번호: h.order_number == null ? '' : String(h.order_number),
+                물류센터: h.logistics_center == null ? '' : String(h.logistics_center),
+                상품정보: byOrder.get(h.id).sort((a, b) => a.id - b.id).map(it => {
+                    const p = {
+                        상품번호: it.product_number == null ? '' : it.product_number,
+                        상품바코드: it.barcode == null ? '' : it.barcode,
+                        상품이름: it.product_name == null ? '' : it.product_name,
+                        발주수량: it.order_qty,
+                        스캔수량: it.scanned_qty,
+                    };
+                    if (it.box_info) p.박스정보 = it.box_info;
+                    return p;
+                }),
+            }));
+        }
 
         // 2단계: 상품바코드 기준으로 그룹화 (기간 필터 적용)
         const barcodeMap = new Map();
@@ -2828,12 +2884,12 @@ app.get('/api/shortage', async (req, res) => {
         // 바코드만으로 합치면 삭제된 발주서에 남은 스캔까지 섞여 FAIL 이 음수가 된다.
         const validPairs = new Set();
 
-        // 처리완료(DONE) 발주서는 집계에서 제외 — 발주수량·출고스캔 양쪽 모두 빠진다
-        orders.filter(o => (o.상태 || 'PROCESSING') !== 'DONE').forEach(orderObj => {
+        // 처리완료(DONE) 발주서도 집계한다 — 발주수량·출고스캔 모두 (기간은 1단계에서 이미 걸렀다)
+        orders.forEach(orderObj => {
             const processedBarcodes = new Set();
 
             // 박스정보 없는 원본 상품만 대상 (중복 방지 - /api/orders와 동일한 로직)
-            orderObj.상품정보.filter(p => !p.박스정보 && isInDateRange(p)).forEach(product => {
+            orderObj.상품정보.filter(p => !p.박스정보).forEach(product => {
                 const barcode = product.상품바코드;
                 if (!barcode || processedBarcodes.has(barcode)) return;
                 processedBarcodes.add(barcode);
@@ -2862,8 +2918,8 @@ app.get('/api/shortage', async (req, res) => {
                 }
             });
 
-            // 원본이 없는 바코드 처리 (박스정보만 있는 경우, 기간 필터 적용)
-            orderObj.상품정보.filter(p => isInDateRange(p)).forEach(product => {
+            // 원본이 없는 바코드 처리 (박스정보만 있는 경우)
+            orderObj.상품정보.forEach(product => {
                 const barcode = product.상품바코드;
                 if (!barcode || processedBarcodes.has(barcode)) return;
                 processedBarcodes.add(barcode);
@@ -2926,10 +2982,8 @@ app.get('/api/shortage', async (req, res) => {
             if (r.barcode && r.purchase_price != null) barcodeToPurchase.set(r.barcode, Number(r.purchase_price));
         });
 
-        // 3단계: 부족수량 계산 + SKU 수집
-        //   ⚠ 재고부족 판정(발주 > 잔여+주문+재고)은 잔여·주문·재고가 모두 채워진 뒤에야 가능하므로
-        //      여기서는 거르지 않고 전부 담고, 5.8단계에서 최종 필터링한다.
-        //      (부족수량 = 발주 − 스캔 은 표시·정렬용으로 그대로 유지)
+        // 3단계: 부족수량(= 발주 − 스캔, 표시·정렬용) 계산 + SKU 수집 — 거르지 않고 전부 담는다
+        //   (2026-10-28 전체/재고부족/입고재고 모드를 없앴다 — 기간 안의 발주 상품을 전부 보여 준다)
         const shortageList = [];
         const skuSet = new Set();
 
@@ -2947,12 +3001,11 @@ app.get('/api/shortage', async (req, res) => {
         });
 
         // 재고정리 잔여 =아이템수량(quantity) − 출고(rk_cn_shipping ship_qty) − 재고원장(rk_cn_stock_arranges qty), 바코드별 합
-        //   (1단계에서 받아 둔 원천 데이터로 계산. 실패했으면 빈 맵 — pending 모드는 빈 목록, 일반 모드는 잔여 0)
-        const remainMap = new Map();    // barcode → 잔여합 (3.5단계 pending 목록 + 5.7단계 잔여 열 공용)
-        const nameByBc = new Map();     // barcode → 상품명 (pending 모드에서 발주서 상품명이 없을 때 대체)
+        //   (1단계에서 받아 둔 원천 데이터로 계산. 실패했으면 빈 맵 — 잔여 0)
+        const remainMap = new Map();    // barcode → 잔여합 (5.7단계 잔여 열)
         const cn = await cnPromise;
         if (cn.err) {
-            console.error(viewMode === 'pending' ? '입고재고(pending) 집계 실패:' : '재고정리 잔여수량 조회 실패 (무시):', cn.err);
+            console.error('재고정리 잔여수량 조회 실패 (무시):', cn.err);
         } else {
             const shipByItem = new Map();
             for (const a of cn.shipping) shipByItem.set(a.shipment_item_id, (shipByItem.get(a.shipment_item_id) || 0) + (a.ship_qty || 0));
@@ -2962,45 +3015,14 @@ app.get('/api/shortage', async (req, res) => {
                 const remaining = (parseInt(it.quantity) || 0) - (shipByItem.get(it.id) || 0) - (arrByItem.get(it.id) || 0);
                 if (remaining > 0 && it.barcode) {
                     remainMap.set(it.barcode, (remainMap.get(it.barcode) || 0) + remaining);
-                    if (!nameByBc.has(it.barcode) && it.product_name) nameByBc.set(it.barcode, it.product_name);
                 }
-            }
-        }
-
-        // 3.5단계: 입고재고(pending) 모드 — shortageList 를 stockArrange 처리중 바코드로 교체
-        //   기간/부족 필터 무시. 주문·재고·예상·주간 열은 이후 공용 보강 단계에서 바코드 기준으로 채워짐
-        if (viewMode === 'pending') {
-            // shortageList 를 pending 바코드로 재구성 (Ord/Scan/Fail 은 0 — 주문 열부터 보강)
-            shortageList.length = 0;
-            skuSet.clear();
-            for (const [barcode] of remainMap) {
-                const existing = barcodeMap.get(barcode);
-                // 진행중(PROCESSING) 발주서에 있는 바코드만 표시.
-                // 발주서에 없으면 Ord/Scan/Fail 이 모두 0 이라 의미가 없어 목록에서 제외한다.
-                if (!existing) continue;
-                const sku = barcodeToSku.get(barcode) || '';
-                if (sku) skuSet.add(sku);
-                const 총발주수량 = existing.총발주수량 || 0;
-                const 총스캔수량 = existing.총스캔수량 || 0;
-                const 부족수량 = 총발주수량 - 총스캔수량;
-                shortageList.push({
-                    상품바코드: barcode,
-                    상품번호: existing.상품번호 || '',
-                    상품이름: existing.상품이름 || nameByBc.get(barcode) || '',
-                    총발주수량,
-                    총스캔수량,
-                    발주번호목록: existing.발주번호목록 || [],
-                    물류센터목록: existing.물류센터목록 || [],
-                    부족수량,
-                    부족률: 총발주수량 > 0 ? Math.round((부족수량 / 총발주수량) * 100 * 10) / 10 : 0,
-                    skuId: sku,
-                });
             }
         }
 
         // 4·5.5·5.6단계 조회는 서로 무관하므로 동시에 실행한다 (각 단계는 실패해도 그 열만 비우고 계속)
         //   4단계: 필요한 SKU만 주간예상(coupang_weekly_forecast) 조회 — .in() URL 길이 제한 때문에 200개씩
         //   5.5단계: yiwu_br_orders 바코드별 입고수량(order_qty − cancel_qty 합계)
+        //   5.55단계: 위해 🛒 장바구니 · 📦 주문 (purchase-agent DB, immongbr) — routes/rkWeihai.js. 실패하면 X-Weihai-Error 헤더로 알린다
         //   5.6단계: 재고 = rk_stocks 바코드별 합 (qty NULL이면 미집계, 전부 NULL/데이터없음 → 비움(null))
         //     ⚠ 재고예약(rk_shipping_list source=재고 status=출고예정)을 빼면 안 된다.
         //        재고준비로 예약하는 순간 rk_stocks 에서 이미 즉시 차감되기 때문이다.
@@ -3009,7 +3031,7 @@ app.get('/api/shortage', async (req, res) => {
         //        배정 로직도 같은 전제로 avail = rk_stocks.qty 를 그대로 쓴다.
         const skuArray = [...skuSet];
         const listBcs = shortageList.map(i => i.상품바코드).filter(Boolean);
-        const [forecastRows, yiwuRows, stockRows] = await Promise.all([
+        const [forecastRows, yiwuRows, stockRows, weihai] = await Promise.all([
             rkShared.chunkedPool(skuArray, 200, async (batch) => {
                 try {
                     const { data, error } = await supabase.from('coupang_weekly_forecast')
@@ -3030,6 +3052,10 @@ app.get('/api/shortage', async (req, res) => {
             rkShared.chunkedPool(listBcs, 200, (batch) => pagedQuery(
                 () => supabase.from('rk_stocks').select('barcode, qty').in('barcode', batch),
                 'rk_stocks 조회 오류:'), POOL),
+            weihaiQtyByBarcode(listBcs).catch((weihaiErr) => {
+                console.error('위해 주문·장바구니 조회 실패:', weihaiErr);
+                return { err: weihaiErr.message || String(weihaiErr) };
+            }),
         ]);
 
         // 5단계: forecast 데이터 병합
@@ -3048,8 +3074,16 @@ app.get('/api/shortage', async (req, res) => {
         yiwuRows.forEach(r => {
             yiwuMap.set(r.barcode, (yiwuMap.get(r.barcode) || 0) + (r.order_qty || 0) - (r.cancel_qty || 0));
         });
+        // 5.55단계 병합 — '주문' 열 = 이우 + 위해 🛒 + 위해 📦 (배송유형 무관, 바코드 기준)
+        //   위해를 못 불러왔으면 위해 값은 null(모름)로 두고 합계는 이우만 — 화면이 경고를 띄운다
+        const weihaiOk = !weihai.err;
+        if (!weihaiOk) res.set('X-Weihai-Error', encodeURIComponent(weihai.err));
         shortageList.forEach(item => {
-            item.yiwuTotalQty = yiwuMap.get(item.상품바코드) || 0;
+            const bc = item.상품바코드;
+            item.yiwuTotalQty = yiwuMap.get(bc) || 0;
+            item.weihaiCartQty = weihaiOk ? (weihai.cart.get(bc) || 0) : null;
+            item.weihaiOrderQty = weihaiOk ? (weihai.order.get(bc) || 0) : null;
+            item.orderTotalQty = item.yiwuTotalQty + (item.weihaiCartQty || 0) + (item.weihaiOrderQty || 0);
         });
 
         // 5.6단계 병합
@@ -3072,19 +3106,6 @@ app.get('/api/shortage', async (req, res) => {
             item.img = barcodeToImg.get(item.상품바코드) || '';
             item.purchasePrice = barcodeToPurchase.has(item.상품바코드) ? barcodeToPurchase.get(item.상품바코드) : null;
         });
-
-        // 5.8단계: 재고부족 판정 — 발주수량이 확보 가능한 물량보다 많은 것만 남긴다.
-        //   총발주수량 > 잔여(remainQty) + 주문(yiwuTotalQty) + 재고(재고)
-        //   스캔수량은 차감하지 않는다(이미 나간 분도 발주는 발주로 본다).
-        //   재고가 비어있으면(null) 0 으로 본다. 입고재고(pending)·전체(all) 모드는 이 조건을 적용하지 않는다.
-        //   ※ 6단계(발주내역 조회)보다 먼저 걸러야 불필요한 조회를 안 한다.
-        if (viewMode !== 'pending' && viewMode !== 'all') {
-            for (let i = shortageList.length - 1; i >= 0; i--) {
-                const it = shortageList[i];
-                const 확보 = (Number(it.remainQty) || 0) + (Number(it.yiwuTotalQty) || 0) + (Number(it.재고) || 0);
-                if (!((Number(it.총발주수량) || 0) > 확보)) shortageList.splice(i, 1);
-            }
-        }
 
         // 6단계: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
         const allBarcodes = shortageList.map(i => i.상품바코드).filter(Boolean);
