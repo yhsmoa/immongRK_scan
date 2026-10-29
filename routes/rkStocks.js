@@ -633,8 +633,9 @@ router.post('/api/stocks/promo-check', upload.single('file'), async (req, res) =
   }
 });
 
-// 발주가능상태 조회 — 쿠팡 '발주가능상태 확인' 엑셀(SKU ID 열)을 받아 재고(rk_stocks.sku_id, qty>0)가 있는 행에
-// 마지막 열 뒤로 [위치] [재고수량] 두 열을 채워 돌려준다. 새 머리글은 파란 배경, 값이 들어간 행은 노란 배경.
+// 발주가능상태 조회 — 쿠팡 '발주가능상태 확인' 엑셀(SKU ID 열)을 받아 재고(rk_stocks.sku_id, qty>0) 또는
+// 재고정리건(재고정리 대기 남은상품)이 있는 행에 마지막 열 뒤로 [위치] [재고수량] [재고정리건] [총합] 네 열을 채워 돌려준다.
+// 새 머리글은 파란 배경, 값이 들어간 행(총합 > 0)은 노란 배경. 조회 범위는 프로모션 대상조회와 같다 (2026-10-29)
 // 양식이 조금씩 달라서 머리글은 위치가 아니라 이름으로 찾는다 (SKU ID / SKUID / 상품번호 …, 상단 15행 안).
 // 원본 셀 값은 건드리지 않는다 (숫자/문자 변환 문제 없음) — 매칭 행은 스타일 id 만 바꾸고 새 열에만 값을 쓴다.
 router.post('/api/stocks/order-status-check', upload.single('file'), async (req, res) => {
@@ -697,6 +698,8 @@ router.post('/api/stocks/order-status-check', upload.single('file'), async (req,
       }
       if (data.length < 1000) break;
     }
+    // 재고정리건(남은상품) — 프로모션 대상조회와 같은 계산 (재고확정분은 이미 위 재고에 있어 중복되지 않는다)
+    const arrangeQty = await pendingArrangeQtyBySku();
     const sortLoc = (a, b) => String(a.location).localeCompare(String(b.location), 'ko', { numeric: true });
     const locText = (e) => {
       const locs = e.locs.slice().sort(sortLoc);
@@ -704,8 +707,8 @@ router.post('/api/stocks/order-status-check', upload.single('file'), async (req,
       return locs.map((l) => `${l.location || '-'}(${l.qty})`).join(', ');
     };
 
-    // 새 열: 마지막 열 뒤 [위치] [재고수량]
-    const locCol = lastCol + 1, qtyCol = lastCol + 2;
+    // 새 열: 마지막 열 뒤 [위치] [재고수량] [재고정리건] [총합]
+    const locCol = lastCol + 1, qtyCol = lastCol + 2, arrCol = lastCol + 3, sumCol = lastCol + 4;
     const ss = wb.styleSheet();
     const styleCache = new Map(); // `${baseId}|${fill}` -> styleId
     const styled = (baseId, fill, bold) => {
@@ -722,13 +725,15 @@ router.post('/api/stocks/order-status-check', upload.single('file'), async (req,
     const BLUE = 'FFBDD7EE', YELLOW = 'FFFFFF00';
 
     const headBase = sheet.cell(headRow, lastCol)._styleId;
-    for (const [c, label] of [[locCol, '위치'], [qtyCol, '재고수량']]) {
+    for (const [c, label] of [[locCol, '위치'], [qtyCol, '재고수량'], [arrCol, '재고정리건'], [sumCol, '총합']]) {
       const cell = sheet.cell(headRow, c);
       cell.value(label);
       setStyle(cell, styled(headBase, BLUE, true));
     }
     sheet.column(locCol).width(22);
     sheet.column(qtyCol).width(10);
+    sheet.column(arrCol).width(11);
+    sheet.column(sumCol).width(8);
 
     let total = 0;
     const hits = [];
@@ -737,15 +742,21 @@ router.post('/api/stocks/order-status-check', upload.single('file'), async (req,
       if (!sku) continue;
       total++;
       const e = stock.get(sku);
-      if (!e || !(e.qty > 0)) continue;
-      const loc = locText(e);
-      sheet.cell(r, locCol).value(loc);
-      sheet.cell(r, qtyCol).value(e.qty);
-      for (let c = 1; c <= qtyCol; c++) {
+      const stockQ = e && e.qty > 0 ? e.qty : 0, arrQ = arrangeQty.get(sku) || 0;
+      if (!(stockQ + arrQ > 0)) continue;
+      // 재고정리건만 있는 상품은 아직 위치가 없다 → 위치·재고수량 빈칸
+      const loc = stockQ > 0 ? locText(e) : '';
+      if (stockQ > 0) {
+        sheet.cell(r, locCol).value(loc);
+        sheet.cell(r, qtyCol).value(stockQ);
+      }
+      if (arrQ > 0) sheet.cell(r, arrCol).value(arrQ);
+      sheet.cell(r, sumCol).value(stockQ + arrQ);
+      for (let c = 1; c <= sumCol; c++) {
         const cell = sheet.cell(r, c);
         setStyle(cell, styled(cell._styleId, YELLOW, false));
       }
-      hits.push({ sku, name: nameCol ? textAt(r, nameCol) : '', location: loc, qty: e.qty });
+      hits.push({ sku, name: nameCol ? textAt(r, nameCol) : '', location: loc, qty: stockQ + arrQ, stockQty: stockQ, arrangeQty: arrQ });
     }
 
     const buffer = await wb.outputAsync();
@@ -754,6 +765,8 @@ router.post('/api/stocks/order-status-check', upload.single('file'), async (req,
       total,
       matched: hits.length,
       totalQty: hits.reduce((s, x) => s + x.qty, 0),
+      stockQty: hits.reduce((s, x) => s + x.stockQty, 0),
+      arrangeQty: hits.reduce((s, x) => s + x.arrangeQty, 0),
       items: hits,
       headerRow: headRow,
       filename: `${base}_재고확인.xlsx`,

@@ -588,13 +588,13 @@
 
         // ── 엑셀 대조 조회 (SKU ID ↔ 재고 상품번호) — 프로모션 대상조회 / 발주가능상태 조회가 같은 모달을 쓴다 ──
         //   프로모션: 재고 있는 행을 노란색 + 상단 정렬
-        //   발주가능상태: 재고 있는 행에 [위치][재고수량] 열을 채우고 노란색 (머리글 파란색), 행 순서 그대로
+        //   발주가능상태: 재고·재고정리건이 있는 행에 [위치][재고수량][재고정리건][총합] 열을 채우고 노란색 (머리글 파란색), 행 순서 그대로
         const XLSX_CHECKS={
             // 재고 = rk_stocks · 재고정리건 = 재고정리(/stockArrange) 대기 남은상품 · 총합 = 둘의 합 (노란색·상단정렬 기준, 2026-10-20)
             promo:{ url:'/api/stocks/promo-check', btn:'promoBtn', label:'프로모션 대상조회 xlsx', title:'프로모션 대상조회 결과',
                     cols:['SKUID','SKU 이름','재고','재고정리건','총합'], row:x=>`<td>${esc(x.sku)}</td><td class="l">${esc(x.name)}</td><td>${x.stockQty||''}</td><td>${x.arrangeQty||''}</td><td><b>${esc(x.qty)}</b></td>` },
             ordSt:{ url:'/api/stocks/order-status-check', btn:'ordStBtn', label:'발주가능상태 조회 xlsx', title:'발주가능상태 조회 결과',
-                    cols:['SKU ID','SKU NAME','위치','재고수량'], row:x=>`<td>${esc(x.sku)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.location)}</td><td>${esc(x.qty)}</td>` },
+                    cols:['SKU ID','SKU NAME','위치','재고수량','재고정리건','총합'], row:x=>`<td>${esc(x.sku)}</td><td class="l">${esc(x.name)}</td><td class="l">${esc(x.location)}</td><td>${x.stockQty||''}</td><td>${x.arrangeQty||''}</td><td><b>${esc(x.qty)}</b></td>` },
         };
         let promoResult=null;
         async function runXlsxCheck(kind, input){
