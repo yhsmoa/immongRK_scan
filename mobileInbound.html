@@ -866,6 +866,43 @@
             const end=$('deck').lastElementChild; if(end){ const t2=document.createElement('div'); t2.innerHTML=endHtml(); end.replaceWith(t2.firstElementChild); }
             updateDots();
         }
+        // ── 저장 요청 공통 (2026-10-29) — 네트워크가 끊기면 자동 재시도 ──
+        //   카카오톡 인앱 브라우저 폰에서 요청이 보내자마자 끊기는 일이 있어(서버 로그 499 · 화면은 "저장 실패: Failed to fetch") 찾음 표시가 되돌아갔다.
+        //   서버는 끊긴 요청도 끝까지 처리하므로(DB 에는 찾음이 남음) 같은 내용을 다시 보내면 결과가 같다 → 끊기면 0.4초·0.8초 뒤 두 번 더 보낸다.
+        //   그래도 안 되면 실패 사유를 서버 로그에 남기고(/api/mobile/client-log) 서버의 지금 상태를 다시 읽어 화면을 맞춘다.
+        const isNetErr=e=>e instanceof TypeError||(e&&e.net);
+        async function postJson(url,body,retries){
+            let last=null;
+            for(let n=0;n<=(retries==null?2:retries);n++){
+                try{
+                    const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+                    let d={}; try{ d=await res.json(); }catch(_){ if(res.ok) throw Object.assign(new Error('응답을 읽지 못했습니다'),{net:true}); }
+                    if(res.status>=500) throw Object.assign(new Error(d.error||('서버 오류 '+res.status)),{net:true});
+                    return {res,d};
+                }catch(e){ last=e; if(!isNetErr(e)) throw e; await new Promise(r=>setTimeout(r,400*(n+1))); }
+            }
+            throw Object.assign(new Error('네트워크 끊김 ('+(last&&last.message||'')+')'),{net:true});
+        }
+        function reportClientError(kind,msg,extra){
+            try{
+                const body=JSON.stringify({kind,msg:String(msg||'').slice(0,300),order:curOrder,box:curBox,mode,worker:worker(),online:navigator.onLine,...(extra||{})});
+                if(navigator.sendBeacon) navigator.sendBeacon('/api/mobile/client-log',new Blob([body],{type:'application/json'}));
+                else fetch('/api/mobile/client-log',{method:'POST',headers:{'Content-Type':'application/json'},body,keepalive:true}).catch(()=>{});
+            }catch(_){}
+        }
+        // 서버의 지금 상태로 이 카드의 찾음/없음을 다시 맞춘다 (저장이 끊겼을 때 — 서버에는 저장됐을 수 있다)
+        async function resyncRow(i){
+            const r=rows[i]; if(!r) return false;
+            try{
+                const q=`orderNumber=${encodeURIComponent(curOrder)}${curBox!=null?`&boxNo=${curBox}`:''}`;
+                const res=await fetch(mode==='all'?`/api/mobile/all-list?${q}`:`/api/inbound/mobile-list?shipmentCode=${encodeURIComponent(active.code)}&${q}`,{cache:'no-store'});
+                const d=await res.json(); if(!res.ok) return false;
+                const key=mode==='all'?'listId':'allocId';
+                const srv=(d.rows||[]).find(x=>x[key]===r[key]); if(!srv) return false;
+                r.모바일=srv.모바일; r.모바일처리자=srv.모바일처리자; r.모바일시각=srv.모바일시각; r.모바일박스=srv.모바일박스||null;
+                repaint(i); return true;
+            }catch(_){ return false; }
+        }
         let saving=false;
         async function save(i,status){
             const r=rows[i]; if(!r||saving) return false;
@@ -879,13 +916,23 @@
             repaint(i);
             try{
                 const body={status,worker:worker(),marks,shareTotal:Number.isFinite(Number(r.shareTotal))?Number(r.shareTotal):null};
-                const res=mode==='all'
-                    ? await fetch('/api/mobile/check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({listId:r.listId,...body})})
-                    : await fetch('/api/inbound/mobile-check',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({allocId:r.allocId,...body})});
-                const d=await res.json(); if(!res.ok) throw new Error(d.error||'저장 실패');
+                const {res,d}=mode==='all'
+                    ? await postJson('/api/mobile/check',{listId:r.listId,...body})
+                    : await postJson('/api/inbound/mobile-check',{allocId:r.allocId,...body});
+                if(!res.ok) throw new Error(d.error||'저장 실패');
                 r.모바일=d.모바일; r.모바일처리자=d.모바일처리자; r.모바일시각=d.모바일시각; r.모바일박스=d.모바일박스||null; repaint(i);
                 return true;
-            }catch(e){ Object.assign(r,prev); repaint(i); playWarn(); toast('저장 실패: '+e.message); return false; }
+            }catch(e){
+                Object.assign(r,prev); repaint(i); playWarn();
+                reportClientError('save',e.message,{listId:r.listId,allocId:r.allocId,status});
+                if(isNetErr(e)){
+                    // 세 번 다 끊김 — 서버에 저장됐는지 다시 읽어 화면을 맞춘다. 맞춰졌으면 그 결과대로 진행
+                    const synced=await resyncRow(i);
+                    if(synced&&markSt(r)===status){ toast('연결이 불안정했지만 저장은 됐습니다.'); return true; }
+                    toast('저장 실패 — 네트워크가 끊겼습니다.\n와이파이·데이터를 확인하고 다시 눌러주세요.');
+                }else toast('저장 실패: '+e.message);
+                return false;
+            }
             finally{ saving=false; }
         }
         async function mark(status){
@@ -920,8 +967,8 @@
             memoBusy=true; $('memoSaveBtn').disabled=true; $('memoClearBtn').disabled=true;
             try{
                 const body=mode==='all'?{listId:r.listId,memo,worker:worker()}:{allocId:r.allocId,memo,worker:worker()};
-                const res=await fetch('/api/mobile/memo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-                const d=await res.json(); if(!res.ok) throw new Error(d.error||'저장 실패');
+                const {res,d}=await postJson('/api/mobile/memo',body);
+                if(!res.ok) throw new Error(d.error||'저장 실패');
                 r.모바일메모=d.모바일메모; r.모바일메모처리자=d.모바일메모처리자; r.모바일메모시각=d.모바일메모시각;
                 closeMemo(); repaint(i); playOk(); toast(memo?'메모를 저장했습니다.':'메모를 지웠습니다.');
             }catch(e){ playWarn(); toast('메모 저장 실패: '+e.message); }

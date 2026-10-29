@@ -684,6 +684,21 @@ router.post('/api/mobile/check', async (req, res) => {
   }
 });
 
+// 폰 화면의 저장 실패 보고 (2026-10-29) — 화면에서 "저장 실패" 가 났을 때 사유·기기·발주서를 서버 로그에 남긴다 (DB 저장 없음).
+//   서버에 안 닿은 실패(네트워크 끊김)는 요청 로그에 안 남아 원인을 알 수 없었다. sendBeacon 으로 오므로 본문은 text/plain 일 수 있다
+router.post('/api/mobile/client-log', express.text({ type: '*/*', limit: '4kb' }), (req, res) => {
+  try {
+    const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+    let j = {}; try { j = JSON.parse(raw); } catch (_) { j = { msg: raw.slice(0, 300) }; }
+    const ua = String(req.headers['user-agent'] || '');
+    const dev = (ua.match(/\(([^)]*)\)/) || [])[1] || ua.slice(0, 40);
+    console.log(`[rk] mobile/client-log ${j.kind || '?'}: ${j.msg || ''} · ${j.order || ''}${j.box != null ? '-' + j.box : ''} · ${j.worker || ''} · online=${j.online} · ${dev.slice(0, 60)}`);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(200).json({ ok: false });
+  }
+});
+
 // 메모 저장 (2026-10-21) — 상품을 찾다가 남기는 한 줄 메모. 찾음/없음·출고개수·배정은 그대로.
 //   body: { allocId } ([입고] 모드, rk_cn_shipping.id) 또는 { listId } ([전체] 모드, rk_shipping_list.id) + { memo, worker }
 //   입고 행은 rk_cn_shipping(원본, 입고정리 PC 표가 읽음) + rk_shipping_list 미러 둘 다, 재고 행은 rk_shipping_list 만. 빈 메모 = 지우기
