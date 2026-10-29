@@ -153,6 +153,8 @@
         .pname{flex:none;display:flex;flex-direction:column;gap:4px;}
         .pname .nm{font-size:16px;font-weight:700;line-height:1.35;color:var(--ink);word-break:break-word;}
         .name-badge{display:inline-block;background:var(--blue-tint);color:var(--blue);border-radius:6px;padding:0 6px;font-weight:800;white-space:nowrap;}
+        .name-badge.opt{white-space:normal;}   /* 옵션(그레이, FREE) — 길면 줄바꿈 */
+        .bc.bc-badge{align-self:flex-start;background:#eef0f3;color:#334155;border-radius:6px;padding:1px 8px;}   /* 바코드 — 회색 배지 */
         .bc{color:var(--blue);font-size:17px;font-weight:900;letter-spacing:.04em;font-variant-numeric:tabular-nums;}
         .qty{display:flex;align-items:baseline;justify-content:center;gap:10px;flex:none;}
         .qty .k{font-size:14px;font-weight:700;color:var(--muted);}
@@ -495,14 +497,17 @@
         function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600);}
         function worker(){ return $('worker').value.trim(); }
         // 상품명: 첫 콤마 앞 영어+숫자 모델코드 → 파란 배지 (입고정리와 같은 규칙)
+        //   첫 콤마 뒤 옵션(예: 그레이, FREE)도 파란 배지 — "… 긴바지 [R5W084], [그레이, FREE]" (2026-10-29)
         function modelBadge(name){
             const s=String(name==null?'':name); const ci=s.indexOf(',');
-            if(ci>0){ const prefix=s.slice(0,ci), rest=s.slice(ci); const m=prefix.match(/(\S+)(\s*)$/);
-                if(m){ const t=m[1];
-                    if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
-                        const before=prefix.slice(0, prefix.length-m[0].length);
-                        return esc(before)+'<span class="name-badge">'+esc(t)+'</span>'+esc(m[2])+esc(rest); } } }
-            return esc(s);
+            if(ci<=0) return esc(s);
+            const prefix=s.slice(0,ci), opt=s.slice(ci+1).trim();
+            let head=esc(prefix); const m=prefix.match(/(\S+)(\s*)$/);
+            if(m){ const t=m[1];
+                if(/^[A-Za-z0-9]+$/.test(t)&&/[A-Za-z]/.test(t)&&/\d/.test(t)){
+                    const before=prefix.slice(0, prefix.length-m[0].length);
+                    head=esc(before)+'<span class="name-badge">'+esc(t)+'</span>'; } }
+            return head+','+(opt?' <span class="name-badge opt">'+esc(opt)+'</span>':'');
         }
         function ymd(s){ const m=String(s||'').match(/^(\d{4})(\d{2})(\d{2})$/); return m?`${m[1]}-${m[2]}-${m[3]}`:String(s||''); }
         function md(s){ const m=String(s||'').match(/^(\d{4})-?(\d{2})-?(\d{2})$/); return m?`${m[2]}-${m[3]}`:String(s||''); }
@@ -793,7 +798,7 @@
                 <div class="meta">${mode==='all'?`<span class="batch">${r.source==='재고'?'재고':esc(r.출고코드)} · ${r.회차}회차</span>`:`<span class="batch">${r.회차}회차</span><span>${esc(r.출고코드)}</span><span class="sep">·</span>`}<span>${esc(r.센터)||'-'}</span><span class="sep">·</span><span>${esc(ymd(r.출고예정일))||'-'}</span></div>
                 ${boxRow(r,i)}
                 <div class="thumb">${r.img?`<img src="${esc(r.img)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML=NOIMG">`:noimg}</div>
-                <div class="pname"><div class="nm">${modelBadge(r.상품명)}</div><span class="bc">${esc(r.바코드)||'-'}</span></div>
+                <div class="pname"><div class="nm">${modelBadge(r.상품명)}</div><span class="bc bc-badge">${esc(r.바코드)||'-'}</span></div>
                 ${r.모바일메모?`<div class="memo-line" onclick="openMemo(${i})"><span>📝</span><span>${esc(r.모바일메모)}<small>${esc(r.모바일메모처리자||'')}${r.모바일메모시각?' · '+fmtAt(r.모바일메모시각):''}</small></span></div>`:''}
                 ${qtyRow(r)}
             </div></div>`;
