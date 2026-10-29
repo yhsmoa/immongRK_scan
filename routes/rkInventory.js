@@ -32,7 +32,7 @@ function invToKorean(r) {
     lastOrderedAt: r.last_ordered_at || null,
     img: r.img || null,
     createdAt: r.created_at || null,
-    // 위해주문 — true 면 상품부족에서 항상 위해로 주문 (🌳). 상품부족에서 주문을 넣을 때 바뀐다
+    // 위해주문 — true 면 상품부족에서 항상 위해로 주문 (🌳). 상품부족에서 [저장]하거나 주문을 넣을 때 바뀐다
     weihaiOrder: r.weihai_order === true,
   };
 }

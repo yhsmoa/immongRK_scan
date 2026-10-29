@@ -260,7 +260,7 @@ router.post('/api/shortage/weihai-cart', async (req, res) => {
 });
 
 // ── 상품정보 위해주문(항상 위해) 저장 ── (2026-10-28)
-//   /shortage 에서 주문을 넣은 뒤(이우·위해 복사, 장바구니 담기) 그 행의 표시대로 rk_inventories.weihai_order 를 바꾼다
+//   /shortage 에서 [저장] 할 때와 주문을 넣은 뒤(이우·위해 복사, 장바구니 담기) 고른 표시대로 rk_inventories.weihai_order 를 바꾼다
 //   body: { items:[{ barcode, weihaiOrder: true|false }] } → { updated, missing:[바코드] }
 //   같은 값으로 다시 보내도 결과가 같다 (실패하면 화면이 다시 보낸다)
 router.post('/api/shortage/weihai-flag', async (req, res) => {

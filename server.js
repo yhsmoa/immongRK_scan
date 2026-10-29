@@ -3498,13 +3498,40 @@ app.get('/api/shortage/yiwu-orders/:barcode', async (req, res) => {
 // ==================== 상품부족 입력값 임시저장 API ====================
 
 // GET: 저장된 입력값 전체 조회
+//   ?detail=1 — 주문목록용: 상품정보(rk_inventories)의 SKU·상품명·위해주문을 붙인다 (상품정보에 없는 바코드는 weihaiOrder null) (2026-10-29)
 app.get('/api/shortage/save-temp', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('coupang_order_save_temp')
             .select('barcode, qty, route_mark');
         if (error) throw error;
-        res.json(data || []);
+        const rows = data || [];
+        if (req.query.detail === '1' && rows.length) {
+            const info = new Map();   // barcode → { skuId, name, weihaiOrder }
+            const barcodes = [...new Set(rows.map(r => r.barcode).filter(Boolean))];
+            for (let i = 0; i < barcodes.length; i += 200) {
+                const { data: inv, error: invError } = await supabase
+                    .from('rk_inventories')
+                    .select('barcode, sku_id, name, weihai_order')
+                    .in('barcode', barcodes.slice(i, i + 200));
+                if (invError) throw invError;
+                (inv || []).forEach(r => {
+                    const prev = info.get(r.barcode);
+                    info.set(r.barcode, {
+                        skuId: (prev && prev.skuId) || (r.sku_id == null ? '' : String(r.sku_id)),
+                        name: (prev && prev.name) || r.name || '',
+                        weihaiOrder: (prev && prev.weihaiOrder === true) || r.weihai_order === true,
+                    });
+                });
+            }
+            rows.forEach(r => {
+                const it = info.get(r.barcode);
+                r.skuId = it ? it.skuId : '';
+                r.name = it ? it.name : '';
+                r.weihaiOrder = it ? it.weihaiOrder : null;
+            });
+        }
+        res.json(rows);
     } catch (error) {
         console.error('임시저장 조회 오류:', error);
         res.status(500).json({ error: error.message });
