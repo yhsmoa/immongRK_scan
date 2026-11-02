@@ -68,6 +68,27 @@
         .mode:active{background:#FBFAF8;}
         .mode .ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none;background:var(--ink);color:#fff;}
         .mode.inb .ic{background:var(--coral);}
+        .mode.mv .ic{background:#3C3489;}
+        /* 위치이동 (2026-11-02) */
+        .locnow{min-height:48px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 12px;border:1.5px solid var(--line);border-radius:14px;background:#fff;font-size:16px;font-weight:900;color:var(--ink);}
+        .locnow.empty{color:var(--muted);font-weight:600;font-size:14px;}
+        .locnow .lb{padding:4px 10px;border-radius:9px;background:#EEEDFE;color:#3C3489;}
+        .locnow .lb small{margin-left:4px;font-size:12px;font-weight:700;color:#6B66C9;}
+        .orow.mv{align-items:flex-start;}
+        .orow.mv .no .locb{display:inline-block;padding:3px 10px;border-radius:9px;background:#EEEDFE;color:#3C3489;font-size:18px;}
+        .orow.mv .meta{white-space:normal;line-height:1.45;margin-top:4px;}
+        .orow.mv .meta .bc{display:block;font-family:ui-monospace,Menlo,monospace;font-weight:700;color:var(--ink2);letter-spacing:.02em;}
+        .orow.mv .prog{margin-top:6px;}
+        .orow.mv.sel{border-color:var(--coral);background:var(--coral-tint);}
+        .orow.mv.sel .prog{background:var(--coral);color:#fff;}
+        .mv-bottom .act{flex:1;}
+        .loc-pad{grid-template-columns:repeat(4,1fr);}
+        .loc-pad button.ab{background:#EEEDFE;color:#3C3489;border-color:#C7C3F5;}
+        .loc-pad button.wide{grid-column:span 2;}
+        #mvsBack .mv-keep{letter-spacing:.06em;font-family:ui-monospace,Menlo,monospace;}
+        #mvsBack .mv-keep.bad{border-color:#D97706;background:#FFFBEB;color:#B45309;}
+        .mvs-item{font-size:13.5px;font-weight:700;color:var(--ink2);margin:0 2px 10px;line-height:1.45;}
+        .mvs-item b{color:#3C3489;}
         .mode .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
         .mode .tx b{font-size:21px;font-weight:900;letter-spacing:-.01em;}
         .mode .tx small{font-size:13px;color:var(--muted);font-weight:500;line-height:1.45;}
@@ -208,7 +229,7 @@
         .bottom .act:disabled{opacity:.35;}
 
         /* 카메라 */
-        .cam-back{position:fixed;inset:0;background:#000;display:none;flex-direction:column;z-index:50;}
+        .cam-back{position:fixed;inset:0;background:#000;display:none;flex-direction:column;z-index:60;}   /* 위치이동 시트(56)보다 위 */
         .cam-back.show{display:flex;}
         .cam-back video{flex:1;width:100%;object-fit:cover;}
         .cam-back .guide{position:absolute;left:8%;right:8%;top:40%;height:20%;border:2px solid rgba(255,255,255,.85);border-radius:12px;pointer-events:none;}
@@ -354,6 +375,11 @@
                     <span class="tx"><b>전체</b><small>발주번호(박스 라벨)를 찍으면 재고 + 입고를 전부 찾습니다</small></span>
                     <span class="go"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-r"/></svg></span>
                 </button>
+                <button class="mode mv" onclick="goMove()">
+                    <span class="ic"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pin"/></svg></span>
+                    <span class="tx"><b>위치이동</b><small>상품 바코드를 찍어 재고를 다른 위치로 옮깁니다</small></span>
+                    <span class="go"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-r"/></svg></span>
+                </button>
                 <button class="mode inb" onclick="goInbound()">
                     <span class="ic"><svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-box"/></svg></span>
                     <span class="tx"><b>입고</b><small>입고코드를 골라 그 입고분만 찾습니다</small></span>
@@ -427,6 +453,49 @@
             <button class="act scan" id="btnScan" onclick="mark('found')"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg>스캔</button>
         </div>
     </section>
+
+    <!-- ───── 4화면: 위치이동 (2026-11-02) — 바코드 → 재고 행 목록 → 행 선택 → [위치이동] → 옮길 위치(카메라·입력·패드) ───── -->
+    <section class="screen" id="s4">
+        <div class="top">
+            <button class="back" onclick="stopCam();show('s0')"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-l"/></svg>처음</button>
+            <div class="ttl" id="mvTitle"></div>
+            <button class="ico" onclick="mvReset()" title="새로 시작" aria-label="새로 시작"><svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg></button>
+        </div>
+        <div class="pick">
+            <div class="scanrow">
+                <input id="mvBarcode" type="text" autocomplete="off" placeholder="상품 바코드 입력 또는 카메라 스캔" enterkeyhint="go" aria-label="상품 바코드">
+                <button class="cam" onclick="openCam('mvBarcode')" title="카메라로 바코드 스캔" aria-label="카메라로 바코드 스캔"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-scan"/></svg></button>
+            </div>
+            <button class="btn primary" style="height:54px;font-size:17px" onclick="mvLookup()">확인</button>
+            <div class="field"><span class="lab">현재 위치</span><div class="locnow empty" id="mvLocNow">바코드를 확인하면 위치가 나옵니다</div></div>
+            <div class="olist">
+                <div class="sub"><span id="mvListSub">재고 목록</span><span id="mvName" style="font-weight:600;color:var(--ink2);max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span></div>
+                <div id="mvList" style="display:flex;flex-direction:column;gap:8px"><div class="empty">옮길 상품의 바코드를 입력하세요.</div></div>
+            </div>
+        </div>
+        <div class="bottom mv-bottom">
+            <button class="act scan" id="mvGoBtn" disabled onclick="openMoveSheet()"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pin"/></svg>위치이동</button>
+        </div>
+    </section>
+
+    <!-- 위치이동 시트 — 옮길 위치: 카메라로 위치 바코드 · 직접 입력 · 패드(숫자 + A/B + 숫자) -->
+    <div class="sz-back" id="mvsBack" onclick="if(event.target.id==='mvsBack'&&!mvsBusy)closeMoveSheet()">
+        <div class="sz-sheet" role="dialog" aria-labelledby="mvsTitle">
+            <h2 id="mvsTitle">어디로 옮길까요?</h2>
+            <div class="mvs-item" id="mvsItem"></div>
+            <div class="scanrow" style="margin-bottom:8px">
+                <input id="mvsLoc" type="text" autocomplete="off" placeholder="위치 입력 (예 101A11)" enterkeyhint="done" oninput="mvsFromInput()" aria-label="옮길 위치">
+                <button class="cam" onclick="openCam('mvLoc')" title="카메라로 위치 바코드 스캔" aria-label="카메라로 위치 바코드 스캔"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-scan"/></svg></button>
+            </div>
+            <div class="mv-keep" id="mvsNum"><span id="mvsVal"></span></div>
+            <div class="mv-pad loc-pad" id="mvsPad"></div>
+            <div class="sh-note" id="mvsNote"></div>
+            <div class="row2 sh-row">
+                <button class="btn" onclick="closeMoveSheet()">취소</button>
+                <button class="btn primary" id="mvsGo" onclick="doStockMove()">이동</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 카메라 바코드 스캔 — 안드로이드 크롬은 내장 BarcodeDetector, 아이폰(사파리·크롬 등 WebKit)은 ZXing 라이브러리로 인식 -->
     <div class="cam-back" id="camBack">
@@ -608,6 +677,85 @@
             $('pickTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">전체</b><small>${esc(worker())}</small>`;
             show('s2'); loadOrders(); setTimeout(()=>$('orderInput').focus(),50);
         }
+        // ── 위치이동 (2026-11-02) ──
+        let mvRows=[], mvSel=null, mvBarcodeCur='', mvsVal='', mvsBusy=false;
+        const LOC_RE=/^\d+[AB]\d+$/;   // 위치 규칙: 숫자 + A/B + 숫자 (예 101A11, 305B22). 재고관리의 위치와 같다
+        function goMove(){
+            if(!needWorker()) return;
+            $('mvTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">위치이동</b><small>${esc(worker())}</small>`;
+            show('s4'); setTimeout(()=>$('mvBarcode').focus(),50);
+        }
+        function mvReset(){ mvRows=[]; mvSel=null; mvBarcodeCur=''; $('mvBarcode').value=''; $('mvName').textContent=''; renderMvList(); setTimeout(()=>$('mvBarcode').focus(),50); }
+        async function mvLookup(bc){
+            const barcode=String(bc!=null?bc:$('mvBarcode').value||'').trim();
+            if(!barcode){ toast('상품 바코드를 입력하세요.'); $('mvBarcode').focus(); return; }
+            $('mvBarcode').value=barcode;
+            $('mvList').innerHTML='<div class="empty">조회 중…</div>';
+            try{
+                const res=await fetch('/api/stocks/by-barcode?barcode='+encodeURIComponent(barcode),{cache:'no-store'});
+                const d=await res.json(); if(!res.ok) throw new Error(d.error||'조회 실패');
+                mvRows=d.rows||[]; mvSel=null; mvBarcodeCur=barcode;
+                $('mvName').textContent=d.name||'';
+                if(!mvRows.length){ playWarn(); toast(`${barcode} — 재고가 없습니다.`); } else playOk();
+                renderMvList();
+            }catch(e){ playWarn(); toast(e.message); mvRows=[]; mvSel=null; renderMvList(); }
+        }
+        function renderMvList(){
+            const now=$('mvLocNow');
+            if(!mvRows.length){ now.className='locnow empty'; now.textContent=mvBarcodeCur?'재고 없음':'바코드를 확인하면 위치가 나옵니다'; }
+            else{ now.className='locnow'; now.innerHTML=mvRows.map(r=>`<span class="lb">${esc(r.location||'(위치 없음)')}<small>${r.qty}개</small></span>`).join(''); }
+            $('mvListSub').textContent=mvRows.length?`재고 ${mvRows.length}곳 · ${mvRows.reduce((s,r)=>s+r.qty,0)}개`:'재고 목록';
+            $('mvList').innerHTML=mvRows.length?mvRows.map(r=>`<div class="orow mv ${mvSel===r.id?'sel':''}" onclick="mvPick(${r.id})">
+                    <div class="body"><div class="no"><span class="locb">${esc(r.location||'(위치 없음)')}</span></div>
+                    <div class="meta">${esc(r.name||'')}<span class="bc">${esc(mvBarcodeCur)}</span></div></div>
+                    <span class="prog">${r.qty}개</span></div>`).join('')
+                :`<div class="empty">${mvBarcodeCur?'이 바코드의 재고가 없습니다.':'옮길 상품의 바코드를 입력하세요.'}</div>`;
+            $('mvGoBtn').disabled=mvSel==null;
+        }
+        function mvPick(id){ mvSel=mvSel===id?null:id; renderMvList(); }
+        $('mvBarcode').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); mvLookup(); } });
+
+        // ── 이동 시트: 옮길 위치 — 카메라(위치 바코드) · 직접 입력 · 패드 ──
+        const LOC_KEYS=['1','2','3','A','4','5','6','B','7','8','9','⌫','0','C'];   // C = 지우기
+        function openMoveSheet(){
+            const r=mvRows.find(x=>x.id===mvSel); if(!r){ toast('옮길 재고를 목록에서 고르세요.'); return; }
+            mvsVal=''; $('mvsLoc').value='';
+            $('mvsItem').innerHTML=`<b>${esc(r.location||'(위치 없음)')}</b> 의 ${esc(r.name||'')} <b>${r.qty}개</b><br><span style="font-family:ui-monospace,monospace">${esc(mvBarcodeCur)}</span>`;
+            $('mvsPad').innerHTML=LOC_KEYS.map(k=>`<button type="button" class="${k==='A'||k==='B'?'ab':k==='⌫'||k==='C'?'fn':''}${k==='C'?' wide':''}" onclick="mvsKey('${k}')">${k==='C'?'지우기':k}</button>`).join('');
+            renderMvs();
+            $('mvsBack').classList.add('show');
+        }
+        function closeMoveSheet(){ if(mvsBusy) return; stopCam(); $('mvsBack').classList.remove('show'); }
+        function mvsSet(v){ mvsVal=String(v||'').trim().toUpperCase(); if($('mvsLoc').value!==mvsVal) $('mvsLoc').value=mvsVal; renderMvs(); }
+        function mvsFromInput(){ mvsVal=$('mvsLoc').value.trim().toUpperCase(); renderMvs(); }
+        function mvsKey(k){
+            if(k==='C') mvsVal='';
+            else if(k==='⌫') mvsVal=mvsVal.slice(0,-1);
+            else mvsVal=(mvsVal+k).slice(0,12);
+            $('mvsLoc').value=mvsVal; renderMvs();
+        }
+        function renderMvs(){
+            const r=mvRows.find(x=>x.id===mvSel)||{};
+            const ok=!!mvsVal, fit=LOC_RE.test(mvsVal), same=mvsVal&&mvsVal===String(r.location||'').trim().toUpperCase();
+            $('mvsVal').textContent=mvsVal||'옮길 위치';
+            $('mvsNum').classList.toggle('empty',!ok); $('mvsNum').classList.toggle('bad',ok&&(!fit||same));
+            $('mvsNote').innerHTML=same?'<b>지금 위치와 같습니다.</b>':ok&&!fit?'형식이 다릅니다 — 보통 <b>숫자 + A/B + 숫자</b> (예 101A11). 그래도 이동할 수 있습니다.':'패드로 누르거나 직접 입력 · 카메라로 위치 바코드를 찍어도 됩니다';
+            $('mvsGo').disabled=!ok||same||mvsBusy;
+        }
+        async function doStockMove(){
+            const r=mvRows.find(x=>x.id===mvSel); if(!r||!mvsVal||mvsBusy) return;
+            mvsBusy=true; $('mvsGo').disabled=true; $('mvsGo').textContent='이동 중…';
+            try{
+                const {res,d}=await postJson('/api/stocks/move',{id:r.id,toLocation:mvsVal,worker:worker()});
+                if(!res.ok) throw new Error(d.error||'이동 실패');
+                playOk();
+                toast(`${d.from||'(없음)'} → ${d.to} · ${d.qty}개 이동${d.merged?' (같은 위치 재고와 합침)':''}`);
+                mvsBusy=false; closeMoveSheet();
+                await mvLookup(mvBarcodeCur);   // 바뀐 위치로 목록을 다시 읽는다
+            }catch(e){ playWarn(); toast('위치이동 실패: '+e.message); }
+            finally{ mvsBusy=false; $('mvsGo').textContent='이동'; renderMvs(); }
+        }
+
         function goPick(){
             if(!worker()){ toast('본인 이름을 입력하세요.'); show('s0'); return; }
             if(!sel.code){ toast('입고코드를 선택하세요.'); return; }
@@ -1268,16 +1416,22 @@
             });
             return zxLoading;
         }
+        let camTarget='order';   // 'order' 발주번호 · 'mvBarcode' 위치이동 상품 바코드 · 'mvLoc' 위치이동 옮길 위치 (2026-11-02)
+        const camHintText=()=>camTarget==='mvBarcode'?'상품 바코드를 맞춰 주세요':camTarget==='mvLoc'?'위치 바코드를 맞춰 주세요':'발주서 바코드를 맞춰 주세요';
         function onCamCode(raw){
+            const s=String(raw||'').trim();
+            if(camTarget==='mvBarcode'){ if(!s) return false; closeCam(); mvLookup(s); return true; }
+            if(camTarget==='mvLoc'){ if(!s) return false; closeCam(); mvsSet(s); return true; }
             if(!parseOrderCode(raw)) return false;          // 발주번호 형식이 아니면 계속 찾는다
             closeCam(); goOrderInput(raw); return true;   // 박스 라벨 → 바로 진행 · 발주번호 → 목록 검색 (2026-10-21)
         }
-        async function openCam(){
+        async function openCam(target){
+            camTarget=target||'order';
             const v=$('camVideo');
             try{
                 if(await nativeDetectorOk()){
                     camStream=await navigator.mediaDevices.getUserMedia({video:CAM_VIDEO,audio:false});
-                    v.srcObject=camStream; $('camBack').classList.add('show'); $('camHint').textContent='발주서 바코드를 맞춰 주세요'; await v.play();
+                    v.srcObject=camStream; $('camBack').classList.add('show'); $('camHint').textContent=camHintText(); await v.play();
                     const det=new BarcodeDetector({formats:CAM_FORMATS});
                     let fails=0;
                     camTimer=setInterval(async()=>{

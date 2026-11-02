@@ -606,9 +606,15 @@ router.post('/api/shipment/docs/print', express.json(), async (req, res) => {
     const want = Array.isArray(req.body.boxes) && req.body.boxes.length
       ? new Set(req.body.boxes.map((b) => `${String(b.orderNumber || '').trim()}|${parseInt(b.boxNo, 10)}`))
       : null;
-    const seqRows = (await S.pageAll(() => S.supabase.from('rk_ship_seq')
+    let seqRows = (await S.pageAll(() => S.supabase.from('rk_ship_seq')
       .select('order_number, box_no, seq').not('box_no', 'is', null).order('seq', { ascending: true })))
       .filter((r) => !want || want.has(`${r.order_number}|${r.box_no}`));
+    // anySeq (2026-11-02, 발주서 보기): 순서가 없는 박스도 보낸 목록 그대로 출력 — 발주번호 › 박스번호 순, 순번 도장은 있으면 그 순번·없으면 (순서X)
+    if (want && req.body.anySeq === true) {
+      const seqOf = new Map(seqRows.map((r) => [`${r.order_number}|${r.box_no}`, r.seq]));
+      seqRows = [...want].map((k) => { const [o, b] = k.split('|'); return { order_number: o, box_no: parseInt(b, 10), seq: seqOf.has(k) ? seqOf.get(k) : null }; })
+        .sort((a, b) => String(a.order_number).localeCompare(String(b.order_number), 'ko', { numeric: true }) || (a.box_no - b.box_no));
+    }
     if (!seqRows.length) return res.status(400).json({ error: want ? '체크한 박스 중 순서가 지정된 박스가 없습니다.' : '순서가 지정된 박스가 없습니다. [순서지정] 으로 출고 순서를 먼저 스캔하세요.' });
 
     const orderNos = [...new Set(seqRows.map((r) => r.order_number))];

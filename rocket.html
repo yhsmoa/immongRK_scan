@@ -759,7 +759,7 @@
         //   템플릿별 프린터 지정값은 이 사이트가 기억한다 (localStorage — 상품관리·쉽먼트와 같은 키라 PC 마다 한 번만 지정).
         //   ?labeldebug=1 로 이 페이지를 열면 임베드에 [인쇄 명령 저장] 버튼이 생긴다 (프린터로 갈 바이트를 파일로).
         // ============================================================
-        let labelCfg=null, labelOrigin=null, labelPending=null;
+        let labelCfg=null, labelOrigin=null, labelPending=null, labelSent=null;
         const LABEL_PRINTER_KEY='label_printer_map_v1';
         const labelDebug=new URLSearchParams(location.search).get('labeldebug')==='1';
         function loadLabelPrinterMap(){ try{ const j=JSON.parse(localStorage.getItem(LABEL_PRINTER_KEY)||'{}'); return j&&typeof j==='object'&&!Array.isArray(j)?j:{}; }catch(_){ return {}; } }
@@ -776,7 +776,7 @@
             const frame=document.getElementById('labelPrintFrame');
             if(!labelPending||!frame.contentWindow||frame.dataset.ready!=='1') return;
             frame.contentWindow.postMessage(labelPending, labelOrigin);
-            labelPending=null;
+            labelSent=labelPending; labelPending=null;
         }
         async function openLabelPrint(){
             // 같은 상품이 여러 발주서에 있으면 한 번만 (바코드 기준)
@@ -857,6 +857,13 @@
                 const st=document.getElementById('labelPrintStatus');
                 const type=d.labelType==='box'?'박스 라벨':d.labelType==='care'?'케어 라벨':'라벨 스티커';
                 st.textContent=d.ok?(st.textContent?st.textContent+' · ':'')+`✓ ${type} ${d.printed}장 전송됨`:`✕ ${type} 실패`;   // 상세 사유는 임베드가 alert 로 띄운다
+                if(d.labelType==='box'||d.labelType==null){
+                if(d.ok){
+                    // 출력 기록 (2026-11-02, 두 번 출력 방지) — 라벨 서비스가 전송을 확인한 박스에 시각을 남겨 다음 [이미 뽑힌 라벨 제외] 가 뺀다
+                    const boxes=((labelSent&&labelSent.items)||[]).filter(i=>i.data&&Number(i.data.po_box_count)>0).map(i=>({orderNumber:i.data.po_order_number, boxNo:Number(i.data.bx_no)}));
+                    if(boxes.length) fetch('/api/label/printed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxes})}).then(r=>r.json()).then(j=>{ if(j&&j.error) toast('라벨 출력 기록 실패: '+j.error); }).catch(()=>{});
+                }
+                }
             }
         });
 

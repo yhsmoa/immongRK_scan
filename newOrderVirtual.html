@@ -986,7 +986,7 @@
         // ============================================================
         // 박스라벨 — 대상 발주서의 출고 박스마다 1장 (label-service 임베드, labelType 'box'). 쉽먼트·입고정리와 같은 API·같은 프린터 저장 키
         // ============================================================
-        let labelCfg=null, labelOrigin=null, labelPending=null;
+        let labelCfg=null, labelOrigin=null, labelPending=null, labelSent=null;
         const LABEL_PRINTER_KEY='label_printer_map_v1';
         const labelDebug=new URLSearchParams(location.search).get('labeldebug')==='1';
         function loadLabelPrinterMap(){ try{ const j=JSON.parse(localStorage.getItem(LABEL_PRINTER_KEY)||'{}'); return j&&typeof j==='object'&&!Array.isArray(j)?j:{}; }catch(_){ return {}; } }
@@ -1000,7 +1000,7 @@
         function sendLabelPending(){
             const frame=document.getElementById('labelPrintFrame');
             if(!labelPending||!frame.contentWindow||frame.dataset.ready!=='1') return;
-            frame.contentWindow.postMessage(labelPending, labelOrigin); labelPending=null;
+            frame.contentWindow.postMessage(labelPending, labelOrigin); labelSent=labelPending; labelPending=null;
         }
         let boxLabelOrders=[];
         function reloadBoxLabels(){ if(boxLabelOrders.length) loadBoxLabels(); }
@@ -1040,7 +1040,15 @@
             const d=e.data||{};
             if(d.type==='label-print:ready'){ document.getElementById('labelPrintFrame').dataset.ready='1'; sendLabelPending(); }
             else if(d.type==='label-print:printer-map'){ if(d.map&&typeof d.map==='object'&&!Array.isArray(d.map)) saveLabelPrinterMap(d.map); }
-            else if(d.type==='label-print:result'){ document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨`:'✕ 박스 라벨 실패'; }
+            else if(d.type==='label-print:result'){
+                document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨 — 창을 닫습니다`:'✕ 박스 라벨 실패';
+                if(d.ok){
+                    // 출력 기록 (2026-11-02, 두 번 출력 방지) — 라벨 서비스가 전송을 확인한 박스에 시각을 남겨 다음 [이미 뽑힌 라벨 제외] 가 뺀다
+                    const boxes=((labelSent&&labelSent.items)||[]).filter(i=>i.data&&Number(i.data.po_box_count)>0).map(i=>({orderNumber:i.data.po_order_number, boxNo:Number(i.data.bx_no)}));
+                    if(boxes.length) fetch('/api/label/printed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxes})}).then(r=>r.json()).then(j=>{ if(j&&j.error) toast('라벨 출력 기록 실패: '+j.error); }).catch(()=>{});
+                    setTimeout(()=>closeLabelPrint(),1500);
+                }
+            }
         });
         document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeLabelPrint(); closeVirtualBatch(); closeAlloc(); document.getElementById('pop').classList.remove('show'); } });
 

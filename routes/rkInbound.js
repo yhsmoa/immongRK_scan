@@ -257,7 +257,8 @@ const mobileCmp = (a, b) =>
 //   행 요약(mobile_status/by/at)은 그대로 둔다 — PC 입고정리 ✅/❌ 와 예전 화면이 읽는다:
 //     하나라도 없음 → missing · 찾은 몫 합 ≥ 행의 박스 몫 합(shareTotal) → found · 일부만 찾음 → null (입고정리는 🔸 로 박스별 표시)
 //   marks 없이 오면(예전 화면) 전처럼 행 전체에 기록하고 mobile_boxes 는 비운다
-const { boxEntries, entryFound, markPatch, marksError, summarizeMarks, loadVirtualBoxes, assignVirtualBoxes, loadAllModeRows } = require('./rkMarks');   // 모바일 찾은 수량 기록·가상 박스 배정 공용 (2026-11-02)
+const M = require('./rkMarks');
+const { boxEntries, entryFound, markPatch, marksError, summarizeMarks, loadVirtualBoxes, assignVirtualBoxes, loadAllModeRows } = M;   // 모바일 찾은 수량 기록·가상 박스 배정 공용 (2026-11-02)
 // 목록 진행 집계용: 그 박스에서 본 이 행의 입력 — 박스별 기록이 있으면 그 박스 것만, 없으면(예전 기록) 행 요약
 //   share = 이 박스에 걸린 몫 → { status: 'found'(다 찾음) | 'missing'(부족) | null(미입력), found: 찾은 수 }  (2026-11-02 숫자 기록)
 function boxMark(r, boxNo, share) {
@@ -669,7 +670,7 @@ router.post('/api/inbound/mobile-box-size', async (req, res) => {
     if (!boxes || !boxes.length) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${boxNo} 박스가 없습니다.` });
     const prevSize = String(boxes[0].box_size || '').trim();
     if (prevSize !== boxSize) {
-      const { error: e2 } = await sb.from('rk_ship_boxes').update({ box_size: boxSize }).eq('id', boxes[0].id);
+      const { error: e2 } = await sb.from('rk_ship_boxes').update({ box_size: boxSize, ...((await M.hasLabelCol()) ? { label_printed_at: null } : {}) }).eq('id', boxes[0].id);   // 크기가 바뀌면 라벨 다시 출력 (기록 지움)
       if (e2) throw e2;
       console.log(`[rk] inbound/mobile-box-size: ${orderNumber}-${boxNo} ${prevSize || '(없음)'} → ${boxSize} (${worker || '작업자 미입력'})`);
     }
@@ -827,6 +828,8 @@ router.post('/api/inbound/mobile-box-split', async (req, res) => {
     const movedQty = [...newItems.values()].reduce((s, n) => s + n.qty, 0);
     const markFailed = await trimMovedMarks(fromBoxNo, req.body.cards);
     console.log(`[rk] inbound/mobile-box-split: ${orderNumber}-${fromBoxNo} → 새 📦${newBoxNo}(${boxSize}) ${movedQty}개 · ${newItems.size}종 (${worker || '작업자 미입력'})${markFailed ? ` · 찾음 기록 정리 실패 ${markFailed}건` : ''}`);
+    // 원래 박스는 내용이 바뀌어 라벨을 다시 뽑아야 한다 — 출력 기록을 지운다 (실패해도 이동은 끝난 것)
+    try { if (await M.hasLabelCol()) await sb.from('rk_ship_boxes').update({ label_printed_at: null }).eq('order_number', orderNumber).eq('box_no', fromBoxNo); } catch (e) { console.error('[rk] 박스 나눔 뒤 라벨 기록 지우기 실패(계속):', e.message); }
     res.json({ ok: true, orderNumber, fromBoxNo, newBoxNo, boxSize, movedQty, movedItems: newItems.size, markFailed });
   } catch (e) {
     console.error('[rk] inbound/mobile-box-split:', e);

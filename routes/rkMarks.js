@@ -19,17 +19,20 @@ const VirtualPack = require('../virtualPack');
 const sb = S.supabase;
 
 const boxEntries = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
-// ── rk_ship_boxes.shipped_at 열이 있는지 (supabase/rk_ship_boxes_shipped_at.sql 실행 전에도 화면이 깨지지 않게) ──
-//   있으면 true 를 계속 기억하고, 없으면 1분 뒤 다시 확인한다
-let shippedColCache = { v: null, at: 0 };
-async function hasShippedCol() {
-  if (shippedColCache.v === true) return true;
-  if (shippedColCache.v === false && Date.now() - shippedColCache.at < 60000) return false;
-  const { error } = await sb.from('rk_ship_boxes').select('shipped_at').limit(1);
-  shippedColCache = { v: !error, at: Date.now() };
-  if (error && !/shipped_at/.test(error.message || '')) throw error;
+// ── rk_ship_boxes 의 선택 열이 있는지 (SQL 실행 전에도 화면이 깨지지 않게) — 있으면 계속 기억, 없으면 1분 뒤 다시 확인 ──
+const colCache = new Map();   // 열 이름 → { v, at }
+async function hasBoxCol(col) {
+  const c = colCache.get(col);
+  if (c && c.v === true) return true;
+  if (c && c.v === false && Date.now() - c.at < 60000) return false;
+  const { error } = await sb.from('rk_ship_boxes').select(col).limit(1);
+  colCache.set(col, { v: !error, at: Date.now() });
+  if (error && !error.message.includes(col)) throw error;
   return !error;
 }
+const hasShippedCol = () => hasBoxCol('shipped_at');
+const hasLabelCol = () => hasBoxCol('label_printed_at');
+const LABEL_SQL_MSG = '라벨 출력 기록 열(rk_ship_boxes.label_printed_at)이 아직 DB 에 없습니다. supabase/rk_ship_boxes_label_printed_at.sql 을 실행하세요.';
 const SHIPPED_SQL_MSG = '출고완료 기록 열(rk_ship_boxes.shipped_at)이 아직 DB 에 없습니다. supabase/rk_ship_boxes_shipped_at.sql 을 실행한 뒤 다시 시도하세요.';
 const toN = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
 // 기록 하나의 찾은 수량 (예전 status 기록 포함)
@@ -339,5 +342,5 @@ module.exports = {
   boxEntries, entryFound, summarizeMarks, markPatch, marksError,
   loadVirtualBoxes, assignVirtualBoxes, loadAllModeRows,
   boxFoundMap, boxReadiness, orderStateOf, zeroFillUnmarked,
-  hasShippedCol, SHIPPED_SQL_MSG,
+  hasShippedCol, SHIPPED_SQL_MSG, hasLabelCol, LABEL_SQL_MSG, hasBoxCol,
 };

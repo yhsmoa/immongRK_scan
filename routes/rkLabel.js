@@ -173,6 +173,28 @@ function sourceGroup(data) {
 }
 const EMPTY_SOURCES = sourceFields({}, {}, []);
 const orderBoxDate = (no, boxNo, ymd) => { const d = mmdd(ymd); return `${no}-${boxNo}${d ? ` (${d})` : ''}`; };
+// 박스 라벨 출력 기록 (2026-11-02) — 라벨 서비스가 "전송됨" 을 돌려준 박스들. body: { boxes:[{ orderNumber, boxNo }] }
+//   두 번 출력되던 원인: 아직 입력이 안 끝난 가상 박스는 "안 뽑힌 라벨" 로 보여 다시 나갔다. 이제 실제로 뽑은 시각을 박스에 남겨 제외한다.
+router.post('/api/label/printed', async (req, res) => {
+  try {
+    if (!(await M.hasLabelCol())) return res.status(400).json({ error: M.LABEL_SQL_MSG });
+    const boxes = (Array.isArray(req.body.boxes) ? req.body.boxes : [])
+      .map((b) => ({ orderNumber: String((b && b.orderNumber) || '').trim(), boxNo: parseInt(b && b.boxNo, 10) })).filter((b) => b.orderNumber && Number.isFinite(b.boxNo));
+    if (!boxes.length) return res.json({ ok: true, marked: 0 });
+    const now = new Date().toISOString();
+    let marked = 0;
+    for (const b of boxes) {
+      const { data, error } = await sb.from('rk_ship_boxes').update({ label_printed_at: now }).eq('order_number', b.orderNumber).eq('box_no', b.boxNo).select('id');
+      if (error) throw error;
+      marked += (data || []).length;
+    }
+    res.json({ ok: true, marked });
+  } catch (e) {
+    console.error('[rk] label/printed:', e);
+    res.status(500).json({ error: '라벨 출력 기록 실패: ' + e.message });
+  }
+});
+
 router.post('/api/label/order-boxes', async (req, res) => {
   try {
     const orderNumbers = [...new Set((Array.isArray(req.body.orderNumbers) ? req.body.orderNumbers : [])
@@ -181,7 +203,7 @@ router.post('/api/label/order-boxes', async (req, res) => {
     const skipPrinted = req.body.skipPrinted !== false;
     // boxes: [{orderNumber, boxNo}] — 쉽먼트 [순서대로] 보기에서 체크한 박스만 (2026-11-02)
     const pick = Array.isArray(req.body.boxes) && req.body.boxes.length ? new Set(req.body.boxes.map((b) => `${b && b.orderNumber}|${parseInt(b && b.boxNo, 10)}`)) : null;
-    const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty' + ((await M.hasShippedCol()) ? ', shipped_at' : '');
+    const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty' + ((await M.hasShippedCol()) ? ', shipped_at' : '') + ((await M.hasLabelCol()) ? ', label_printed_at' : '');
     const groupBySource = req.body.groupBySource === true;   // 찾을 곳별로 모아 출력 (신규 발주서 [박스라벨], 2026-10-27)
 
     // 1000행씩 나눠 읽으므로 id 순 정렬 (정렬 없는 range 는 행이 빠지거나 겹칠 수 있다)
@@ -200,7 +222,9 @@ router.post('/api/label/order-boxes', async (req, res) => {
     //   (2026-11-02) 박스 상태(M.boxReadiness)로 — 실제 스캔 박스 · 모바일 입고 입력이 끝난 박스(다 찾음/부족).
     //   예전 규칙은 "발주서 전체 합계" 로 판정해 다 찾은 박스도 다시 나왔다 (10-30 아침 71장).
     const ready = found ? M.boxReadiness(boxes, boxItems, found) : new Map();
+    const fmtAt = (ts) => { const d = new Date(new Date(ts).getTime() + 9 * 3600000); const p = (n) => String(n).padStart(2, '0'); return `${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`; };
     const alreadyPrinted = (b, sum) => {
+      if (b.label_printed_at) return `출력됨 ${fmtAt(b.label_printed_at)}`;   // 라벨 서비스가 전송을 확인한 기록 (2026-11-02) — 가장 먼저 본다
       const rd = ready.get(b.id);
       if (!rd) return null;
       if (rd.state === '실제' && sum && sum.qty > 0) return '실제 스캔';   // 실제로 스캔해 담은 박스 (옛 흐름: 스캔 후 라벨)

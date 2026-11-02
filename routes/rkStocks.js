@@ -438,6 +438,70 @@ router.get('/api/stocks/history', async (req, res) => {
   }
 });
 
+// ── 모바일 입고 [위치이동] (2026-11-02) ──
+// 바코드 하나의 재고 행 (수량 > 0) — ?barcode= → { barcode, name, img, rows:[{ id, location, qty, name }] } · 위치 오름차순
+router.get('/api/stocks/by-barcode', async (req, res) => {
+  try {
+    const barcode = String(req.query.barcode || '').trim();
+    if (!barcode) return res.status(400).json({ error: '바코드가 필요합니다.' });
+    const [{ data: rows, error }, { data: inv }] = await Promise.all([
+      sb.from('rk_stocks').select('id, location, qty, item_name, sku_id').eq('barcode', barcode).gt('qty', 0).order('location', { ascending: true }),
+      sb.from('rk_inventories').select('name, img').eq('barcode', barcode).limit(1),
+    ]);
+    if (error) throw error;
+    const name = (inv && inv[0] && inv[0].name) || ((rows || []).find((r) => r.item_name) || {}).item_name || '';
+    const out = (rows || []).map((r) => ({ id: r.id, location: String(r.location || '').trim(), qty: parseInt(r.qty, 10) || 0, name: r.item_name || name }));
+    out.sort((a, b) => a.location.localeCompare(b.location, 'ko', { numeric: true }));
+    res.json({ barcode, name, img: (inv && inv[0] && inv[0].img) || null, rows: out });
+  } catch (e) {
+    console.error('[rk] stocks/by-barcode:', e);
+    res.status(500).json({ error: '재고 조회 실패: ' + e.message });
+  }
+});
+// 재고 행 하나를 다른 위치로 — body: { id, toLocation, worker }
+//   옮길 위치에 같은 바코드 행이 이미 있으면 수량을 거기에 합치고 원래 행은 지운다. 없으면 행의 위치만 바꾼다.
+//   이력(rk_stock_histories): 합칠 때 원래 행 deduct · 받는 행 add, 위치만 바꿀 때 adjust(수량 변화 0) — note 에 "위치이동 A → B (이름)"
+router.post('/api/stocks/move', async (req, res) => {
+  try {
+    const id = parseInt(req.body.id, 10);
+    const to = String(req.body.toLocation || '').trim();
+    const worker = String(req.body.worker || '').trim().slice(0, 40);
+    if (!Number.isFinite(id)) return res.status(400).json({ error: 'id 가 필요합니다.' });
+    if (!to) return res.status(400).json({ error: '옮길 위치를 입력하세요.' });
+    if (!worker) return res.status(400).json({ error: '작업자 이름이 없습니다.' });
+    const { data: cur, error: e0 } = await sb.from('rk_stocks').select('id, barcode, location, qty, sku_id, item_name').eq('id', id).limit(1);
+    if (e0) throw e0;
+    if (!cur || !cur.length) return res.status(404).json({ error: '재고 행을 찾을 수 없습니다.' });
+    const row = cur[0];
+    const from = String(row.location || '').trim();
+    const qty = parseInt(row.qty, 10) || 0;
+    if (from === to) return res.status(400).json({ error: '지금 위치와 같습니다.' });
+    const note = `위치이동 ${from || '(없음)'} → ${to} (${worker})`;
+    const { data: tg, error: e1 } = await sb.from('rk_stocks').select('id, qty').eq('barcode', row.barcode).eq('location', to).neq('id', id).limit(1);
+    if (e1) throw e1;
+    const histories = [];
+    let merged = false, targetId = id;
+    if (tg && tg.length) {
+      // 같은 바코드가 그 위치에 이미 있다 → 합친다 (받는 행 add, 원래 행 deduct 후 삭제)
+      const t = tg[0]; const before = parseInt(t.qty, 10) || 0; const after = before + qty;
+      const { error: e2 } = await sb.from('rk_stocks').update({ qty: after }).eq('id', t.id); if (e2) throw e2;
+      histories.push({ stock_id: t.id, sku_id: row.sku_id || null, barcode: row.barcode, location: to, change_type: 'add', qty, qty_before: before, qty_after: after, note });
+      histories.push({ stock_id: row.id, sku_id: row.sku_id || null, barcode: row.barcode, location: from, change_type: 'deduct', qty, qty_before: qty, qty_after: 0, note });
+      const { error: e3 } = await sb.from('rk_stocks').delete().eq('id', row.id); if (e3) throw e3;
+      merged = true; targetId = t.id;
+    } else {
+      const { error: e2 } = await sb.from('rk_stocks').update({ location: to }).eq('id', row.id); if (e2) throw e2;
+      histories.push({ stock_id: row.id, sku_id: row.sku_id || null, barcode: row.barcode, location: to, change_type: 'adjust', qty: 0, qty_before: qty, qty_after: qty, note });
+    }
+    { const { error: eH } = await sb.from('rk_stock_histories').insert(histories); if (eH) console.error('[rk] stocks/move 이력 기록 실패(계속):', eH.message); }
+    console.log(`[rk] stocks/move: ${row.barcode} ${from} → ${to} ${qty}개${merged ? ' (합침)' : ''} · ${worker}`);
+    res.json({ ok: true, id: targetId, barcode: row.barcode, from, to, qty, merged });
+  } catch (e) {
+    console.error('[rk] stocks/move:', e);
+    res.status(500).json({ error: '위치이동 실패: ' + e.message });
+  }
+});
+
 // 위치 일괄 저장 (선택 항목의 location 을 지정값으로 변경)
 router.post('/api/stocks/batch-update-location', async (req, res) => {
   try {

@@ -116,8 +116,7 @@
         .tabletop{justify-content:space-between;}
         .tabletop .left{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
         .tabletop .right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
-        .tabletop .emo-guide{margin:0 4px;}
-        .tabletop .right .emo-pop{left:auto;right:0;}   /* 오른쪽에 있으니 설명창도 오른쪽 끝에 맞춰 연다 */
+        .actions .emo-guide{margin:0 6px 0 0;}
         .seq-actions{display:none;gap:8px;}
         .seq-actions.show{display:flex;}
         .seq-actions .btn{height:32px;padding:0 12px;font-size:13px;}
@@ -289,6 +288,29 @@
                     <span class="subtitle">발주서 <b id="cntOrders">0</b>건 · 박스 <b id="cntBoxes">0</b>개 · <span class="hint" data-tip="<b>스캔</b> = 실제 스캔 + 가상스캔<br>박스에 담기로 한 수량">스캔 <b id="cntQty">0</b>개</span> · <span class="hint" data-tip="<b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인 <b id="cntOk">0</b>개</span><span id="cntShortWrap" style="display:none"> · 부족 <b id="cntShort" style="color:#b45309">0</b>개</span></span>
                 </div>
                 <div class="actions">
+                    <!-- 📘 가이드 — 마우스를 올리면 이모지·수량 뜻 (2026-11-02) -->
+                    <span class="emo-guide" tabindex="0">📘 가이드
+                        <span class="emo-pop" role="tooltip">
+                            <span class="t">박스 배지</span>
+                            <span class="r"><span class="chip st-real"><b>1</b>중 📠</span><span>실제 스캔 — 실물을 찍어 담은 박스. 찾을 것 없음 (완료로 셉니다)</span></span>
+                            <span class="r"><span class="chip st-none"><b>1</b>중 👾</span><span>미진행 — 가상스캔 박스, 모바일 입고에서 아직 아무것도 안 누름</span></span>
+                            <span class="r"><span class="chip st-prog"><b>1</b>중 🔄 3/8</span><span>진행 — 상품 8개 중 3개 입력됨 (스캔 또는 부족)</span></span>
+                            <span class="r"><span class="chip st-ok"><b>1</b>중 ✅</span><span>완료 · 다 찾음 — 모든 상품을 몫만큼 찾음</span></span>
+                            <span class="r"><span class="chip st-short"><b>1</b>중 <span class="wn">⚠ 6</span></span><span>완료 · 부족 — 입력은 끝났고 6개를 못 찾음 (파일엔 찾은 수만 나감)</span></span>
+                            <span class="r"><span class="chip st-ship"><b>1</b>중 🚚</span><span>출고완료 — [출고완료] 로 나간 박스 ([출고] 탭)</span></span>
+                            <span class="r"><span class="chip st-none"><b>1</b>중 🔀👾</span><span>🔀 = 실제 스캔 + 가상이 섞인 박스 (가상 부분의 상태가 뒤에 붙음)</span></span>
+                            <span class="r"><span class="chip st-ok"><b>1</b>중 ✅<span class="doc">📃</span></span><span>📃 = 쿠팡 부착·동봉문서가 등록된 박스</span></span>
+                            <span class="t">상품 상태</span>
+                            <span class="r"><span class="ist none">👾 미입력</span><span>모바일 입고에서 아직 안 누름</span></span>
+                            <span class="r"><span class="ist prog">🔄 일부</span><span>몫의 일부만 입력됨 (여러 입고 행에 나뉜 상품)</span></span>
+                            <span class="r"><span class="ist ok">✅ 12</span><span>12개 다 찾음</span></span>
+                            <span class="r"><span class="ist short">⚠ 부족 3</span><span>3개 못 찾음 — 재고·입고는 되돌리지 않음</span></span>
+                            <span class="t">수량</span>
+                            <span class="r"><b>스캔</b><span>실제 스캔 + 가상스캔 — 박스에 담기로 한 수량</span></span>
+                            <span class="r"><b>확인</b><span>실제 스캔 + 모바일로 찾은 수 = 쉽먼트 납품수량</span></span>
+                            <span class="r"><b>부족</b><span>가상 중 못 찾은 수 (입력이 끝난 상품만)</span></span>
+                        </span>
+                    </span>
                     <button class="btn" onclick="openSummary()">요약</button>
                     <button class="btn" onclick="openGuide()">가이드</button>
                     <button class="btn" id="expandBtn" onclick="toggleExpandAll()">펼쳐보기</button>
@@ -327,36 +349,14 @@
                 </div>
                 <!-- 순서대로 보기 — 체크한 박스, 없으면 지금 화면에 보이는 박스 전부 · [출고] 탭 — 체크한 박스(발주서 보기는 체크한 발주서의 출고 박스) -->
                 <div class="right">
+                <!-- 발주서 보기 = 체크한 발주서의 박스 전부 · 순서대로 보기 = 체크한 박스, 없으면 화면에 보이는 박스 · [출고] 탭 = 출고 취소 -->
                 <div class="seq-actions" id="seqActions">
-                    <button class="btn ship" id="shipBtn" onclick="shipBoxes()">출고완료</button>
-                    <button class="btn" id="resetSeqBtn" onclick="resetSeq()">초기화</button>
                     <button class="btn" id="printManifestBtn" onclick="printDocs('manifest')">동봉문서 출력</button>
                     <button class="btn" id="printLabelBtn" onclick="printDocs('label')">부착문서 출력</button>
+                    <button class="btn ship" id="shipBtn" onclick="shipBoxes()">출고완료</button>
+                    <button class="btn" id="resetSeqBtn" onclick="resetSeq()">초기화</button>
                     <button class="btn" id="unshipBtn" style="display:none" onclick="unshipBoxes()">출고 취소</button>
                 </div>
-                <!-- 📘 가이드 (2026-11-02) — [발주서/순서대로] 왼쪽. 마우스를 올리면 이모지 뜻 설명창 (오른쪽 정렬로 열린다) -->
-                <span class="emo-guide" tabindex="0">📘 가이드
-                        <span class="emo-pop" role="tooltip">
-                            <span class="t">박스 배지</span>
-                            <span class="r"><span class="chip st-real"><b>1</b>중 📠</span><span>실제 스캔 — 실물을 찍어 담은 박스. 찾을 것 없음 (완료로 셉니다)</span></span>
-                            <span class="r"><span class="chip st-none"><b>1</b>중 👾</span><span>미진행 — 가상스캔 박스, 모바일 입고에서 아직 아무것도 안 누름</span></span>
-                            <span class="r"><span class="chip st-prog"><b>1</b>중 🔄 3/8</span><span>진행 — 상품 8개 중 3개 입력됨 (스캔 또는 부족)</span></span>
-                            <span class="r"><span class="chip st-ok"><b>1</b>중 ✅</span><span>완료 · 다 찾음 — 모든 상품을 몫만큼 찾음</span></span>
-                            <span class="r"><span class="chip st-short"><b>1</b>중 <span class="wn">⚠ 6</span></span><span>완료 · 부족 — 입력은 끝났고 6개를 못 찾음 (파일엔 찾은 수만 나감)</span></span>
-                            <span class="r"><span class="chip st-ship"><b>1</b>중 🚚</span><span>출고완료 — [출고완료] 로 나간 박스 ([출고] 탭)</span></span>
-                            <span class="r"><span class="chip st-none"><b>1</b>중 🔀👾</span><span>🔀 = 실제 스캔 + 가상이 섞인 박스 (가상 부분의 상태가 뒤에 붙음)</span></span>
-                            <span class="r"><span class="chip st-ok"><b>1</b>중 ✅<span class="doc">📃</span></span><span>📃 = 쿠팡 부착·동봉문서가 등록된 박스</span></span>
-                            <span class="t">상품 상태</span>
-                            <span class="r"><span class="ist none">👾 미입력</span><span>모바일 입고에서 아직 안 누름</span></span>
-                            <span class="r"><span class="ist prog">🔄 일부</span><span>몫의 일부만 입력됨 (여러 입고 행에 나뉜 상품)</span></span>
-                            <span class="r"><span class="ist ok">✅ 12</span><span>12개 다 찾음</span></span>
-                            <span class="r"><span class="ist short">⚠ 부족 3</span><span>3개 못 찾음 — 재고·입고는 되돌리지 않음</span></span>
-                            <span class="t">수량</span>
-                            <span class="r"><b>스캔</b><span>실제 스캔 + 가상스캔 — 박스에 담기로 한 수량</span></span>
-                            <span class="r"><b>확인</b><span>실제 스캔 + 모바일로 찾은 수 = 쉽먼트 납품수량</span></span>
-                            <span class="r"><b>부족</b><span>가상 중 못 찾은 수 (입력이 끝난 상품만)</span></span>
-                        </span>
-                    </span>
                 <!-- 보기: 발주서(발주서 한 줄) / 순서대로([순서지정] 으로 순서가 찍힌 박스만, 박스 하나 = 한 줄, 그 순서대로) — 탭과 따로 고른다 -->
                 <div class="seg" id="orderSeg">
                     <button type="button" class="on" data-mode="all" onclick="setOrderMode('all')">발주서</button>
@@ -523,7 +523,7 @@
                 <button onclick="closeLabelPrint()">✕</button>
             </div>
             <!-- 기본 = 이미 뽑힌 박스(실제 스캔·가상확정)는 빼고 아직 미확정인 가상 박스만. 풀면 전부 (2026-10-15) -->
-            <div class="label-opts"><label><input type="checkbox" id="labelSkipPrinted" checked onchange="reloadBoxLabels()"> 이미 뽑힌 박스 라벨 제외 <small>실제 스캔 박스와 모바일 입고 입력이 끝난 박스(다 찾음·부족)는 빼고 뽑습니다 · 출고완료 박스는 늘 빠집니다 · 풀면 전부</small></label></div>
+            <div class="label-opts"><label><input type="checkbox" id="labelSkipPrinted" checked onchange="reloadBoxLabels()"> 이미 뽑힌 박스 라벨 제외 <small>이미 뽑은 기록이 있는 박스, 실제 스캔 박스, 모바일 입고 입력이 끝난 박스는 빼고 뽑습니다 · 출고완료 박스는 늘 빠집니다 · 풀면 전부</small></label></div>
             <!-- allow: 임베드(다른 origin)가 이 PC 의 QZ Tray(wss://localhost)에 붙으려면 크롬 로컬 네트워크 접근(LNA) 권한을
                  부모 페이지가 위임해야 한다. src 를 넣기 전부터 이 속성이 있어야 한다 (iframe 이동 시 적용). -->
             <iframe id="labelPrintFrame" title="박스 라벨 출력"
@@ -671,7 +671,6 @@
             if(t===tab) return;
             clearChecks('탭을 바꿨습니다');
             tab=t;
-            document.getElementById('seqActions').classList.toggle('show', orderMode==='seq' || tab==='출고');
             syncActions();
             if(t==='출고'){
                 if(!shippedOrders){ document.getElementById('tbody').innerHTML='<tr class="state-row"><td colspan="10">출고완료 목록을 불러오는 중…</td></tr>'; }
@@ -690,8 +689,8 @@
         // 오른쪽 위 버튼 — 순서대로 보기: [출고완료] [초기화] [동봉문서] [부착문서] · 출고 탭: [출고 취소]
         function syncActions(){
             const shipTab=tab==='출고';
-            document.getElementById('seqActions').classList.toggle('show', orderMode==='seq' || shipTab);
-            for(const id of ['shipBtn','resetSeqBtn','printManifestBtn','printLabelBtn']) document.getElementById(id).style.display=(!shipTab&&orderMode==='seq')?'':'none';
+            document.getElementById('seqActions').classList.add('show');   // 두 보기 모두 (2026-11-02)
+            for(const id of ['printManifestBtn','printLabelBtn','shipBtn','resetSeqBtn']) document.getElementById(id).style.display=shipTab?'none':'';
             document.getElementById('unshipBtn').style.display=shipTab?'':'none';
         }
         function updateSeqHint(){
@@ -876,7 +875,13 @@
         // 순서대로 보기에서 체크한 박스 — 없으면 null (발주서 보기도 null = 발주서 전체)
         const selectedBoxList=()=>{ if(orderMode!=='seq') return null; const l=[...selectedBoxes].map(keyToBox); return l.length?l:null; };
         // 순서대로 보기의 대상 박스 — 체크한 박스, 없으면 지금 화면에 보이는 박스 전부 (검색·탭·필터 반영, 모순 10)
-        const targetBoxes=()=>selectedBoxList()||viewBoxes.map(({o,b})=>({orderNumber:o.발주번호, boxNo:Number(b.no)}));
+        const targetBoxes=()=>{
+            if(orderMode==='seq') return selectedBoxList()||viewBoxes.map(({o,b})=>({orderNumber:o.발주번호, boxNo:Number(b.no)}));
+            // 발주서 보기 (2026-11-02): 체크한 발주서의 (지금 목록에 있는) 박스 전부 — 체크가 없으면 대상 없음
+            return srcOrders().filter(o=>selected.has(o.발주번호)).flatMap(o=>o.boxes.filter(boxPass).map(b=>({orderNumber:o.발주번호, boxNo:Number(b.no)})));
+        };
+        const targetScope=()=>orderMode==='seq'?(selectedBoxList()?'체크한':'화면에 보이는'):'체크한 발주서의';
+        const noTargetMsg=what=>orderMode==='seq'?`${what} 박스가 없습니다. (체크하거나 화면에 보이는 박스가 대상)`:`${what} 발주서를 체크해주세요.`;
         const findBox=x=>{ const o=srcOrders().find(o=>o.발주번호===x.orderNumber); return o?o.boxes.find(b=>Number(b.no)===Number(x.boxNo)):null; };
 
 
@@ -1085,10 +1090,10 @@
         // ── 출고완료 / 출고 취소 (2026-11-02) ──
         async function shipBoxes(){
             const list=targetBoxes();
-            if(!list.length){ toast('출고할 박스가 없습니다.'); return; }
+            if(!list.length){ toast(noTargetMsg('출고할')); return; }
             const nOrders=new Set(list.map(b=>b.orderNumber)).size;
             const notDone=list.filter(x=>{ const b=findBox(x); return b && b.virtualQty>0 && b.state!=='완료'; });
-            const scope=selectedBoxList()?'체크한':'화면에 보이는';
+            const scope=targetScope();
             if(!confirm(`${scope} 박스 ${list.length}개 (발주서 ${nOrders}건) 를 출고완료로 표시합니다.${notDone.length?`\n\n⚠ 모바일 입고가 안 끝난 박스 ${notDone.length}개가 섞여 있습니다: ${notDone.slice(0,8).map(x=>x.orderNumber+'-'+x.boxNo).join(', ')}${notDone.length>8?' …':''}`:''}\n\n· 순서에서 빠지고 [출고] 탭으로 갑니다.\n· 발주서의 박스가 모두 출고되면 발주서는 처리완료(DONE)가 됩니다.\n\n계속할까요?`)) return;
             const btn=document.getElementById('shipBtn'); btn.disabled=true;
             try{
@@ -1173,8 +1178,8 @@
         // ── [순서대로] 탭: 초기화 / 출력 ──
         async function resetSeq(){
             const list=targetBoxes();
-            if(!list.length){ toast('지울 순서가 없습니다.'); return; }
-            const scope=selectedBoxList()?'체크한':'화면에 보이는';
+            if(!list.length){ toast(noTargetMsg('순서를 지울')); return; }
+            const scope=targetScope();
             if(!confirm(`${scope} 박스 ${list.length}개의 출고 순서를 지웁니다.\n등록된 서류는 그대로 남습니다. 계속할까요?`)) return;
             try{
                 const res=await fetch('/api/shipment/sequence',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxes:list})});
@@ -1188,11 +1193,11 @@
         // 출력: 체크한 박스가 있으면 그것만, 없으면 순서 있는 박스 전부 (서버가 rk_ship_seq 로 다시 거른다 — 순서 없는 박스는 나가지 않는다)
         async function printDocs(kind){
             const list=targetBoxes();
-            if(!list.length){ toast('출력할 박스가 없습니다. (체크하거나 화면에 보이는 박스가 대상)'); return; }
+            if(!list.length){ toast(noTargetMsg('출력할')); return; }
             const btn=document.getElementById(kind==='label'?'printLabelBtn':'printManifestBtn'); btn.disabled=true;
             const name=kind==='label'?'부착문서':'동봉문서';
             try{
-                const res=await fetch('/api/shipment/docs/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind, boxes:list})});
+                const res=await fetch('/api/shipment/docs/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind, boxes:list, anySeq:orderMode!=='seq'})});   // 발주서 보기: 순서 없는 박스도 출력
                 if(!res.ok){ let j={}; try{ j=await res.json(); }catch(_){} throw new Error((j.error||'출력 실패')+(j.missing&&j.missing.length?`\n서류 없음: ${j.missing.join(', ')}`:'')); }
                 const blob=await res.blob();
                 const cd=res.headers.get('Content-Disposition')||''; const m=cd.match(/filename=(.+)$/);
@@ -1215,7 +1220,7 @@
         //   템플릿별 프린터 지정값은 이 사이트가 기억한다 (localStorage — 다른 페이지 라벨출력과 같은 키라 PC 마다 한 번만 지정).
         //   ?labeldebug=1 로 이 페이지를 열면 임베드에 [인쇄 명령 저장] 버튼이 생긴다 (프린터로 갈 바이트를 파일로).
         // ============================================================
-        let labelCfg=null, labelOrigin=null, labelPending=null;
+        let labelCfg=null, labelOrigin=null, labelPending=null, labelSent=null;   // labelSent: 임베드에 보낸 마지막 묶음 (출력 기록용)
         const LABEL_PRINTER_KEY='label_printer_map_v1';
         const labelDebug=new URLSearchParams(location.search).get('labeldebug')==='1';
         function loadLabelPrinterMap(){ try{ const j=JSON.parse(localStorage.getItem(LABEL_PRINTER_KEY)||'{}'); return j&&typeof j==='object'&&!Array.isArray(j)?j:{}; }catch(_){ return {}; } }
@@ -1232,7 +1237,7 @@
             const frame=document.getElementById('labelPrintFrame');
             if(!labelPending||!frame.contentWindow||frame.dataset.ready!=='1') return;
             frame.contentWindow.postMessage(labelPending, labelOrigin);
-            labelPending=null;
+            labelSent=labelPending; labelPending=null;
         }
         let boxLabelOrders=[], boxLabelBoxes=null;   // boxLabelBoxes: 순서대로 보기에서 체크한 박스 (그 박스만)   // 모달에 띄운 발주번호 — 체크박스를 바꾸면 같은 발주서로 다시 조회
         function reloadBoxLabels(){ if(boxLabelOrders.length) loadBoxLabels(); }
@@ -1255,7 +1260,7 @@
                 const skippedN=(j.skipped||[]).length, allPrintedN=(j.allPrinted||[]).length;
                 if(!j.items.length && !skippedN){ toast('선택한 발주번호를 발주서에서 찾지 못했습니다.'); return; }
                 if(j.noBox.length) toast(`출고스캔 전 발주서 ${j.noBox.length}건은 박스 정보 없이(박스 1/1) 발주번호 라벨 1장만 나갑니다.\n${j.noBox.join(', ')}`);
-                else if(skippedN) toast(`이미 뽑힌 박스 ${skippedN}개(실제 스캔·모바일 입력 완료)는 제외했습니다.${allPrintedN?` 발주서 ${allPrintedN}건은 전부 제외.`:''}`);
+                else if(skippedN) toast(`이미 뽑힌 박스 ${skippedN}개(출력 기록·실제 스캔·모바일 입력 완료)는 제외했습니다.${allPrintedN?` 발주서 ${allPrintedN}건은 전부 제외.`:''}`);
 
                 labelPending={
                     type:'label-print:print',
@@ -1285,7 +1290,13 @@
             if(d.type==='label-print:ready'){ document.getElementById('labelPrintFrame').dataset.ready='1'; sendLabelPending(); }
             else if(d.type==='label-print:printer-map'){ if(d.map&&typeof d.map==='object'&&!Array.isArray(d.map)) saveLabelPrinterMap(d.map); }
             else if(d.type==='label-print:result'){
-                document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨`:'✕ 박스 라벨 실패';   // 상세 사유는 임베드가 alert 로 띄운다
+                document.getElementById('labelPrintStatus').textContent=d.ok?`✓ 박스 라벨 ${d.printed}장 전송됨 — 창을 닫습니다`:'✕ 박스 라벨 실패';   // 상세 사유는 임베드가 alert 로 띄운다
+                if(d.ok){
+                    // 출력 기록 (2026-11-02, 두 번 출력 방지) — 라벨 서비스가 전송을 확인한 박스에 시각을 남겨 다음 [이미 뽑힌 라벨 제외] 가 뺀다
+                    const boxes=((labelSent&&labelSent.items)||[]).filter(i=>i.data&&Number(i.data.po_box_count)>0).map(i=>({orderNumber:i.data.po_order_number, boxNo:Number(i.data.bx_no)}));
+                    if(boxes.length) fetch('/api/label/printed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({boxes})}).then(r=>r.json()).then(j=>{ if(j&&j.error) toast('라벨 출력 기록 실패: '+j.error); }).catch(()=>{});
+                    setTimeout(()=>{ closeLabelPrint(); loadOrders(); },1500);   // 같은 묶음을 또 누르지 않게 창을 닫고 목록을 새로 읽는다
+                }
             }
         });
 
