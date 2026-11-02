@@ -140,19 +140,21 @@ function assignVirtualBoxes(rows, virtualByBc) {
 
 // 카드 순서(동선): 입고 먼저(가상스캔이 담는 순서) › 입고코드(오래된 것 먼저) › 박스명 / 위치 › id. 박스 번호 정렬은 배정 뒤에 한다
 //   extra(list): (선택) 첫 조회 결과로 함께 돌릴 조회 — 2단계 조회와 동시에 실행된다 (all-orders 의 무게 조회, 왕복 1회 절약)
-async function loadAllModeRows(orderNumbers, extra) {
+//   opts.lean (2026-11-02, 판정 전용): rk_cn_shipment_items(박스명·중국번호·상품명) 조회를 건너뛴다 — boxFoundMap 은 바코드·출고코드·기록만 쓴다
+async function loadAllModeRows(orderNumbers, extra, opts) {
+  const lean = !!(opts && opts.lean);
   const nos = [...new Set(orderNumbers.map(String).filter(Boolean))];
   if (!nos.length) return [];
-  const list = await S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_shipping_list')
+  const list = await S.chunkedPool(nos, 200, (part) => S.pageAll(() => sb.from('rk_shipping_list')
     .select('id, source, order_number, barcode, product_name, center, shipping_date, qty, location, shipment_id, shipment_item_id, cn_shipping_id, batch_no, mobile_status, mobile_at, mobile_by, mobile_boxes, mobile_memo, mobile_memo_at, mobile_memo_by')
     .eq('status', '출고예정').in('order_number', part).order('id', { ascending: true })));
   const itemIds = [...new Set(list.filter((r) => r.source === '입고' && r.shipment_item_id).map((r) => r.shipment_item_id))];
   const shipIds = [...new Set(list.filter((r) => r.source === '입고' && r.shipment_id).map((r) => r.shipment_id))];
   const cnIds = [...new Set(list.filter((r) => r.source === '입고' && r.cn_shipping_id).map((r) => r.cn_shipping_id))];
   const [items, ships, cns] = await Promise.all([
-    S.chunked(itemIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipment_items').select('id, box_name, order_number, product_name').in('id', part); if (error) throw error; return data || []; }),
-    S.chunked(shipIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipments').select('id, shipment_code, created_at').in('id', part); if (error) throw error; return data || []; }),
-    S.chunked(cnIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipping').select('id, mobile_status, mobile_at, mobile_by, mobile_boxes, mobile_memo, mobile_memo_at, mobile_memo_by').in('id', part); if (error) throw error; return data || []; }),
+    lean ? [] : S.chunkedPool(itemIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipment_items').select('id, box_name, order_number, product_name').in('id', part); if (error) throw error; return data || []; }),
+    S.chunkedPool(shipIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipments').select('id, shipment_code, created_at').in('id', part); if (error) throw error; return data || []; }),
+    S.chunkedPool(cnIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipping').select('id, mobile_status, mobile_at, mobile_by, mobile_boxes, mobile_memo, mobile_memo_at, mobile_memo_by').in('id', part); if (error) throw error; return data || []; }),
     extra ? extra(list) : null,   // 함께 기다린다 (먼저 실패해도 처리 안 된 오류가 남지 않게)
   ]);
   const itemById = new Map(items.map((i) => [i.id, i]));
@@ -189,7 +191,7 @@ async function boxFoundMap(orderNumbers) {
   const nos = [...new Set((orderNumbers || []).map((v) => String(v == null ? '' : v)).filter(Boolean))];
   const out = new Map(), orphan = new Map();
   if (!nos.length) return { map: out, orphan };
-  const [rows, vb] = await Promise.all([loadAllModeRows(nos), loadVirtualBoxes(nos, { includeStock: true })]);
+  const [rows, vb] = await Promise.all([loadAllModeRows(nos, null, { lean: true }), loadVirtualBoxes(nos, { includeStock: true })]);
   const byOrder = new Map();
   for (const r of rows) { const no = String(r.출고번호); if (!byOrder.has(no)) byOrder.set(no, []); byOrder.get(no).push(r); }
   for (const no of nos) {

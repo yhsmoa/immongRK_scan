@@ -597,6 +597,7 @@ router.get('/api/ship-scan/scanned-map', async (req, res) => {
     const map = {};
     const virtual = {};
     const confirmed = {};
+    const done = {};   // 같은 키로, 모바일 입고 입력이 끝난(다 찾음·부족) 가상 분량 합 (2026-11-02)
     if (withVirtual) {
       // 박스 확정 여부가 필요하므로 박스까지 같이 읽는다 (진행중 발주서 기준)
       const { items, ready } = await activeBoxesAndItems();
@@ -610,10 +611,15 @@ router.get('/api/ship-scan/scanned-map', async (req, res) => {
           virtual[k] = (virtual[k] || 0) + vq;
           // 확정 분량 = 모바일 입고로 찾은 수량 (2026-11-02 — 부족 입력은 찾은 만큼만)
           const ck = `${r.box_id}|${r.barcode}`;
-          if (!counted.has(ck)) { counted.add(ck); const ri = ((ready.get(r.box_id) || {}).items || new Map()).get(r.barcode); if (ri && ri.found) confirmed[k] = (confirmed[k] || 0) + ri.found; }
+          if (!counted.has(ck)) {
+            counted.add(ck);
+            const ri = ((ready.get(r.box_id) || {}).items || new Map()).get(r.barcode);
+            if (ri && ri.found) confirmed[k] = (confirmed[k] || 0) + ri.found;
+            if (ri && (ri.state === 'found' || ri.state === 'short')) done[k] = (done[k] || 0) + ri.virtual;
+          }
         }
       }
-      return res.json({ map, virtual, confirmed });
+      return res.json({ map, virtual, confirmed, done });
     }
     const add = (rows) => {
       for (const r of rows) {

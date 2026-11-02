@@ -28,25 +28,23 @@ async function shipScanOrders(orderNumbers, opts) {
   const o = opts || {};
   const hasShip = await M.hasShippedCol();
   const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty' + (hasShip ? ', shipped_at' : '');
-  let all;
   const since = new Date(Date.now() - 30 * 86400000).toISOString();   // [출고] 탭: 최근 30일에 출고된 박스만 (발주서가 아니라 박스 단위)
+  // 발주번호를 먼저 정하고(1왕복) 발주서 본문·박스·판정을 동시에 읽는다 (2026-11-02: 순차 3.5초 → 동시)
+  const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
+  let orderNos;
   if (o.shipped) {
     if (!hasShip) return [];
     const shippedRows = await S.pageAll(() => S.supabase.from('rk_ship_boxes').select('order_number').gte('shipped_at', since).order('id', { ascending: true }));
-    const nos = [...new Set(shippedRows.map((r) => String(r.order_number)))];
-    all = nos.length ? await S.listOrdersFull('rk_orders', 'rk_order_items', { orderNumbers: nos }) : [];
-  } else {
-    // 처리완료(DONE) 발주서는 제외 (DB 조회 단계에서)
-    all = await S.listOrdersFull('rk_orders', 'rk_order_items', { excludeDone: true });
-  }
-  const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
-  const orders = all.filter((x) => !has || orderNumbers.includes(x.발주번호));
-  const orderNos = [...new Set(orders.map((x) => x.발주번호).filter(Boolean))];
+    orderNos = [...new Set(shippedRows.map((r) => String(r.order_number)))];
+  } else if (has) orderNos = [...new Set(orderNumbers.map(String).filter(Boolean))];
+  else orderNos = await S.listActiveOrderNumbers('rk_orders');   // 처리완료(DONE) 제외
   if (!orderNos.length) return [];
   const pickBoxes = Array.isArray(o.boxes) && o.boxes.length ? new Set(o.boxes.map((b) => `${b.orderNumber}|${parseInt(b.boxNo, 10)}`)) : null;
 
   // 1000행씩 나눠 읽으므로 반드시 id 순 정렬 — 정렬 없이 range 를 넘기면 행이 빠지거나 중복될 수 있다
-  const [boxes, boxItems, seqRows, fm, docRows] = await Promise.all([
+  const [all, boxes, boxItems, seqRows, fm, docRows] = await Promise.all([
+    // 발주서 본문 — [출고] 탭은 처리완료 발주서도, 그 밖은 처리완료 제외
+    S.listOrdersFull('rk_orders', 'rk_order_items', o.shipped ? { orderNumbers: orderNos } : { excludeDone: true, orderNumbers: orderNos }),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
       .select(boxCols).in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
@@ -59,6 +57,7 @@ async function shipScanOrders(orderNumbers, opts) {
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_docs')
       .select('order_number, box_no, kind').in('order_number', nos).order('id', { ascending: true }))),
   ]);
+  const orders = all.filter((x) => !has || orderNumbers.includes(x.발주번호));
   const orderSeq = new Map();   // order_number → min seq
   const boxSeq = new Map();     // `${order_number}|${box_no}` → seq
   for (const r of seqRows) {

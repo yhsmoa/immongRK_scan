@@ -125,20 +125,10 @@ async function pageAll(buildQuery) {
 // ── 1000행 제한 우회: order_id 목록으로 items 전체 조회 (id 순) ──
 async function fetchAllItems(itemTable, orderIds) {
   if (!orderIds.length) return [];
-  const all = [];
-  let from = 0;
-  const size = 1000;
-  while (true) {
-    const { data, error } = await supabase
-      .from(itemTable).select('*').in('order_id', orderIds)
-      .order('order_id', { ascending: true }).order('id', { ascending: true })
-      .range(from, from + size - 1);
-    if (error) throw error;
-    all.push(...data);
-    if (data.length < size) break;
-    from += size;
-  }
-  return all;
+  // 2026-11-02: 발주서 40건씩 나눠 최대 5조각 동시에 (전에는 1000행씩 순차 — 진행중 246건이면 6왕복 ≈ 2초). 조각 안은 전처럼 1000행씩 넘긴다
+  return chunkedPool(orderIds, 40, (part) => pageAll(() => supabase
+    .from(itemTable).select('*').in('order_id', part)
+    .order('order_id', { ascending: true }).order('id', { ascending: true })), 5);
 }
 
 // ── 처리완료(DONE) 제외 조건을 쿼리에 붙인다 (status NULL 은 진행중으로 취급) ──

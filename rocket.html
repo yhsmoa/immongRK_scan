@@ -161,6 +161,9 @@
         .vtag.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
         .vtag.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
         .vtag.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}   /* 가상확정 — 상품 다 찾아옴 */
+        .vtag.virtual-short{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}   /* 입력 끝 · 부족 있음 (2026-11-02) */
+        .vtag.virtual-short .wn{color:#c2410c;font-weight:900;}
+        .vtag.virtual-prog{background:transparent;color:#3C3489;border:1.5px dashed #7F77DD;}   /* 모바일 입고 진행 중 */
         .vmark{margin-left:5px;font-size:12px;}   /* 발주번호 옆 발주서 단위 표시 */
         /* 스캔 열 배지: 확정==스캔 초록(연하게), 스캔>0 & 확정>스캔 주황 */
         .scan-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;font-size:12px;font-weight:500;line-height:1;}
@@ -395,7 +398,7 @@
                 const orders=await res.json();
                 // 스캔수량: rk_ship_box_items 합계(발주번호+바코드, 박스 무관)로 대체
                 const scData=scRes.ok?await scRes.json():{};
-                const scanMap=scData.map||{}, virtualMap=scData.virtual||{}, confirmedMap=scData.confirmed||{};
+                const scanMap=scData.map||{}, virtualMap=scData.virtual||{}, confirmedMap=scData.confirmed||{}, doneMap=scData.done||{};
                 // 발주번호|바코드 → {재고합, 입고합, 재고위치[]} (source: 재고→재고열+위치, 입고→입고V2열)
                 const slMap=new Map();
                 if(slRes.ok){
@@ -417,7 +420,8 @@
                             상품번호:p.상품번호,상품바코드:p.상품바코드,상품명:p.상품이름,
                             발주수량:p.발주수량,확정수량:p.확정수량,스캔수량:scanMap[`${o.발주번호}|${p.상품바코드}`]||0,
                             가상수량:virtualMap[`${o.발주번호}|${p.상품바코드}`]||0,   // 스캔수량 중 가상스캔 분량
-                            가상확정수량:confirmedMap[`${o.발주번호}|${p.상품바코드}`]||0,   // 그중 가상확정(다 찾아옴)된 박스에 든 분량
+                            가상확정수량:confirmedMap[`${o.발주번호}|${p.상품바코드}`]||0,   // 그중 모바일 입고로 찾은 수량 (가상확인)
+                            가상입력수량:doneMap[`${o.발주번호}|${p.상품바코드}`]||0,   // 그중 입력이 끝난(다 찾음·부족) 분량 (2026-11-02)
                             준비:(p.준비==null?null:p.준비),
                             재고:(sl&&sl.재고>0)?sl.재고:null,입고V2:(sl&&sl.입고>0)?sl.입고:null,
                             재고위치:(sl&&sl.재고위치&&sl.재고위치.length)?sl.재고위치:null,
@@ -433,23 +437,26 @@
         // ── 가상스캔 표시 (쉽먼트·출고스캔과 같은 규칙: 🔀 섞임 = 연보라 테두리 · 👾 전부 가상 = 진보라 채움 · ✅ 가상확정 = 초록) ──
         //   상품 행: 스캔수량 중 가상수량 → 상품명 옆 배지 (이모지 + 가상 수량). 발주서: 그 발주서 상품 전체 기준 → 발주번호 옆 이모지
         //   가상확정 = 출고스캔 > 가상확정 페이지에서 "상품을 다 찾아왔다" 고 확인한 박스의 가상 분량
-        const vState=(scan,vq,cq)=>vq<=0?'':(cq>=vq?'virtual-ok':vq>=scan?'virtual-all':'virtual-part');
-        const V_EMOJI={'virtual-ok':'✅','virtual-all':'👾','virtual-part':'🔀'};
-        const V_TITLE={'virtual-ok':'가상확정 (다 찾아옴)','virtual-all':'전부 가상스캔','virtual-part':'가상스캔 포함'};
+        //   (2026-11-02) cq = 찾은 수량 · dq = 입력이 끝난 가상 분량: 다 찾음 ✅ → 입력 끝났는데 부족 ⚠ → 일부 입력 🔄 → 미입력(전부 가상 👾 / 섞임 🔀)
+        const vState=(scan,vq,cq,dq)=>vq<=0?'':(cq>=vq?'virtual-ok':dq>=vq?'virtual-short':(cq>0||dq>0)?'virtual-prog':vq>=scan?'virtual-all':'virtual-part');
+        const V_EMOJI={'virtual-ok':'✅','virtual-short':'⚠','virtual-prog':'🔄','virtual-all':'👾','virtual-part':'🔀'};
+        const V_TITLE={'virtual-ok':'다 찾음 (모바일 입고)','virtual-short':'입력 끝 · 부족 있음','virtual-prog':'모바일 입고 진행 중','virtual-all':'전부 가상스캔 · 미입력','virtual-part':'가상스캔 포함 · 미입력'};
         function rowVtag(r){
-            const st=vState(Number(r.스캔수량)||0, Number(r.가상수량)||0, Number(r.가상확정수량)||0);
+            const vq=Number(r.가상수량)||0, cq=Number(r.가상확정수량)||0, dq=Number(r.가상입력수량)||0;
+            const st=vState(Number(r.스캔수량)||0, vq, cq, dq);
             if(!st) return '';
-            return `<span class="vtag ${st}" title="${V_TITLE[st]} · 가상 ${r.가상수량} / 스캔 ${r.스캔수량}">${V_EMOJI[st]} ${r.가상수량}</span>`;
+            const body=st==='virtual-short'?`<span class="wn">⚠ 부족 ${vq-cq}</span>`:st==='virtual-prog'?`🔄 ${cq}/${vq}`:`${V_EMOJI[st]} ${vq}`;
+            return `<span class="vtag ${st}" title="${V_TITLE[st]} · 가상 ${vq} / 스캔 ${r.스캔수량} · 찾음 ${cq}">${body}</span>`;
         }
         let orderVirtual=new Map();   // 발주번호 → '' | 'virtual-part' | 'virtual-all' | 'virtual-ok' (allRows 기준, applySearch 에서 계산)
         function computeOrderVirtual(){
             const agg=new Map();
             for(const r of allRows){
-                const a=agg.get(r.발주번호)||{scan:0,vq:0,cq:0};
-                a.scan+=Number(r.스캔수량)||0; a.vq+=Number(r.가상수량)||0; a.cq+=Number(r.가상확정수량)||0;
+                const a=agg.get(r.발주번호)||{scan:0,vq:0,cq:0,dq:0};
+                a.scan+=Number(r.스캔수량)||0; a.vq+=Number(r.가상수량)||0; a.cq+=Number(r.가상확정수량)||0; a.dq+=Number(r.가상입력수량)||0;
                 agg.set(r.발주번호,a);
             }
-            orderVirtual=new Map([...agg].map(([no,a])=>[no, vState(a.scan,a.vq,a.cq)]));
+            orderVirtual=new Map([...agg].map(([no,a])=>[no, vState(a.scan,a.vq,a.cq,a.dq)]));
         }
         const orderVmark=no=>{ const st=orderVirtual.get(no); return st?`<span class="vmark" title="${V_TITLE[st]}">${V_EMOJI[st]}</span>`:''; };
 
