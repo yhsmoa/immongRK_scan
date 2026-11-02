@@ -359,14 +359,12 @@
 
             <div class="table-scroll">
                 <table class="main">
+                    <!-- 발주서 보기 열 — 스크립트의 COLGROUP_ALL / THEAD_ALL 과 같아야 로딩 중에도 틀이 맞는다 (바꾸면 같이 바꾼다) -->
                     <colgroup id="colgroup">
-                        <col style="width:44px"><col style="width:150px"><col style="width:120px"><col style="width:90px"><col style="width:90px"><col style="width:80px"><col><col style="width:120px">
+                        <col style="width:44px"><col style="width:140px"><col style="width:110px"><col style="width:64px"><col style="width:70px"><col style="width:70px"><col style="width:64px"><col style="width:60px"><col><col style="width:110px">
                     </colgroup>
                     <thead id="thead">
-                        <tr>
-                            <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
-                            <th>발주번호</th><th>물류센터</th><th class="ctr">품목개수</th><th class="ctr">스캔수량</th><th class="ctr">박스수</th><th>박스 사이즈</th><th class="ctr">입고예정일</th>
-                        </tr>
+                        <tr><th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th><th>발주번호</th><th>물류센터</th><th class="ctr">품목</th><th class="ctr" title="박스에 담기로 한 수량 (실제 스캔 + 가상)">담은</th><th class="ctr" title="실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th class="ctr">부족</th><th class="ctr">박스수</th><th>박스</th><th class="ctr">입고예정일</th></tr>
                     </thead>
                     <tbody id="tbody"><tr class="state-row"><td colspan="10">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
