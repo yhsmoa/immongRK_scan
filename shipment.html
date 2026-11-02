@@ -108,7 +108,8 @@
         .tabletop{justify-content:space-between;}
         .tabletop .left{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
         .tabletop .right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
-        .tabletop .emo-guide{margin:0 6px 0 4px;}
+        .tabletop .emo-guide{margin:0 4px;}
+        .tabletop .right .emo-pop{left:auto;right:0;}   /* 오른쪽에 있으니 설명창도 오른쪽 끝에 맞춰 연다 */
         .seq-actions{display:none;gap:8px;}
         .seq-actions.show{display:flex;}
         .seq-actions .btn{height:32px;padding:0 12px;font-size:13px;}
@@ -308,8 +309,25 @@
                         <button type="button" data-tab="완료" onclick="setTab('완료')">완료</button>
                         <button type="button" data-tab="출고" onclick="setTab('출고')">출고</button>
                     </div>
-                    <!-- 📘 가이드 (2026-11-02) — 탭 오른쪽 글자 하나. 마우스를 올리면 이모지 뜻 설명창 -->
-                    <span class="emo-guide" tabindex="0">📘 가이드
+                    <!-- 박스 단위 필터: 실제 = 가상 없이 실제 스캔한 박스 · 가상 = 가상스캔 분량이 있는 박스 -->
+                    <select id="scanFilter" onchange="applySearch(true)">
+                        <option value="all" selected>전체</option>
+                        <option value="scan">실제</option>
+                        <option value="virtual">가상</option>
+                    </select>
+                    <span class="seq-hint" id="seqHint"></span>
+                </div>
+                <!-- 순서대로 보기 — 체크한 박스, 없으면 지금 화면에 보이는 박스 전부 · [출고] 탭 — 체크한 박스(발주서 보기는 체크한 발주서의 출고 박스) -->
+                <div class="right">
+                <div class="seq-actions" id="seqActions">
+                    <button class="btn ship" id="shipBtn" onclick="shipBoxes()">출고완료</button>
+                    <button class="btn" id="resetSeqBtn" onclick="resetSeq()">초기화</button>
+                    <button class="btn" id="printManifestBtn" onclick="printDocs('manifest')">동봉문서 출력</button>
+                    <button class="btn" id="printLabelBtn" onclick="printDocs('label')">부착문서 출력</button>
+                    <button class="btn" id="unshipBtn" style="display:none" onclick="unshipBoxes()">출고 취소</button>
+                </div>
+                <!-- 📘 가이드 (2026-11-02) — [발주서/순서대로] 왼쪽. 마우스를 올리면 이모지 뜻 설명창 (오른쪽 정렬로 열린다) -->
+                <span class="emo-guide" tabindex="0">📘 가이드
                         <span class="emo-pop" role="tooltip">
                             <span class="t">박스 배지</span>
                             <span class="r"><span class="chip st-real"><b>1</b>중 📠</span><span>실제 스캔 — 실물을 찍어 담은 박스. 찾을 것 없음 (완료로 셉니다)</span></span>
@@ -331,23 +349,6 @@
                             <span class="r"><b>부족</b><span>가상 중 못 찾은 수 (입력이 끝난 상품만)</span></span>
                         </span>
                     </span>
-                    <!-- 박스 단위 필터: 실제 = 가상 없이 실제 스캔한 박스 · 가상 = 가상스캔 분량이 있는 박스 -->
-                    <select id="scanFilter" onchange="applySearch(true)">
-                        <option value="all" selected>전체</option>
-                        <option value="scan">실제</option>
-                        <option value="virtual">가상</option>
-                    </select>
-                    <span class="seq-hint" id="seqHint"></span>
-                </div>
-                <!-- 순서대로 보기 — 체크한 박스, 없으면 지금 화면에 보이는 박스 전부 · [출고] 탭 — 체크한 박스(발주서 보기는 체크한 발주서의 출고 박스) -->
-                <div class="right">
-                <div class="seq-actions" id="seqActions">
-                    <button class="btn ship" id="shipBtn" onclick="shipBoxes()">출고완료</button>
-                    <button class="btn" id="resetSeqBtn" onclick="resetSeq()">초기화</button>
-                    <button class="btn" id="printManifestBtn" onclick="printDocs('manifest')">동봉문서 출력</button>
-                    <button class="btn" id="printLabelBtn" onclick="printDocs('label')">부착문서 출력</button>
-                    <button class="btn" id="unshipBtn" style="display:none" onclick="unshipBoxes()">출고 취소</button>
-                </div>
                 <!-- 보기: 발주서(발주서 한 줄) / 순서대로([순서지정] 으로 순서가 찍힌 박스만, 박스 하나 = 한 줄, 그 순서대로) — 탭과 따로 고른다 -->
                 <div class="seg" id="orderSeg">
                     <button type="button" class="on" data-mode="all" onclick="setOrderMode('all')">발주서</button>
