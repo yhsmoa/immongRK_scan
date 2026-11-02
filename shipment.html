@@ -95,6 +95,14 @@
         .emo-pop .t:first-child{margin-top:0;}
         .emo-pop .r{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:10px;font-size:12.5px;line-height:1.4;}
         .emo-pop .r .chip{justify-self:start;}
+        /* data-tip 설명창 — 📘 가이드와 같은 모양, 마우스 위치의 요소 아래(공간 없으면 위)에 뜬다 */
+        .hint{cursor:help;}
+        #tip{position:fixed;z-index:10020;display:none;flex-direction:column;gap:5px;min-width:180px;max-width:360px;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.18);padding:10px 12px;color:#334155;font-size:12.5px;font-weight:500;line-height:1.45;pointer-events:none;white-space:normal;}
+        #tip.show{display:flex;}
+        #tip .t{font-size:12px;font-weight:700;color:#1e293b;margin-bottom:2px;}
+        #tip .r{display:grid;grid-template-columns:52px 1fr;align-items:baseline;gap:8px;}
+        #tip .r b{color:#64748b;font-weight:700;}
+        #tip small{color:#94a3b8;font-size:11.5px;}
         .tabletop{display:flex;align-items:center;justify-content:flex-start;gap:6px;margin-bottom:8px;}
         .tabletop select{height:34px;padding:0 6px;border:none;background:transparent;font-size:13px;color:#334155;cursor:pointer;outline:none;}
         /* 전체 / 순서대로 토글 */
@@ -278,7 +286,7 @@
             <div class="head">
                 <div class="title-wrap">
                     <h1 class="title">쉽먼트 관리</h1>
-                    <span class="subtitle">발주서 <b id="cntOrders">0</b>건 · 박스 <b id="cntBoxes">0</b>개 · 담은 <b id="cntQty">0</b>개 · 확인 <b id="cntOk">0</b>개<span id="cntShortWrap" style="display:none"> · 부족 <b id="cntShort" style="color:#b45309">0</b>개</span></span>
+                    <span class="subtitle">발주서 <b id="cntOrders">0</b>건 · 박스 <b id="cntBoxes">0</b>개 · <span class="hint" data-tip="<b>스캔</b> = 실제 스캔 + 가상스캔<br>박스에 담기로 한 수량">스캔 <b id="cntQty">0</b>개</span> · <span class="hint" data-tip="<b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인 <b id="cntOk">0</b>개</span><span id="cntShortWrap" style="display:none"> · 부족 <b id="cntShort" style="color:#b45309">0</b>개</span></span>
                 </div>
                 <div class="actions">
                     <button class="btn" onclick="openSummary()">요약</button>
@@ -344,7 +352,7 @@
                             <span class="r"><span class="ist ok">✅ 12</span><span>12개 다 찾음</span></span>
                             <span class="r"><span class="ist short">⚠ 부족 3</span><span>3개 못 찾음 — 재고·입고는 되돌리지 않음</span></span>
                             <span class="t">수량</span>
-                            <span class="r"><b>담은</b><span>박스에 담기로 한 수량 (실제 스캔 + 가상)</span></span>
+                            <span class="r"><b>스캔</b><span>실제 스캔 + 가상스캔 — 박스에 담기로 한 수량</span></span>
                             <span class="r"><b>확인</b><span>실제 스캔 + 모바일로 찾은 수 = 쉽먼트 납품수량</span></span>
                             <span class="r"><b>부족</b><span>가상 중 못 찾은 수 (입력이 끝난 상품만)</span></span>
                         </span>
@@ -364,7 +372,7 @@
                         <col style="width:44px"><col style="width:140px"><col style="width:110px"><col style="width:64px"><col style="width:70px"><col style="width:70px"><col style="width:64px"><col style="width:60px"><col><col style="width:110px">
                     </colgroup>
                     <thead id="thead">
-                        <tr><th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th><th>발주번호</th><th>물류센터</th><th class="ctr">품목</th><th class="ctr" title="박스에 담기로 한 수량 (실제 스캔 + 가상)">담은</th><th class="ctr" title="실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th class="ctr">부족</th><th class="ctr">박스수</th><th>박스</th><th class="ctr">입고예정일</th></tr>
+                        <tr><th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th><th>발주번호</th><th>물류센터</th><th class="ctr">품목</th><th class="ctr hint" data-tip="<b>스캔</b> = 실제 스캔 + 가상스캔<br>박스에 담기로 한 수량">스캔</th><th class="ctr hint" data-tip="<b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th class="ctr hint" data-tip="<b>부족</b> = 가상스캔 중 모바일 입고에서 못 찾은 수<br>(입력이 끝난 상품만)">부족</th><th class="ctr">박스수</th><th>박스</th><th class="ctr">입고예정일</th></tr>
                     </thead>
                     <tbody id="tbody"><tr class="state-row"><td colspan="10">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
@@ -410,7 +418,7 @@
                     <b>배지</b> — 📠 실제 스캔 · 👾 미진행(모바일 입고 입력 없음) · 🔄 진행 n/m · ✅ 다 찾음 · ⚠ 부족 n · 🚚 출고완료 · 🔀 실제+가상 섞임 · 📃 서류 등록됨
                 </div>
                 <div class="tip">
-                    <b>수량</b> — <b>담은</b> = 박스에 담기로 한 수량(실제 스캔 + 가상) · <b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 · <b>부족</b> = 가상 중 못 찾은 수.
+                    <b>수량</b> — <b>스캔</b> = 실제 스캔 + 가상스캔(박스에 담기로 한 수량) · <b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 · <b>부족</b> = 가상 중 못 찾은 수.
                     쉽먼트 파일의 납품수량은 <b>확인</b> 입니다. 모바일 입고 입력이 안 끝난 상품이 있으면 저장 전에 목록을 보여 주고, 0개로 처리할지 묻습니다. 부족은 재고·입고 수량을 되돌리지 않습니다.
                 </div>
             </div>
@@ -542,6 +550,7 @@
         </div>
     </div>
 
+    <div id="tip" role="tooltip"></div>
     <div id="toast"></div>
 
     <script>
@@ -703,13 +712,15 @@
         }
         const fmtAt=ts=>{ if(!ts) return ''; const d=new Date(ts); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
         function boxTip(b){
-            const g=boxBadge(b), parts=[g.label];
-            if(b.virtualQty>0) parts.push(`담은 ${b.qty} (가상 ${b.virtualQty}) · 확인 ${b.okQty}`);
-            else parts.push(`담은 ${b.qty}`);
-            if(b.docs.label||b.docs.manifest) parts.push(`서류 등록: 부착 ${b.docs.label?'✓':'✗'} · 동봉 ${b.docs.manifest?'✓':'✗'}`);
-            if(b.seq!=null) parts.push(`출고 순서 ${b.seq}`);
-            if(b.shipped) parts.push(`출고 ${fmtAt(b.shipped)}`);
-            return ` title="${esc(parts.join(' · '))}"`;
+            const g=boxBadge(b);
+            const rows=[[`${g.mix}${g.emo}`, g.label]];
+            if(b.virtualQty>0){ rows.push(['스캔', `${b.qty} <small>(실제 ${b.qty-b.virtualQty} + 가상 ${b.virtualQty})</small>`]); rows.push(['확인', `${b.okQty}${b.short?` <small>· 부족 ${b.short}</small>`:''}`]); }
+            else rows.push(['스캔', `${b.qty} <small>(실제 스캔)</small>`]);
+            if(b.docs.label||b.docs.manifest) rows.push(['서류', `부착 ${b.docs.label?'✓':'✗'} · 동봉 ${b.docs.manifest?'✓':'✗'}`]);
+            if(b.seq!=null) rows.push(['순서', String(b.seq)]);
+            if(b.shipped) rows.push(['출고', fmtAt(b.shipped)]);
+            const html=`<span class="t">📦 ${esc(b.no)} ${esc(b.size)}</span>`+rows.map(([k,v])=>`<span class="r"><b>${k}</b><span>${v}</span></span>`).join('');
+            return ` data-tip="${esc(html)}"`;
         }
         function boxChip(b){
             const g=boxBadge(b);
@@ -732,7 +743,7 @@
                 return `<tr class="${boxEnd?'box-end':''}">
                     <td class="box-emoji">📦 ${esc(p.box.no)}<span class="sz">${esc(p.box.size)}</span></td>
                     <td>${esc(p.상품번호)||'<span class="dash">-</span>'}</td><td>${esc(p.상품바코드)}</td>
-                    <td class="pname">${esc(p.상품이름)||'<span class="dash">-</span>'}${p.virtualQty>0?`<span class="vtag" title="가상 ${p.virtualQty} / 담은 ${num(p.스캔수량)}">가상 ${p.virtualQty}</span>`:''}</td>
+                    <td class="pname">${esc(p.상품이름)||'<span class="dash">-</span>'}${p.virtualQty>0?`<span class="vtag" data-tip="가상스캔 ${p.virtualQty} / 스캔 ${num(p.스캔수량)}">가상 ${p.virtualQty}</span>`:''}</td>
                     <td class="ctr">${esc(num(p.발주수량))}</td><td class="ctr">${esc(num(p.확정수량))}</td>
                     <td class="ctr">${esc(num(p.스캔수량))}</td>
                     <td class="ctr"><span class="scan-badge${p.okQty<num(p.스캔수량)?' low':''}">${esc(p.okQty)}</span></td>
@@ -740,13 +751,13 @@
                 </tr>`;
             }).join('');
         }
-        const DTABLE_HEAD='<thead><tr><th>박스</th><th>상품번호</th><th>상품바코드</th><th>상품명</th><th class="ctr">발주</th><th class="ctr">확정</th><th class="ctr" title="박스에 담기로 한 수량 (실제 스캔 + 가상)">담은</th><th class="ctr" title="실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th>상태</th></tr></thead>';
+        const DTABLE_HEAD='<thead><tr><th>박스</th><th>상품번호</th><th>상품바코드</th><th>상품명</th><th class="ctr">발주</th><th class="ctr">확정</th><th class="ctr hint" data-tip="<b>스캔</b> = 실제 스캔 + 가상스캔<br>박스에 담기로 한 수량">스캔</th><th class="ctr hint" data-tip="<b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th>상태</th></tr></thead>';
 
         // 표 머리 — 발주서 보기는 발주서 행, 순서대로 보기는 박스 행이라 열이 다르다
         const COLGROUP_ALL='<col style="width:44px"><col style="width:140px"><col style="width:110px"><col style="width:64px"><col style="width:70px"><col style="width:70px"><col style="width:64px"><col style="width:60px"><col><col style="width:110px">';
-        const THEAD_ALL='<tr><th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th><th>발주번호</th><th>물류센터</th><th class="ctr">품목</th><th class="ctr" title="박스에 담기로 한 수량 (실제 스캔 + 가상)">담은</th><th class="ctr" title="실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th class="ctr">부족</th><th class="ctr">박스수</th><th>박스</th><th class="ctr">입고예정일</th></tr>';
+        const THEAD_ALL='<tr><th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th><th>발주번호</th><th>물류센터</th><th class="ctr">품목</th><th class="ctr hint" data-tip="<b>스캔</b> = 실제 스캔 + 가상스캔<br>박스에 담기로 한 수량">스캔</th><th class="ctr hint" data-tip="<b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th class="ctr hint" data-tip="<b>부족</b> = 가상스캔 중 모바일 입고에서 못 찾은 수<br>(입력이 끝난 상품만)">부족</th><th class="ctr">박스수</th><th>박스</th><th class="ctr">입고예정일</th></tr>';
         const COLGROUP_SEQ='<col style="width:44px"><col style="width:86px"><col style="width:180px"><col style="width:110px"><col style="width:60px"><col style="width:64px"><col style="width:64px"><col style="width:150px"><col><col style="width:110px">';
-        const theadSeq=()=>`<tr><th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th><th class="ctr">${tab==='출고'?'출고 시각':'순번'}</th><th>발주번호 - 박스</th><th>물류센터</th><th class="ctr">크기</th><th class="ctr">담은</th><th class="ctr">확인</th><th>상태</th><th>서류</th><th class="ctr">입고예정일</th></tr>`;
+        const theadSeq=()=>`<tr><th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th><th class="ctr">${tab==='출고'?'출고 시각':'순번'}</th><th>발주번호 - 박스</th><th>물류센터</th><th class="ctr">크기</th><th class="ctr hint" data-tip="<b>스캔</b> = 실제 스캔 + 가상스캔<br>박스에 담기로 한 수량">스캔</th><th class="ctr hint" data-tip="<b>확인</b> = 실제 스캔 + 모바일 입고로 찾은 수 = 쉽먼트 납품수량">확인</th><th>상태</th><th>서류</th><th class="ctr">입고예정일</th></tr>`;
 
         function render(){
             const seqMode=orderMode==='seq';
@@ -1030,7 +1041,7 @@
             // 0개로 처리하면 통째로 빠지는 박스 = 지금 확인수량(실제 + 이미 찾은 수)이 0 인 박스
             const drop=boxSet.filter(k=>{ const b=findBox(keyToBox(k)); return b && b.okQty<=0; }).map(k=>k.replace('|','-'));
             document.getElementById('pdSub').textContent=`상품 ${pd.length}개 · 박스 ${boxSet.length}개`;
-            document.getElementById('pdList').innerHTML=`<table><thead><tr><th>발주서</th><th>박스</th><th>바코드</th><th>상품명</th><th class="n">담은</th><th class="n">미입력</th></tr></thead><tbody>${
+            document.getElementById('pdList').innerHTML=`<table><thead><tr><th>발주서</th><th>박스</th><th>바코드</th><th>상품명</th><th class="n">스캔</th><th class="n">미입력</th></tr></thead><tbody>${
                 pd.map(p=>`<tr><td>${esc(p.orderNumber)}</td><td>📦${esc(p.boxNo)} ${esc(p.boxSize||'')}</td><td>${esc(p.barcode)}</td><td class="nm">${esc(p.name)}</td><td class="n">${p.qty}</td><td class="n">${p.virtualQty-p.found}</td></tr>`).join('')
             }</tbody></table>`;
             document.getElementById('pdWarn').textContent=drop.length?`⚠ 이 중 박스 ${drop.length}개는 수량이 0 이 되어 파일에서 통째로 빠집니다: ${drop.join(', ')}`:'';
@@ -1409,6 +1420,28 @@
             }
         })();
 
+        // ── data-tip 설명창 (2026-11-02) — 마우스가 올라간 요소의 data-tip(HTML) 을 #tip 에 보여 준다. 시스템 title 말풍선 대신 가이드 모양 ──
+        (function initTip(){
+            const tip=document.getElementById('tip'); let cur=null;
+            function place(el){
+                const r=el.getBoundingClientRect(); tip.style.left='0px'; tip.style.top='0px'; tip.classList.add('show');
+                const w=tip.offsetWidth, h=tip.offsetHeight, vw=window.innerWidth, vh=window.innerHeight;
+                let left=Math.max(8, Math.min(r.left, vw-w-8));
+                let top=r.bottom+6; if(top+h>vh-8) top=Math.max(8, r.top-h-6);
+                tip.style.left=left+'px'; tip.style.top=top+'px';
+            }
+            document.addEventListener('mouseover',e=>{
+                const el=e.target.closest&&e.target.closest('[data-tip]');
+                if(!el||el===cur) return;
+                cur=el; tip.innerHTML=el.dataset.tip; place(el);
+            });
+            document.addEventListener('mouseout',e=>{
+                if(!cur) return;
+                const to=e.relatedTarget; if(to&&cur.contains(to)) return;
+                cur=null; tip.classList.remove('show');
+            });
+            window.addEventListener('scroll',()=>{ if(cur){ cur=null; tip.classList.remove('show'); } },{passive:true});
+        })();
         let toastTimer;
         function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3200);}
         document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSummary(); closeGuide(); closeInvoiceModal(); closeLabelPrint(); closeSeqModal(); closeDocSort(); if(pendingResolve) pendingAnswer(false); } });
