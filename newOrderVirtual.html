@@ -106,6 +106,9 @@
         .vbox.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
         .vbox.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
         .vbox.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}
+        .vbox.virtual-prog{background:#EEEDFE;color:#3C3489;border:1.5px dashed #534AB7;}   /* 🔄 모바일 입고 진행 중 (2026-11-02) */
+        .vbox.virtual-short{background:#FFF4E5;color:#9A4A00;border:1.5px solid #F0A040;}  /* ⚠ 입력 끝 · 부족 있음 */
+        .vbox.virtual-ship{background:#f1f5f9;color:#64748b;border:1.5px solid #cbd5e1;}   /* 🚚 출고완료 */
         .vbox.real{background:#f1f5f9;color:#475569;border:1.5px solid #e2e8f0;}
         th.chk,td.chk{width:40px;text-align:center;padding-left:0;padding-right:0;}
         input[type="checkbox"]{width:16px;height:16px;cursor:pointer;accent-color:var(--primary);}
@@ -469,12 +472,18 @@
             const m=s.short.match(/^(.*?)( 외 \d+건)$/);
             return m?`<span class="lc ${cls}">${esc(m[1])}</span><span class="more">${esc(m[2])}</span>`:`<span class="lc ${cls}">${esc(s.short)}</span>`;
         }
+        // 박스 칩 (2026-11-02, 쉽먼트와 같은 규칙) — 🚚 출고완료 · ✅ 다 찾음 · ⚠ 부족 n · 🔄 진행(입력 n/m) · 👾 전부 가상 · 🔀 섞임
+        function vboxHtml(b,extraCls,extraTip){
+            const [cls,emo]=b.shipped?['virtual-ship','🚚']:b.confirmed?['virtual-ok','✅']:b.state==='완료'?['virtual-short','⚠']:b.state==='진행'?['virtual-prog','🔄']:(b.virtualQty>=b.qty?['virtual-all','👾']:['virtual-part','🔀']);
+            const tail=cls==='virtual-short'?` 부족 ${b.short}`:cls==='virtual-prog'?` ${esc(b.input||'')}`:'';
+            const tip=`박스 ${b.boxNo} ${b.boxSize||''} · ${extraTip||''}${b.shipped?'출고완료 · ':''}${{'virtual-ok':'다 찾음 · ','virtual-short':`부족 ${b.short}개 · `,'virtual-prog':`모바일 입력 ${b.input} · `}[cls]||''}가상 ${b.virtualQty} / 전체 ${b.qty}`;
+            return `<span class="vbox ${cls}${extraCls||''}" title="${esc(tip)}">📦${b.boxNo} ${emo}${tail}</span>`;
+        }
         function boxCell(r){
             const list=boxMap[keyOf(r)]||[];
             return list.map(b=>{
-                if(!(b.virtualQty>0)) return `<span class="vbox real" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 실제 스캔 ${b.qty}">📦${b.boxNo}</span>`;
-                const cls=b.confirmed?'virtual-ok':(b.virtualQty>=b.qty?'virtual-all':'virtual-part');
-                return `<span class="vbox ${cls}" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}">📦${b.boxNo} ${cls==='virtual-ok'?'✅':cls==='virtual-all'?'👾':'🔀'}</span>`;
+                if(!(b.virtualQty>0)) return `<span class="vbox real" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 실제 스캔 ${b.qty}${b.shipped?' · 출고완료':''}">📦${b.boxNo} ${b.shipped?'🚚':'📠'}</span>`;
+                return vboxHtml(b);
             }).join('');
         }
         const regLabel={registered:'등록',unregistered:'미등록',done:'완료'};
@@ -665,7 +674,7 @@
             const pop=document.getElementById('pop');
             const ln=a=>`<div class="ln"><span class="src ${a.source==='입고'?'src-inb':'src-stock'}">${a.source}</span>
                 <span class="place">${esc(AllocPlan.allocPlace(a))}</span><span class="q">×${a.qty}</span>
-                <span class="b">${a.batchNo?a.batchNo+'회차':''}${a.mobile==='found'?' ✓찾음':a.mobile==='missing'?' ✕없음':''}</span>
+                <span class="b">${a.batchNo?a.batchNo+'회차':''}${a.mobileMarked>0?(a.mobileFound<a.mobileMarked?` 부족 ${a.mobileMarked-a.mobileFound}`:' ✓찾음'):''}</span>
                 <button onclick="cancelAlloc([${a.listId}])" title="이 배정만 취소">취소</button></div>`;
             pop.innerHTML=`<h4>${esc(r.발주번호)} · ${esc(r.상품바코드)}<small>배정 ${list.reduce((s,a)=>s+a.qty,0)}개 · ${list.length}곳</small></h4>
                 ${list.map(ln).join('')}

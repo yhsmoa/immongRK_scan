@@ -16,6 +16,7 @@
  */
 const express = require('express');
 const S = require('./rkShared');
+const M = require('./rkMarks');   // 모바일 입고 찾은 수량 → 박스 상태 (2026-11-02)
 
 const router = express.Router();
 const sb = S.supabase;
@@ -178,6 +179,9 @@ router.post('/api/label/order-boxes', async (req, res) => {
       .map((v) => String(v == null ? '' : v).trim()).filter(Boolean))];
     if (!orderNumbers.length) return res.status(400).json({ error: '발주번호가 없습니다.' });
     const skipPrinted = req.body.skipPrinted !== false;
+    // boxes: [{orderNumber, boxNo}] — 쉽먼트 [순서대로] 보기에서 체크한 박스만 (2026-11-02)
+    const pick = Array.isArray(req.body.boxes) && req.body.boxes.length ? new Set(req.body.boxes.map((b) => `${b && b.orderNumber}|${parseInt(b && b.boxNo, 10)}`)) : null;
+    const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty' + ((await M.hasShippedCol()) ? ', shipped_at' : '');
     const groupBySource = req.body.groupBySource === true;   // 찾을 곳별로 모아 출력 (신규 발주서 [박스라벨], 2026-10-27)
 
     // 1000행씩 나눠 읽으므로 id 순 정렬 (정렬 없는 range 는 행이 빠지거나 겹칠 수 있다)
@@ -185,19 +189,22 @@ router.post('/api/label/order-boxes', async (req, res) => {
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_orders')
         .select('order_number, logistics_center, arrival_date, order_qty').in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
-        .select('id, order_number, box_no, box_size, virtual_confirmed_qty').in('order_number', nos).order('id', { ascending: true }))),
+        .select(boxCols).in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
         .select('box_id, order_number, barcode, qty, virtual_qty, virtual_codes').in('order_number', nos).order('id', { ascending: true }))),
-      skipPrinted ? S.mobileFoundByKey(orderNumbers) : Promise.resolve(new Map()),
+      skipPrinted ? M.boxFoundMap(orderNumbers) : Promise.resolve(null),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_shipping_list')
         .select('order_number, barcode, location').eq('source', STOCK_KEY).in('order_number', nos).order('id', { ascending: true }))),
     ]);
     // 가상 준비완료 판정(가상확정 ✅ 통합 규칙) — 라벨 확정 또는 모바일 입고로 그 박스의 가상 상품을 다 찾음
-    const readiness = S.virtualReadiness(boxItems, found);
+    //   (2026-11-02) 박스 상태(M.boxReadiness)로 — 실제 스캔 박스 · 모바일 입고 입력이 끝난 박스(다 찾음/부족).
+    //   예전 규칙은 "발주서 전체 합계" 로 판정해 다 찾은 박스도 다시 나왔다 (10-30 아침 71장).
+    const ready = found ? M.boxReadiness(boxes, boxItems, found) : new Map();
     const alreadyPrinted = (b, sum) => {
-      const vSum = readiness.virtualSumByBox.get(b.id) || 0;
-      if (vSum <= 0 && sum && sum.qty > 0) return '실제 스캔';        // 실제로 스캔해 담은 박스 (옛 흐름: 스캔 후 라벨)
-      if (vSum > 0 && readiness.boxOk(b)) return '가상확정';           // 라벨 붙여 찾기까지 끝난 가상 박스
+      const rd = ready.get(b.id);
+      if (!rd) return null;
+      if (rd.state === '실제' && sum && sum.qty > 0) return '실제 스캔';   // 실제로 스캔해 담은 박스 (옛 흐름: 스캔 후 라벨)
+      if (rd.state === '완료') return rd.short ? '입력 완료(부족)' : '가상확정';   // 라벨 붙여 찾기까지 끝난 가상 박스
       return null;
     };
 
@@ -294,13 +301,16 @@ router.post('/api/label/order-boxes', async (req, res) => {
     for (const no of orderNumbers) {
       const h = headerByNo.get(no);
       if (!h) { notFound.push(no); continue; }
+      // 출고완료 박스는 라벨을 다시 뽑지 않는다 (순번·박스 수 계산에서도 뺀다, 2026-11-02)
       const full = (boxesByOrder.get(no) || [])
-        .filter((b) => sumByBox.has(b.id))
+        .filter((b) => sumByBox.has(b.id) && !b.shipped_at)
         .sort((a, b) => ((parseInt(a.box_no, 10) || 0) - (parseInt(b.box_no, 10) || 0)) || (a.id - b.id));
       // 이미 뽑힌 박스 제외 — 순번(bx_seq)·박스 수(po_box_count)는 전체 박스 기준으로 유지한다 (3/5 처럼 실제 자리)
+      const list0 = pick ? full.filter((b) => pick.has(`${no}|${parseInt(b.box_no, 10)}`)) : full;   // 체크한 박스만
+      if (pick && !list0.length) continue;
       const list = skipPrinted
-        ? full.filter((b) => { const r = alreadyPrinted(b, sumByBox.get(b.id)); if (r) skipped.push({ orderNo: no, boxNo: b.box_no, reason: r }); return !r; })
-        : full;
+        ? list0.filter((b) => { const r = alreadyPrinted(b, sumByBox.get(b.id)); if (r) skipped.push({ orderNo: no, boxNo: b.box_no, reason: r }); return !r; })
+        : list0;
       if (full.length && !list.length) { allPrinted.push(no); continue; }
       orderCount++;
       if (!full.length) {

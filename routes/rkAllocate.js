@@ -245,6 +245,14 @@ router.post('/api/allocate/run', async (req, res) => {
 // ── 표 채우기 — 저장된 배정 (출고예정) ──
 // 응답: { orders:{ 발주번호: 'registered'|'unregistered'|'done' }, allocs:{ "발주|바코드": [{ listId, source, location, code, boxName, qty, batchNo }] },
 //         scanned:{ "발주|바코드": n }, virtual:{ "발주|바코드": n } }
+// 행의 모바일 입고 입력 — 박스별 기록 합 (예전 행 요약만 있으면 행 전체). 입고 행은 미러에도 같은 기록이 있다
+const { boxEntries, entryFound } = require('./rkMarks');
+function mobileQty(r) {
+  const e = Object.values(boxEntries(r.mobile_boxes));
+  if (e.length) return { mobileFound: e.reduce((s, x) => s + entryFound(x), 0), mobileMarked: e.reduce((s, x) => s + (parseInt(x.qty, 10) || 0), 0) };
+  if (r.mobile_status) { const q = toInt(r.qty); return { mobileFound: r.mobile_status === 'found' ? q : 0, mobileMarked: q }; }
+  return { mobileFound: 0, mobileMarked: 0 };
+}
 router.get('/api/allocate/status', async (req, res) => {
   try {
     const orderNumbers = parseNos(req.query.orderNumbers);
@@ -252,7 +260,7 @@ router.get('/api/allocate/status', async (req, res) => {
     const headers = await loadHeaders(orderNumbers);
     const [rows, scan] = await Promise.all([
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_shipping_list')
-        .select('id, source, order_number, barcode, location, qty, batch_no, shipment_id, shipment_item_id, mobile_status')
+        .select('id, source, order_number, barcode, location, qty, batch_no, shipment_id, shipment_item_id, mobile_status, mobile_boxes')
         .eq('status', '출고예정').in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(orderNumbers, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
         .select('order_number, barcode, qty, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
@@ -270,7 +278,8 @@ router.get('/api/allocate/status', async (req, res) => {
       if (!r.barcode) continue;
       (allocs[`${r.order_number}|${r.barcode}`] ||= []).push({ listId: r.id, source: r.source, location: r.location || '',
         code: r.source === '입고' ? String(codeById.get(r.shipment_id) || '') : '', boxName: r.source === '입고' ? String(boxById.get(r.shipment_item_id) || '') : '',
-        qty: toInt(r.qty), batchNo: r.batch_no, mobile: r.mobile_status || null });
+        qty: toInt(r.qty), batchNo: r.batch_no, mobile: r.mobile_status || null,
+        ...mobileQty(r) });   // 모바일 입고 찾은 수량 (2026-11-02): mobileFound / mobileMarked(입력된 몫)
     }
     const scanned = {}, virtual = {};
     for (const r of scan) {

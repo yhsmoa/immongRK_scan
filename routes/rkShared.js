@@ -149,15 +149,23 @@ const notDone = (q) => q.or('status.is.null,status.neq.DONE');
 // excludeDone=true 면 처리완료(DONE) 발주서를 DB 조회 단계에서 제외한다.
 //   → 처리완료가 쌓일수록(수백 건·상품행 수만 개) 전부 읽고 버리는 비용이 커지므로,
 //     진행중 업무 화면은 반드시 이 옵션을 켜서 호출할 것. (요약 페이지 14초 → 1초 미만)
-async function listOrdersFull(headerTable, itemTable, { excludeDone = false } = {}) {
-  const headers = await pageAll(() => {
+async function listOrdersFull(headerTable, itemTable, { excludeDone = false, orderNumbers = null } = {}) {
+  // orderNumbers: 이 발주번호들만 (쉽먼트 [출고] 탭 — 처리완료 발주서도 읽는다, 2026-11-02)
+  const read = (nos) => pageAll(() => {
     let q = supabase.from(headerTable).select('*');
     if (excludeDone) q = notDone(q);
+    if (nos) q = q.in('order_number', nos);
     return q
       .order('arrival_date', { ascending: true })
       .order('logistics_center', { ascending: true })
-      .order('order_number', { ascending: true });
+      .order('order_number', { ascending: true })
+      .order('id', { ascending: true });
   });
+  let headers;
+  if (Array.isArray(orderNumbers)) {
+    const nos = [...new Set(orderNumbers.map(String).filter(Boolean))];
+    headers = nos.length ? await chunked(nos, 200, read) : [];
+  } else headers = await read(null);
   const ids = headers.map((h) => h.id);
   const items = await fetchAllItems(itemTable, ids);
   const grouped = new Map();
@@ -297,72 +305,10 @@ async function insertKoreanOrders(headerTable, itemTable, koreanOrders, prefix) 
   return { added, duplicates };
 }
 
-// ── 모바일 입고([스캔]) 찾음 합 — "발주번호|바코드" → 찾았다고 표시된 출고개수 합 (rk_cn_shipping.mobile_status='found') ──
-// 가상스캔 분량이 이 합으로 다 채워지면 박스 라벨 가상확정과 같은 ✅(준비완료)로 본다. rkShipScan·rkOrdersExtra 공용.
-async function mobileFoundByKey(orderNumbers) {
-  const out = new Map();
-  const nos = [...new Set((orderNumbers || []).map((v) => String(v == null ? '' : v)).filter(Boolean))];
-  if (!nos.length) return out;
-  // 입고 = rk_cn_shipping(원본) · 재고 = rk_shipping_list source='재고' (모바일 [전체] 모드, 2026-10-20).
-  //   입고 행은 rk_shipping_list 미러에도 같은 표시가 있지만 원본에서만 센다 (두 번 세지 않게)
-  //   박스별 기록(mobile_boxes, 2026-10-22)이 있으면 찾음으로 표시된 박스 몫만 센다 — 한 행이 두 박스에 걸쳐 한쪽만 찾았을 때 행 전체를 센 문제
-  const [rows, stockRows] = await Promise.all([
-    chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_cn_shipping')
-      .select('order_number, barcode, ship_qty, mobile_status, mobile_boxes').or('mobile_status.eq.found,mobile_boxes.not.is.null').in('order_number', part).order('id', { ascending: true }))),
-    chunked(nos, 200, (part) => pageAll(() => supabase.from('rk_shipping_list')
-      .select('order_number, barcode, qty, mobile_status, mobile_boxes').eq('source', '재고').eq('status', '출고예정').or('mobile_status.eq.found,mobile_boxes.not.is.null').in('order_number', part).order('id', { ascending: true }))),
-  ]);
-  const foundQty = (r, rowQty) => {
-    const e = r.mobile_boxes && typeof r.mobile_boxes === 'object' && !Array.isArray(r.mobile_boxes) ? Object.values(r.mobile_boxes) : [];
-    if (e.length) return e.filter((m) => m && m.status === 'found').reduce((s, m) => s + (parseInt(m.qty, 10) || 0), 0);
-    return r.mobile_status === 'found' ? (parseInt(rowQty, 10) || 0) : 0;
-  };
-  for (const r of rows) {
-    if (!r.order_number || !r.barcode) continue;
-    const k = `${r.order_number}|${r.barcode}`;
-    out.set(k, (out.get(k) || 0) + foundQty(r, r.ship_qty));
-  }
-  for (const r of stockRows) {
-    if (!r.order_number || !r.barcode) continue;
-    const k = `${r.order_number}|${r.barcode}`;
-    out.set(k, (out.get(k) || 0) + foundQty(r, r.qty));
-  }
-  return out;
-}
-
-// ── 가상 준비완료 판정 (가상확정 ✅ 통합 규칙) ──
-//   keyOk  : "발주번호|바코드" 의 가상 합 ≤ 모바일 찾음 합 → 그 상품은 다 찾아온 것
-//   boxOk  : 박스 라벨 가상확정(virtual_confirmed_qty == 지금 가상 합) 이거나, 박스 안 가상 상품이 전부 keyOk
-//   items: [{ box_id, order_number, barcode, virtual_qty }], found: mobileFoundByKey() 결과
-function virtualReadiness(items, found) {
-  const virtualSumByBox = new Map();   // box_id → 가상 합
-  const virtualByKey = new Map();      // key → 가상 합 (박스 무관)
-  const vKeysByBox = new Map();        // box_id → Set(key)  (가상 수량이 있는 상품만)
-  for (const it of items) {
-    const vq = parseInt(it.virtual_qty, 10) || 0;
-    if (vq <= 0) continue;
-    const k = `${it.order_number}|${it.barcode}`;
-    virtualSumByBox.set(it.box_id, (virtualSumByBox.get(it.box_id) || 0) + vq);
-    virtualByKey.set(k, (virtualByKey.get(k) || 0) + vq);
-    if (!vKeysByBox.has(it.box_id)) vKeysByBox.set(it.box_id, new Set());
-    vKeysByBox.get(it.box_id).add(k);
-  }
-  const keyOk = new Set();
-  for (const [k, v] of virtualByKey) if (((found && found.get(k)) || 0) >= v) keyOk.add(k);
-  const boxConfirmed = (box) => { const v = virtualSumByBox.get(box.id) || 0; return v > 0 && (parseInt(box.virtual_confirmed_qty, 10) || 0) === v; };
-  const boxOk = (box) => {
-    if (boxConfirmed(box)) return true;
-    const ks = vKeysByBox.get(box.id);
-    if (!ks || !ks.size) return false;
-    for (const k of ks) if (!keyOk.has(k)) return false;
-    return true;
-  };
-  return { virtualSumByBox, virtualByKey, keyOk, boxConfirmed, boxOk };
-}
+// ── 모바일 입고 찾은 수량 · 박스 상태 판정은 routes/rkMarks.js (2026-11-02 — 찾음/없음 → 숫자 기록, 박스 단위 판정) ──
 
 module.exports = {
   supabase,
-  mobileFoundByKey, virtualReadiness,
   insertKoreanOrders,
   dateToYmd, tsToKst, dash, str, ymdToDate, kstToTs,
   emptyToNull, placeholderToNull, toInt, toNum,

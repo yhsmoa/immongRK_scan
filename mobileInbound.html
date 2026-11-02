@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
         /* ============================================================
-           모바일 입고 — 폰(390px) 전용. 종이 [인쇄] 대신 출고리스트를 카드 1장씩 넘기며 [스캔](찾음) / [없음]
+           모바일 입고 — 폰(390px) 전용. 종이 [인쇄] 대신 출고리스트를 카드 1장씩 넘기며 [스캔](몫 전부 찾음) / [부족](찾은 수량 키패드, 2026-11-02)
            0화면 이름 + [전체]/[입고] (2026-10-20)  →  [입고]: 1화면 연/월/입고코드 휠 → 2화면 · [전체]: 바로 2화면
            2화면 발주서 입력·카메라·목록  →  3화면 카드 스와이프 (한 화면에 딱 맞춤)
            [전체] = 발주서(박스) 하나의 재고 + 입고 배정을 전부 카드로 (신규 발주서 가상버전 배정분) · [입고] = 고른 입고코드의 입고분만 (예전 그대로)
@@ -197,7 +197,7 @@
         /* 하단 버튼 */
         .bottom{flex:none;display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--bg);}
         .bottom .act{height:64px;border-radius:18px;font-size:20px;font-weight:900;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:opacity .15s;}
-        /* 하단 = 왼쪽 절반 [메모][없음] · 오른쪽 절반 [스캔] (2026-10-21) */
+        /* 하단 = 왼쪽 절반 [메모][부족] · 오른쪽 절반 [스캔] (2026-10-21) */
         .bottom .half{flex:1;display:flex;gap:8px;min-width:0;}
         .bottom .none,.bottom .memo{flex:1;min-width:0;border:2px solid var(--line);background:#fff;color:var(--ink2);font-size:18px;}
         .bottom .none:active,.bottom .memo:active{background:var(--fill);}
@@ -273,6 +273,14 @@
         .mv-pad button:active{background:#EEEDFE;}
         .mv-pad button.fn{font-size:16px;color:var(--muted);background:#F7F7F9;}
         .mv-pad button:disabled{opacity:.45;}
+        /* 부족 키패드 (2026-11-02) */
+        #shBack .mv-keep{border-color:#B23A2E;background:#FFF5F3;color:#B23A2E;margin-top:4px;}
+        #shBack .mv-keep.empty{color:#D9A39C;}
+        .sh-note{font-size:13px;font-weight:700;color:var(--muted);margin:-4px 2px 10px;line-height:1.45;min-height:18px;}
+        .sh-note b{color:#B23A2E;}
+        .sh-row{display:grid;grid-template-columns:1fr 1.4fr;gap:8px;}
+        .sh-row .btn{height:56px;font-size:18px;}
+        .band button.edit{margin-right:6px;}
         .mv-sum{background:var(--fill);border-radius:14px;padding:10px 14px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;}
         .mv-sum .ln{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:14.5px;font-weight:700;color:var(--ink2);}
         .mv-sum .ln b{font-size:16px;font-weight:900;color:var(--ink);white-space:nowrap;}
@@ -414,7 +422,7 @@
         <div class="bottom">
             <div class="half">
                 <button class="act memo" id="btnMemo" onclick="openMemo()">메모</button>
-                <button class="act none" id="btnNone" onclick="mark('missing')">없음</button>
+                <button class="act none" id="btnNone" onclick="openShort()">부족</button>
             </div>
             <button class="act scan" id="btnScan" onclick="mark('found')"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg>스캔</button>
         </div>
@@ -457,6 +465,21 @@
             <div class="row2">
                 <button class="btn" id="mvCancel" onclick="closeMoveConfirm()">취소</button>
                 <button class="btn primary" id="mvGo" onclick="doMoveBox()">넘어가기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 부족 키패드 (2026-11-02) — [부족] 을 누르면 찾은 수량을 숫자로 넣는다 (0 = 하나도 못 찾음). [스캔] 은 몫 전부를 찾은 것 -->
+    <div class="sz-back" id="shBack" onclick="if(event.target.id==='shBack')closeShort()">
+        <div class="sz-sheet" role="dialog" aria-labelledby="shTitle">
+            <h2 id="shTitle">찾은 수량</h2>
+            <p id="shSub"></p>
+            <div class="mv-keep" id="shNum"><span id="shVal"></span><small id="shOf"></small></div>
+            <div class="mv-pad" id="shPad"></div>
+            <div id="shNote" class="sh-note"></div>
+            <div class="row2 sh-row">
+                <button class="btn" onclick="closeShort()">취소</button>
+                <button class="btn primary" id="shOk" onclick="confirmShort()">확인</button>
             </div>
         </div>
     </div>
@@ -657,7 +680,7 @@
                 const done=isDoneOrder(o), n=o.found+o.missing;
                 const rowCls=done?(o.missing?'miss':'done'):'';
                 const pill=done
-                    ? (o.missing?`<span class="prog miss">찾음 ${o.found} · 없음 ${o.missing}</span>`:`<span class="prog ok">${ICON('i-check',15,3)}완료</span>`)
+                    ? (o.missing?`<span class="prog miss">부족 ${o.shortQty!=null?o.shortQty+'개':o.missing+'장'}</span>`:`<span class="prog ok">${ICON('i-check',15,3)}완료</span>`)
                     : `<span class="prog ${n>0?'part':''}">${n} / ${o.total}</span>`;
                 // 큰 글자 = 박스 라벨에 찍힌 그대로 "발주번호-박스번호" (라벨과 같은 모양이어야 찾기 쉽다, 2026-10-15). 배지는 박스 크기
                 const bx=(o.boxNo!=null?`<span class="bx">📦 ${esc(o.boxSize||'')}</span>`:'<span class="bx none">박스 미정</span>')
@@ -755,10 +778,20 @@
         //   r.모바일박스 = {박스번호: {status, qty, by, at}} · 박스 보기(curBox)면 그 박스 기록만, 발주서 전체 보기면 행 요약(r.모바일: 전부 찾음/하나라도 없음)
         //   박스별 기록이 하나도 없는 행(예전 기록)은 행 요약을 그대로 쓴다
         const boxEntries=r=>(r&&r.모바일박스&&typeof r.모바일박스==='object')?r.모바일박스:{};
+        // 찾은 수량 (2026-11-02) — 기록 { found, qty, status }. found 가 없는 예전 기록은 status 로: 찾음 = 몫 전부, 없음 = 0
+        const entFound=m=>m.found!=null&&m.found!==''?Math.max(0,Math.min(Number(m.qty)||0,Number(m.found)||0)):(m.status==='found'?Number(m.qty)||0:0);
+        // → { status:'found'(다 찾음)|'missing'(부족)|null, found, qty, by, at }
         function markOf(r){
-            const e=boxEntries(r), has=Object.keys(e).length>0;
-            if(curBox!=null){ const m=e[String(curBox)]; if(m) return {status:m.status||null,by:m.by||null,at:m.at||null}; if(has) return null; }
-            return r.모바일?{status:r.모바일,by:r.모바일처리자,at:r.모바일시각}:null;
+            const e=boxEntries(r), keys=Object.keys(e), has=keys.length>0;
+            if(curBox!=null){
+                const m=e[String(curBox)];
+                if(m){ const f=entFound(m), q=Number(m.qty)||0; return {status:f>=q?'found':'missing',found:f,qty:q,by:m.by||null,at:m.at||null}; }
+                if(has) return null;
+            }
+            if(!r.모바일) return null;
+            const q=has?keys.reduce((s,k)=>s+(Number(e[k].qty)||0),0):shareOf(r);
+            const f=has?keys.reduce((s,k)=>s+entFound(e[k]),0):(r.모바일==='found'?q:0);
+            return {status:r.모바일,found:f,qty:q,by:r.모바일처리자,at:r.모바일시각};
         }
         const markSt=r=>{ const m=markOf(r); return m?m.status:null; };
         // 이번 표시가 걸리는 박스(들)와 몫 — 박스 보기면 그 박스만, 전체 보기면 카드의 박스 전부, 박스가 없으면 "0"(박스 미정) 에 행의 출고개수
@@ -768,6 +801,7 @@
             if(curBox===0||!list.length) return [{boxNo:0, qty:Number(r.출고개수)||0}];
             return list.map(b=>({boxNo:b.boxNo, qty:Number(b.virtualQty)||0}));
         }
+        const shareOf=r=>marksFor(r).reduce((s,m)=>s+m.qty,0);   // 이 카드에서 찾을 몫 (박스 보기면 그 박스 몫)
         function boxRow(r,i){
             // [전체] 모드: 입고 = "입고코드-박스명" (1018-BR5) · 재고 = 위치 (흰 칩). [입고] 모드는 예전 그대로 박스명만
             const src=mode==='all'&&r.source==='재고'
@@ -781,7 +815,7 @@
             const srcLoc=locs.length?`<div class="srcloc" title="재고 위치: ${esc(locs.map(l=>`${l.location} ${l.qty}개`).join(', '))}">${locs.slice(0,3).map(l=>`<span class="locbadge">${ICON('i-pin',13,2.4)}${esc(l.location)}<small>${l.qty}</small></span>`).join('')}${locs.length>3?`<span class="locbadge more">+${locs.length-3}</span>`:''}</div>`:'';
             const list=(r.boxes||[]);
             const dst=list.length
-                ? list.map(b=>{ const m=boxEntries(r)[String(b.boxNo)]; const mk=m?(m.status==='found'?`<small class="mk ok" title="찾음 · ${esc(m.by||'')}">✓</small>`:`<small class="mk miss" title="없음 · ${esc(m.by||'')}">✕</small>`):'';
+                ? list.map(b=>{ const m=boxEntries(r)[String(b.boxNo)]; const mk=m?(entFound(m)>=(Number(m.qty)||0)?`<small class="mk ok" title="찾음 · ${esc(m.by||'')}">✓</small>`:`<small class="mk miss" title="부족 · ${esc(m.by||'')}">${entFound(m)}/${Number(m.qty)||0}</small>`):'';
                     return `<span class="chip pick" onclick="openSizeSheet(${b.boxNo},${i})" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 가상 ${b.virtualQty}개 (박스 안 ${b.qty}개) — 누르면 크기 변경">${ICON('i-box',20,2)}${b.boxNo}${b.boxSize?' · '+esc(b.boxSize):''}${list.length>1?` <small style="font-size:13px;font-weight:700;color:var(--muted)">×${b.virtualQty}</small>`:''}${mk}</span>`; }).join('')
                 : `<span class="chip none">${ICON('i-box',18,2)}박스 미정 · 직접 스캔</span>`;
             return `<div class="boxrow"><div class="srcwrap">${src}${srcLoc}</div><span class="arrow">${ICON('i-arrow',24,2.5)}</span><div class="dst">${dst}</div></div>`;
@@ -789,9 +823,9 @@
         function fmtAt(ts){ if(!ts) return ''; const d=new Date(ts); if(isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return `${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
         function cardHtml(r,i){
             const mk=markOf(r), st=mk?mk.status:'';
-            const band=st?`<div class="band ${st}"><div class="l">${ICON('i-check',22,3)}<b>${st==='found'?'찾음':'없음'}</b><small>${esc(mk.by)||''} · ${fmtAt(mk.at)}</small></div><button onclick="clearMark(${i})">취소</button></div>`
-                // 전체 보기에서 일부 박스만 표시된 행 — 어느 박스를 누가 처리했는지 한 줄로 (2026-10-22)
-                :(curBox==null&&Object.keys(boxEntries(r)).length?`<div class="band part"><div class="l"><b>일부</b><small>${Object.entries(boxEntries(r)).map(([k,m])=>`📦${k==='0'?'미정':k} ${m.status==='found'?'찾음':'없음'}${m.by?' · '+esc(m.by):''}`).join(' / ')}</small></div><button onclick="clearMark(${i})">취소</button></div>`:'');
+            const band=st?`<div class="band ${st}"><div class="l">${ICON('i-check',22,3)}<b>${st==='found'?`찾음 ${mk.found}`:`부족 · ${mk.found}/${mk.qty}`}</b><small>${esc(mk.by)||''} · ${fmtAt(mk.at)}</small></div><span><button class="edit" onclick="openShort(${i})">수정</button><button onclick="clearMark(${i})">취소</button></span></div>`
+                // 전체 보기에서 일부 박스만 입력된 행 — 어느 박스를 누가 몇 개 찾았는지 한 줄로 (2026-10-22 · 숫자 2026-11-02)
+                :(curBox==null&&Object.keys(boxEntries(r)).length?`<div class="band part"><div class="l"><b>일부</b><small>${Object.entries(boxEntries(r)).map(([k,m])=>`📦${k==='0'?'미정':k} ${entFound(m)}/${Number(m.qty)||0}${m.by?' · '+esc(m.by):''}`).join(' / ')}</small></div><button onclick="clearMark(${i})">취소</button></div>`:'');
             const noimg=ICON('i-img',40,1.6)+'<div>상품 이미지 없음</div>';
             return `<div class="cardw" data-i="${i}"><div class="card ${st}">
                 ${band}
@@ -814,13 +848,14 @@
         function endHtml(){
             const f=rows.filter(r=>markSt(r)==='found').length, m=rows.filter(r=>markSt(r)==='missing').length, left=rows.length-f-m;
             const miss=rows.filter(r=>markSt(r)==='missing');
+            const shortQty=miss.reduce((s,r)=>{ const k=markOf(r); return s+(k?Math.max(0,k.qty-k.found):0); },0);
             return `<div class="cardw" data-i="${rows.length}"><div class="card end">
                 <div class="ring ${left?'left':''}">${left?ICON('i-search',40,2.4):ICON('i-check',44,3)}</div>
                 <div><h2>${left?`아직 ${left}장 남았습니다`:'이 발주서 끝'}</h2>
-                <p>${left?'왼쪽으로 넘겨 남은 카드를 확인하세요.':(m?'못 찾은 상품은 사무실 입고정리 표에 없음으로 보입니다.':`${rows.length}장 모두 처리했습니다.`)}</p></div>
-                <div class="tiles"><div class="tile ok"><div class="k">찾음</div><div class="v">${f}</div></div><div class="tile miss"><div class="k">없음</div><div class="v">${m}</div></div><div class="tile"><div class="k">전체</div><div class="v">${rows.length}</div></div></div>
+                <p>${left?'왼쪽으로 넘겨 남은 카드를 확인하세요.':(m?`부족 ${shortQty}개 — 쉽먼트에는 찾은 수량만 나갑니다.`:`${rows.length}장 모두 찾았습니다.`)}</p></div>
+                <div class="tiles"><div class="tile ok"><div class="k">다 찾음</div><div class="v">${f}</div></div><div class="tile miss"><div class="k">부족</div><div class="v">${m}</div></div><div class="tile"><div class="k">전체</div><div class="v">${rows.length}</div></div></div>
                 ${endBoxHtml()}
-                ${miss.length?`<div class="misslist"><div class="lab">없음으로 표시한 상품</div>${miss.map(r=>`<div class="missrow"><div class="bx" style="${r.source==='재고'?'font-size:11px':''}">${esc(r.source==='재고'?r.위치:r.박스명)||'-'}</div><div class="b"><div class="n">${esc(r.상품명)}</div><div class="m"><span class="bc">${esc(r.바코드)}</span><span>${esc(r.출고개수)}개 없음</span></div></div></div>`).join('')}</div>`:''}
+                ${miss.length?`<div class="misslist"><div class="lab">부족으로 입력한 상품</div>${miss.map(r=>{ const k=markOf(r)||{found:0,qty:0}; const i=rows.indexOf(r); return `<div class="missrow" onclick="goTo(${i})"><div class="bx" style="${r.source==='재고'?'font-size:11px':''}">${esc(r.source==='재고'?r.위치:r.박스명)||'-'}</div><div class="b"><div class="n">${esc(r.상품명)}</div><div class="m"><span class="bc">${esc(r.바코드)}</span><span>${k.qty}개 중 ${k.found}개 찾음</span></div></div></div>`; }).join('')}</div>`:''}
                 <div class="end-foot">
                     ${left?`<button class="btn" onclick="goTo(firstLeft())">남은 카드로</button>`:''}
                     <button class="btn primary" onclick="backToPick()">다음 발주서 ${ICON('i-arrow',20,2.5)}</button>
@@ -909,17 +944,21 @@
             }catch(_){ return false; }
         }
         let saving=false;
-        async function save(i,status){
+        // what: null = 지우기 · { all:true } = 몫 전부 찾음([스캔]) · { total:n } = 찾은 수량 n ([부족] 키패드, 박스가 여럿이면 앞 박스부터 채운다)
+        async function save(i,what){
             const r=rows[i]; if(!r||saving) return false;
             saving=true;
             const prev={모바일:r.모바일,모바일처리자:r.모바일처리자,모바일시각:r.모바일시각,모바일박스:r.모바일박스};
-            // 낙관적 반영 — 박스별 기록(이번 박스(들)만)과, 전체 보기면 행 요약도. 서버 응답으로 덮어쓴다 (2026-10-22)
             const marks=marksFor(r), now=new Date().toISOString(), e={...boxEntries(r)};
-            for(const m of marks){ if(status) e[String(m.boxNo)]={status,qty:m.qty,by:worker(),at:now}; else delete e[String(m.boxNo)]; }
+            if(what){ let left=what.all?Infinity:Math.max(0,Number(what.total)||0); for(const m of marks){ m.found=Math.min(m.qty,left); left-=m.found; } }
+            const share=marks.reduce((s,m)=>s+m.qty,0), foundAll=what?marks.reduce((s,m)=>s+m.found,0):0;
+            const status=what?(foundAll>=share?'found':'missing'):null;
+            for(const m of marks){ if(what) e[String(m.boxNo)]={found:m.found,qty:m.qty,status:m.found>=m.qty?'found':'missing',by:worker(),at:now}; else delete e[String(m.boxNo)]; }
             r.모바일박스=Object.keys(e).length?e:null;
-            if(curBox==null||status==null){ r.모바일=status; r.모바일처리자=status?worker():null; r.모바일시각=status?now:null; }
+            if(curBox==null||!what){ r.모바일=status; r.모바일처리자=what?worker():null; r.모바일시각=what?now:null; }
             repaint(i);
             try{
+                // status 는 예전 서버 호환용 (새 서버는 marks[].found 를 쓴다)
                 const body={status,worker:worker(),marks,shareTotal:Number.isFinite(Number(r.shareTotal))?Number(r.shareTotal):null};
                 const {res,d}=mode==='all'
                     ? await postJson('/api/mobile/check',{listId:r.listId,...body})
@@ -929,25 +968,67 @@
                 return true;
             }catch(e){
                 Object.assign(r,prev); repaint(i); playWarn();
-                reportClientError('save',e.message,{listId:r.listId,allocId:r.allocId,status});
+                reportClientError('save',e.message,{listId:r.listId,allocId:r.allocId,status,found:foundAll});
                 if(isNetErr(e)){
                     // 세 번 다 끊김 — 서버에 저장됐는지 다시 읽어 화면을 맞춘다. 맞춰졌으면 그 결과대로 진행
                     const synced=await resyncRow(i);
-                    if(synced&&markSt(r)===status){ toast('연결이 불안정했지만 저장은 됐습니다.'); return true; }
+                    if(synced&&markSt(r)===status&&(!what||(markOf(r)||{}).found===foundAll)){ toast('연결이 불안정했지만 저장은 됐습니다.'); return true; }
                     toast('저장 실패 — 네트워크가 끊겼습니다.\n와이파이·데이터를 확인하고 다시 눌러주세요.');
                 }else toast('저장 실패: '+e.message);
                 return false;
             }
             finally{ saving=false; }
         }
-        async function mark(status){
+        // [스캔] = 이 카드 몫 전부 찾음
+        async function mark(){
             if(idx>=rows.length) return;
             const i=idx;
-            if(status==='found') playOk(); else playNone();
-            const ok=await save(i,status);
+            playOk();
+            const ok=await save(i,{all:true});
             if(ok) goTo(nextLeft(i));   // 다음 미처리 카드 (없으면 완료 카드)
         }
         async function clearMark(i){ await save(i,null); }
+
+        // ── [부족] 키패드 (2026-11-02) — 찾은 수량을 넣는다. 0 = 하나도 못 찾음, 몫과 같으면 다 찾음 ──
+        let shIdx=null, shVal='';
+        function openShort(i){
+            const at=Number.isInteger(i)?i:idx;
+            if(at==null||at>=rows.length) return;
+            shIdx=at; const r=rows[at]; const k=markOf(r);
+            shVal=k&&k.status?String(k.found):'';
+            const marks=marksFor(r), share=marks.reduce((s,m)=>s+m.qty,0);
+            $('shSub').innerHTML=`<b>${esc(r.source==='재고'?(r.위치||'재고'):(r.박스명||''))}</b> · ${esc(r.바코드||'')}<br>${esc(String(r.상품명||'').split(',')[0].slice(0,40))}`;
+            $('shOf').textContent=`/ ${share}개`;
+            $('shNote').innerHTML=marks.length>1?`담는 박스 ${marks.map(m=>`📦${m.boxNo||'미정'} ${m.qty}개`).join(' · ')} — <b>앞 박스부터</b> 채웁니다`:'찾은 개수만 누르세요. 하나도 없으면 <b>0</b>';
+            $('shPad').innerHTML=PAD_KEYS.map(k=>`<button type="button" class="${k==='C'||k==='B'?'fn':''}" onclick="shKey('${k}')">${k==='C'?'지우기':k==='B'?'⌫':k}</button>`).join('');
+            renderShort();
+            $('shBack').classList.add('show');
+        }
+        function closeShort(){ $('shBack').classList.remove('show'); shIdx=null; }
+        function renderShort(){
+            $('shVal').textContent=shVal===''?'찾은 개수':shVal+'개';
+            $('shNum').classList.toggle('empty',shVal==='');
+            $('shOk').disabled=shVal==='';
+        }
+        function shKey(k){
+            const r=rows[shIdx]; if(!r) return; const share=shareOf(r);
+            if(k==='C') shVal='';
+            else if(k==='B') shVal=shVal.slice(0,-1);
+            else{
+                const v=Number((shVal==='0'?'':shVal)+k);
+                if(v>share){ const n=$('shNum'); n.classList.remove('shake'); void n.offsetWidth; n.classList.add('shake'); playWarn(); toast(`이 카드 몫은 ${share}개까지예요`); return; }
+                shVal=String(v);
+            }
+            renderShort();
+        }
+        async function confirmShort(){
+            if(shIdx==null||shVal==='') return;
+            const i=shIdx, n=Number(shVal), share=shareOf(rows[i]);
+            closeShort();
+            if(n>=share) playOk(); else playNone();
+            const ok=await save(i,{total:n});
+            if(ok&&i===idx) goTo(nextLeft(i));
+        }
 
         // ── 메모 (2026-10-21) — 지금 카드(또는 카드의 메모 줄을 누른 카드)에 한 줄 메모. 저장 = POST /api/mobile/memo ──
         //   [입고] 모드는 allocId(rk_cn_shipping), [전체] 모드는 listId(rk_shipping_list). 빈 메모로 저장하면 지운다

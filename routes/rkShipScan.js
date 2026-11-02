@@ -8,6 +8,7 @@
  */
 const express = require('express');
 const S = require('./rkShared');
+const M = require('./rkMarks');   // 모바일 입고 찾은 수량 → 박스 상태 (2026-11-02)
 
 const router = express.Router();
 const sb = S.supabase;
@@ -428,21 +429,27 @@ router.post('/api/ship-scan/delete-box', async (req, res) => {
 // 확정 뒤 가상스캔으로 더 채우면 합이 달라져 자동으로 미확정으로 돌아간다 (다시 찾아와서 다시 확정).
 const boxConfirmed = (box, virtualSum) => virtualSum > 0 && (parseInt(box.virtual_confirmed_qty, 10) || 0) === virtualSum;
 
-// 진행중 발주서의 박스 + 아이템을 한 번에 (박스별 가상 합 + 준비완료 판정 포함)
-//   boxOk(box) = 박스 라벨 가상확정 OR 박스 안 가상 상품이 전부 모바일 입고로 찾아짐 (S.virtualReadiness 통합 규칙)
-//   keyOk      = "발주번호|바코드" 단위로 가상 합이 모바일 찾음 합으로 다 채워진 상품
+// 진행중 발주서의 박스 + 아이템을 한 번에 (박스별 상태 포함, 2026-11-02 숫자 기록)
+//   ready: box.id → M.boxReadiness 결과 { state(실제·미진행·진행·완료), vsum, found, short, done, total, allFound, labelOk, shipped, items }
+//   virtualSumByBox: box.id → 가상 합 · boxOk(box) = 완료·부족 없음 (예전 이름 — 호출처 호환)
 //   orderNumbers 를 주면 진행중 여부와 상관없이 그 발주서들만 (입고정리 박스 열 — 쉽먼트 접수로 처리완료된 발주서도 박스를 보여야 한다, 2026-10-15)
 async function activeBoxesAndItems(orderNumbers) {
   const active = Array.isArray(orderNumbers) ? [...new Set(orderNumbers.map((x) => String(x || '').trim()).filter(Boolean))] : await S.listActiveOrderNumbers('rk_orders');
-  if (!active.length) { const r = S.virtualReadiness([], new Map()); return { boxes: [], items: [], ...r }; }
-  const [boxes, items, found] = await Promise.all([
+  const empty = { boxes: [], items: [], ready: new Map(), virtualSumByBox: new Map(), boxOk: () => false };
+  if (!active.length) return empty;
+  const boxCols = 'id, order_number, box_no, box_size, is_virtual, virtual_confirmed_qty, virtual_confirmed_at, created_at' + ((await M.hasShippedCol()) ? ', shipped_at' : '');
+  const [boxes, items, fm] = await Promise.all([
     S.chunked(active, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
-      .select('id, order_number, box_no, box_size, is_virtual, virtual_confirmed_qty, virtual_confirmed_at, created_at').in('order_number', nos).order('id', { ascending: true }))),
+      .select(boxCols).in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(active, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
       .select('order_number, box_id, barcode, product_name, qty, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
-    S.mobileFoundByKey(active),
+    M.boxFoundMap(active),
   ]);
-  return { boxes, items, ...S.virtualReadiness(items, found) };
+  const ready = M.boxReadiness(boxes, items, fm);
+  const virtualSumByBox = new Map();
+  for (const [id, r] of ready) virtualSumByBox.set(id, r.vsum);
+  const boxOk = (box) => { const r = ready.get(box.id); return !!(r && r.allFound); };
+  return { boxes, items, ready, virtualSumByBox, boxOk };
 }
 
 // 박스 맵 — 발주번호+바코드별로 "어느 박스에 몇 개(그중 가상 몇 개, 확정 여부)" (입고정리·재고준비의 박스 열용)
@@ -452,7 +459,7 @@ async function activeBoxesAndItems(orderNumbers) {
 router.get('/api/ship-scan/box-map', async (req, res) => {
   try {
     const orders = req.query.orders != null ? String(req.query.orders).split(',') : null;
-    const { boxes, items, boxOk } = await activeBoxesAndItems(orders);
+    const { boxes, items, ready } = await activeBoxesAndItems(orders);
     // 처리완료 발주서 표시 (orders 로 조회했을 때만 섞여 들어온다) — 화면은 회색 칩으로
     const doneSet = new Set();
     if (orders) {
@@ -468,8 +475,13 @@ router.get('/api/ship-scan/box-map', async (req, res) => {
       const qty = parseInt(it.qty, 10) || 0;
       if (qty <= 0) continue;
       const k = `${it.order_number}|${it.barcode}`;
+      const rd = ready.get(box.id) || {};
+      const ri = rd.items ? rd.items.get(it.barcode) : null;
       (map[k] ||= []).push({ boxNo: box.box_no, boxSize: box.box_size, qty, virtualQty: parseInt(it.virtual_qty, 10) || 0,
-        confirmed: boxOk(box),      // 박스 라벨 가상확정 또는 모바일 입고로 다 찾음
+        confirmed: !!rd.allFound,   // 박스 완료 · 부족 없음 (✅)
+        state: rd.state || '실제', input: `${rd.done || 0}/${rd.total || 0}`, short: rd.short || 0,   // 박스 상태 (2026-11-02): 실제·미진행·진행·완료
+        found: ri ? ri.found : 0, itemState: ri ? ri.state : 'real',   // 이 상품의 찾은 수량 · 입력 상태
+        shipped: !!box.shipped_at,   // 출고완료
         done: doneSet.has(String(it.order_number)) });   // 발주서 처리완료
     }
     for (const list of Object.values(map)) list.sort((a, b) => a.boxNo - b.boxNo);
@@ -484,8 +496,8 @@ router.get('/api/ship-scan/box-map', async (req, res) => {
 // 응답: [{ orderNumber, center, arrivalDate, boxNo, boxSize, qty, virtualQty, itemCount, confirmed, confirmedAt }]
 router.get('/api/ship-scan/virtual-boxes', async (req, res) => {
   try {
-    const { boxes, items, virtualSumByBox, boxOk } = await activeBoxesAndItems();
-    const vBoxes = boxes.filter((b) => (virtualSumByBox.get(b.id) || 0) > 0);
+    const { boxes, items, virtualSumByBox, boxOk, ready } = await activeBoxesAndItems();
+    const vBoxes = boxes.filter((b) => (virtualSumByBox.get(b.id) || 0) > 0 && !b.shipped_at);
     const orderNos = [...new Set(vBoxes.map((b) => String(b.order_number)))];
     const headers = orderNos.length ? await S.chunked(orderNos, 200, (nos) => S.pageAll(() => sb.from('rk_orders')
       .select('order_number, logistics_center, arrival_date').in('order_number', nos).order('id', { ascending: true }))) : [];
@@ -502,7 +514,8 @@ router.get('/api/ship-scan/virtual-boxes', async (req, res) => {
       const vsum = virtualSumByBox.get(b.id) || 0;
       return { orderNumber: String(b.order_number), center: S.str(h.logistics_center), arrivalDate: S.dateToYmd(h.arrival_date),
         boxNo: b.box_no, boxSize: b.box_size, qty: s.qty, virtualQty: vsum, itemCount: s.n,
-        confirmed: boxOk(b), confirmedAt: b.virtual_confirmed_at };
+        confirmed: boxOk(b), confirmedAt: b.virtual_confirmed_at,
+        state: (ready.get(b.id) || {}).state || '미진행', short: (ready.get(b.id) || {}).short || 0, found: (ready.get(b.id) || {}).found || 0 };
     }).sort((a, b) => String(a.arrivalDate).localeCompare(String(b.arrivalDate)) || a.orderNumber.localeCompare(b.orderNumber) || a.boxNo - b.boxNo);
     res.json(out);
   } catch (e) {
@@ -524,22 +537,23 @@ router.get('/api/ship-scan/box', async (req, res) => {
     const [{ data: allItems, error: eI }, { data: hdrs, error: eH }, found] = await Promise.all([
       sb.from('rk_ship_box_items').select('box_id, order_number, barcode, product_name, qty, virtual_qty').eq('order_number', orderNumber).order('id', { ascending: true }),
       sb.from('rk_orders').select('order_number, logistics_center, arrival_date, status').eq('order_number', orderNumber).limit(1),
-      S.mobileFoundByKey([orderNumber]),
+      M.boxFoundMap([orderNumber]),
     ]);
     if (eI) throw eI;
     if (eH) throw eH;
     const h = (hdrs && hdrs[0]) || {};
     const items = (allItems || []).filter((it) => it.box_id === box.id);
-    const { keyOk, boxOk } = S.virtualReadiness(allItems || [], found);   // 모바일 입고 찾음까지 합친 준비완료 판정
+    const rd = M.boxReadiness([box], allItems || [], found).get(box.id) || { items: new Map() };   // 모바일 입고 찾은 수량까지 합친 박스 상태
     const vsum = items.reduce((s, it) => s + (parseInt(it.virtual_qty, 10) || 0), 0);
     res.json({
       orderNumber, boxNo: box.box_no, boxSize: box.box_size, center: S.str(h.logistics_center), arrivalDate: S.dateToYmd(h.arrival_date),
       done: S.isDoneOrder({ 상태: h.status }),
       qty: items.reduce((s, it) => s + (parseInt(it.qty, 10) || 0), 0), virtualQty: vsum,
-      confirmed: boxOk(box), labelConfirmed: boxConfirmed(box, vsum),   // confirmed = 통합(라벨 확정 또는 모바일 다 찾음) · labelConfirmed = 박스 라벨 확정만
+      confirmed: !!rd.allFound, labelConfirmed: boxConfirmed(box, vsum), state: rd.state, short: rd.short || 0, found: rd.found || 0,   // confirmed = 통합(라벨 확정 또는 모바일 다 찾음) · labelConfirmed = 박스 라벨 확정만
       confirmedAt: box.virtual_confirmed_at, confirmedQty: parseInt(box.virtual_confirmed_qty, 10) || 0,
       items: items.map((it) => ({ barcode: it.barcode, productName: it.product_name, qty: it.qty, virtualQty: parseInt(it.virtual_qty, 10) || 0,
-        mobileFound: keyOk.has(`${orderNumber}|${it.barcode}`) })),
+        mobileFound: ((rd.items.get(it.barcode) || {}).state === 'found'),
+        found: (rd.items.get(it.barcode) || {}).found || 0, itemState: (rd.items.get(it.barcode) || {}).state || 'real' })),
     });
   } catch (e) {
     console.error('[rk] ship-scan/box:', e);
@@ -585,8 +599,8 @@ router.get('/api/ship-scan/scanned-map', async (req, res) => {
     const confirmed = {};
     if (withVirtual) {
       // 박스 확정 여부가 필요하므로 박스까지 같이 읽는다 (진행중 발주서 기준)
-      const { boxes, items, keyOk, boxOk } = await activeBoxesAndItems();
-      const confirmedBox = new Set(boxes.filter((b) => boxOk(b)).map((b) => b.id));
+      const { items, ready } = await activeBoxesAndItems();
+      const counted = new Set();   // 박스·바코드당 찾은 수량은 한 번만 (rd.items 는 바코드 합)
       for (const r of items) {
         if (!r.order_number || !r.barcode) continue;
         const k = `${r.order_number}|${r.barcode}`;
@@ -594,8 +608,9 @@ router.get('/api/ship-scan/scanned-map', async (req, res) => {
         const vq = parseInt(r.virtual_qty, 10) || 0;
         if (vq > 0) {
           virtual[k] = (virtual[k] || 0) + vq;
-          // 박스가 확정됐거나(라벨 확정 / 박스 전부 찾음) 그 상품의 가상 합이 모바일 입고로 다 채워졌으면 확정 분량
-          if (confirmedBox.has(r.box_id) || keyOk.has(k)) confirmed[k] = (confirmed[k] || 0) + vq;
+          // 확정 분량 = 모바일 입고로 찾은 수량 (2026-11-02 — 부족 입력은 찾은 만큼만)
+          const ck = `${r.box_id}|${r.barcode}`;
+          if (!counted.has(ck)) { counted.add(ck); const ri = ((ready.get(r.box_id) || {}).items || new Map()).get(r.barcode); if (ri && ri.found) confirmed[k] = (confirmed[k] || 0) + ri.found; }
         }
       }
       return res.json({ map, virtual, confirmed });

@@ -66,6 +66,9 @@
         .vbox.virtual-part{background:#EEEDFE;color:#3C3489;border:1.5px solid #7F77DD;}
         .vbox.virtual-all{background:#534AB7;color:#EEEDFE;border:1.5px solid #534AB7;}
         .vbox.virtual-ok{background:#E1F5EE;color:#085041;border:1.5px solid #1D9E75;}
+        .vbox.virtual-prog{background:#EEEDFE;color:#3C3489;border:1.5px dashed #534AB7;}   /* 🔄 모바일 입고 진행 중 (2026-11-02) */
+        .vbox.virtual-short{background:#FFF4E5;color:#9A4A00;border:1.5px solid #F0A040;}  /* ⚠ 입력 끝 · 부족 있음 */
+        .vbox.virtual-ship{background:#f1f5f9;color:#64748b;border:1.5px solid #cbd5e1;}   /* 🚚 출고완료 */
         /* 기존 탭 회차 배지 */
         tbody tr.latest td{background:#f5f7ff;}
         tbody tr.latest:hover td{background:#eef1fe;}
@@ -185,11 +188,17 @@
             try{ const r=await fetch('/api/ship-scan/box-map'); boxMap=r.ok?await r.json():{}; }catch(e){ boxMap={}; }   // 실패해도 박스 열만 빈다
         }
         // 가상 박스만 표시: ✅ 가상확정(다 찾아옴) · 👾 전부 가상 · 🔀 섞임. 가상 없으면 빈 칸
+        // 박스 칩 (2026-11-02, 쉽먼트와 같은 규칙) — 🚚 출고완료 · ✅ 다 찾음 · ⚠ 부족 n · 🔄 진행(입력 n/m) · 👾 전부 가상 · 🔀 섞임
+        function vboxHtml(b,extraCls,extraTip){
+            const [cls,emo]=b.shipped?['virtual-ship','🚚']:b.confirmed?['virtual-ok','✅']:b.state==='완료'?['virtual-short','⚠']:b.state==='진행'?['virtual-prog','🔄']:(b.virtualQty>=b.qty?['virtual-all','👾']:['virtual-part','🔀']);
+            const tail=cls==='virtual-short'?` 부족 ${b.short}`:cls==='virtual-prog'?` ${esc(b.input||'')}`:'';
+            const tip=`박스 ${b.boxNo} ${b.boxSize||''} · ${extraTip||''}${b.shipped?'출고완료 · ':''}${{'virtual-ok':'다 찾음 · ','virtual-short':`부족 ${b.short}개 · `,'virtual-prog':`모바일 입력 ${b.input} · `}[cls]||''}가상 ${b.virtualQty} / 전체 ${b.qty}`;
+            return `<span class="vbox ${cls}${extraCls||''}" title="${esc(tip)}">📦${b.boxNo} ${emo}${tail}</span>`;
+        }
         function boxCell(orderNumber,barcode){
             const list=boxMap[`${orderNumber}|${barcode}`]||[];
             return list.filter(b=>b.virtualQty>0).map(b=>{
-                const st=b.confirmed?'virtual-ok':(b.virtualQty>=b.qty?'virtual-all':'virtual-part');
-                return `<span class="vbox ${st}" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.confirmed?'가상확정 · ':''}가상 ${b.virtualQty} / 전체 ${b.qty}">📦${b.boxNo} ${st==='virtual-ok'?'✅':st==='virtual-all'?'👾':'🔀'}</span>`;
+                return vboxHtml(b);
             }).join('');
         }
 

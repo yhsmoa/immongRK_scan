@@ -257,83 +257,28 @@ const mobileCmp = (a, b) =>
 //   행 요약(mobile_status/by/at)은 그대로 둔다 — PC 입고정리 ✅/❌ 와 예전 화면이 읽는다:
 //     하나라도 없음 → missing · 찾은 몫 합 ≥ 행의 박스 몫 합(shareTotal) → found · 일부만 찾음 → null (입고정리는 🔸 로 박스별 표시)
 //   marks 없이 오면(예전 화면) 전처럼 행 전체에 기록하고 mobile_boxes 는 비운다
-const boxEntries = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
-// 목록 진행 집계용: 그 박스에서 본 이 행의 상태 — 박스별 기록이 있으면 그 박스 것만, 없으면(예전 기록) 행 요약
-function boxMark(r, boxNo) {
+const { boxEntries, entryFound, markPatch, marksError, summarizeMarks, loadVirtualBoxes, assignVirtualBoxes, loadAllModeRows } = require('./rkMarks');   // 모바일 찾은 수량 기록·가상 박스 배정 공용 (2026-11-02)
+// 목록 진행 집계용: 그 박스에서 본 이 행의 입력 — 박스별 기록이 있으면 그 박스 것만, 없으면(예전 기록) 행 요약
+//   share = 이 박스에 걸린 몫 → { status: 'found'(다 찾음) | 'missing'(부족) | null(미입력), found: 찾은 수 }  (2026-11-02 숫자 기록)
+function boxMark(r, boxNo, share) {
   const e = boxEntries(r.모바일박스);
-  if (Object.keys(e).length) { const m = e[String(boxNo == null ? 0 : boxNo)]; return m ? m.status || null : null; }
-  return r.모바일 || null;
-}
-function markPatch(curBoxes, status, worker, marks, shareTotal) {
-  const now = new Date().toISOString();
-  if (!Array.isArray(marks)) return status ? { mobile_status: status, mobile_at: now, mobile_by: worker || null, mobile_boxes: null } : { mobile_status: null, mobile_at: null, mobile_by: null, mobile_boxes: null };
-  const boxes = { ...boxEntries(curBoxes) };
-  for (const m of marks) {
-    const k = String(parseInt(m && m.boxNo, 10) || 0);
-    if (status) boxes[k] = { status, qty: Math.max(0, parseInt(m && m.qty, 10) || 0), by: worker || null, at: now };
-    else delete boxes[k];
+  if (Object.keys(e).length) {
+    const m = e[String(boxNo == null ? 0 : boxNo)];
+    if (!m) return { status: null, found: 0 };
+    const f = entryFound(m), q = Math.max(0, parseInt(m.qty, 10) || 0);
+    return { status: f >= q ? 'found' : 'missing', found: Math.min(f, share) };
   }
-  const list = Object.values(boxes);
-  if (!list.length) return { mobile_status: null, mobile_at: null, mobile_by: null, mobile_boxes: null };
-  const latest = list.reduce((a, b) => (!a || String(b.at || '') > String(a.at || '')) ? b : a, null);
-  const foundQty = list.filter((e) => e.status === 'found').reduce((s, e) => s + (parseInt(e.qty, 10) || 0), 0);
-  const total = parseInt(shareTotal, 10);
-  const st = list.some((e) => e.status === 'missing') ? 'missing' : (!Number.isFinite(total) || foundQty >= total) ? 'found' : null;
-  return { mobile_status: st, mobile_at: latest.at || now, mobile_by: latest.by || null, mobile_boxes: boxes };
+  if (!r.모바일) return { status: null, found: 0 };
+  return { status: r.모바일, found: r.모바일 === 'found' ? share : 0 };
+}
+// 목록 집계 공통: 카드 하나를 박스 집계 o 에 더한다 (total 카드 수 · found 다 찾은 카드 · missing 부족 카드 · foundQty / shortQty 개수)
+function addMark(o, r, k, q) {
+  const m = boxMark(r, k, q);
+  if (m.status === 'found') o.found++;
+  else if (m.status === 'missing') { o.missing++; o.shortQty += Math.max(0, q - m.found); }
+  if (m.status) o.foundQty += m.found;
 }
 
-// 발주서들의 가상 박스 — 발주번호 → { boxes:[{id,box_no,box_size}], virtualByBc:{바코드:[{boxNo,boxSize,boxQty,remain}]} } (mobile-list · mobile-orders 공용)
-//   칩/목록에는 **가상으로 담긴 분량만** 쓴다 — 실제 스캔으로 이미 담은 분량(virtual_qty 0)은 찾을 대상이 아니다.
-//   (같은 바코드가 다른 입고코드로 먼저 실제 포장된 박스가 카드에 같이 붙던 문제, 2026-10-15)
-//   opts.includeStock (2026-10-20, 모바일 [전체] 모드 전용): virtual_codes 의 '재고' 분량도 코드로 다룬다 → 재고 행(출고코드 '재고')에도 칩이 붙고,
-//   codesByBox 에 '재고' 가 들어가 섞임 판정에 재고+입고가 포함된다. 기본값(false)은 예전과 똑같다 ([입고] 모드)
-async function loadVirtualBoxes(orderNumbers, opts) {
-  const includeStock = !!(opts && opts.includeStock);
-  const out = {};
-  const nos = [...new Set(orderNumbers.map(String).filter(Boolean))];
-  if (!nos.length) return out;
-  const [boxes, bItems] = await Promise.all([
-    S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_boxes').select('id, order_number, box_no, box_size').in('order_number', part).order('id', { ascending: true }))),
-    S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_box_items').select('order_number, box_id, barcode, qty, virtual_qty, virtual_codes').in('order_number', part).order('id', { ascending: true }))),
-  ]);
-  const boxById = new Map();
-  for (const b of boxes) { boxById.set(b.id, b); (out[String(b.order_number)] ||= { boxes: [], virtualByBc: {}, codesByBox: {} }).boxes.push(b); }
-  for (const it of bItems) {
-    const b = boxById.get(it.box_id); const qty = parseInt(it.qty, 10) || 0; const vq = parseInt(it.virtual_qty, 10) || 0;
-    if (!b || !it.barcode || qty <= 0 || vq <= 0) continue;
-    const o = out[String(b.order_number)];
-    // virtual_codes = 가상 분량의 출처별 개수 {입고코드|'재고': n} (2026-10-15). 기록된 만큼은 그 코드 행에만 배정하고,
-    // 기록이 없는 나머지(remainFree, 예전 저장분)는 어느 입고코드 행에든 앞에서부터 배정한다
-    const codes = VirtualPack.trimCodes(it.virtual_codes, vq) || {};
-    const remainByCode = {};
-    for (const c of Object.keys(codes)) if (includeStock || c !== VirtualPack.STOCK_KEY) remainByCode[c] = codes[c];
-    const remainFree = Math.max(0, vq - VirtualPack.sumCodes(codes));
-    (o.virtualByBc[it.barcode] ||= []).push({ boxNo: b.box_no, boxSize: b.box_size, boxQty: qty, remainByCode, remainFree });
-    for (const c of Object.keys(remainByCode)) (o.codesByBox[b.box_no] ||= new Set()).add(c);
-  }
-  for (const o of Object.values(out)) for (const l of Object.values(o.virtualByBc)) l.sort((a, b) => a.boxNo - b.boxNo);
-  return out;
-}
-// 가상 박스 배정 — 행의 입고코드(출고코드)와 같은 코드로 기록된 가상 분량을 먼저, 그다음 코드 미기록 분량을 박스 번호 순으로 채워 나눈다.
-//   다른 입고코드로 기록된 분량은 이 행에 주지 않는다 (같은 바코드가 두 입고코드에 있을 때 두 번째 코드 카드가 첫 코드의 박스를 가리키던 문제, 2026-10-15)
-//   코드 기록이 없는 예전 저장분은 전처럼 카드 순서(mobileCmp)대로 앞에서부터 (같은 바코드의 두 행에 같은 박스가 중복 표시되지 않게)
-//   예: 바코드 가상 34 = 1번(30)+2번(4), 입고 행 BR7 22 · BR8 12 → BR7: 1번 ×22 / BR8: 1번 ×8 + 2번 ×4
-//   rows 순서대로 [{ boxNo, boxSize, qty, virtualQty }][] 를 돌려준다 (virtualByBc 의 remain 을 소모하므로 발주서당 한 번만 부를 것)
-function assignVirtualBoxes(rows, virtualByBc) {
-  return rows.map((r) => {
-    const assigned = [];
-    const code = r.출고코드 == null ? null : String(r.출고코드);
-    let need = parseInt(r.출고개수, 10) || 0;
-    for (const b of ((virtualByBc || {})[r.바코드] || [])) {
-      if (need <= 0) break;
-      let take = 0;
-      if (code != null && b.remainByCode[code] > 0) { const t = Math.min(need, b.remainByCode[code]); b.remainByCode[code] -= t; need -= t; take += t; }
-      if (need > 0 && b.remainFree > 0) { const t = Math.min(need, b.remainFree); b.remainFree -= t; need -= t; take += t; }
-      if (take > 0) assigned.push({ boxNo: b.boxNo, boxSize: b.boxSize, qty: b.boxQty, virtualQty: take });
-    }
-    return assigned;
-  });
-}
 // 바코드별 재고 위치 (rk_stocks, 수량 > 0) — 모바일 카드에서 입고 박스 칩 아래에 작게 보여준다 (2026-10-27)
 //   재고정리로 선반에 올린 같은 상품이 어디 있는지 현장에서 바로 보이게. 수량은 배정 예약을 뺀 지금 수량이다.
 async function stockLocsByBarcode(barcodes) {
@@ -395,12 +340,13 @@ router.get('/api/inbound/mobile-orders', async (req, res) => {
       ors.forEach((r, i) => {
         const keys = assigned[i].length ? assigned[i].map(b => b.boxNo) : [0];
         for (const k of keys) {
+          if (k && ((vb[no] || {}).shipped || new Set()).has(k)) continue;   // 출고완료 박스는 목록에서 뺀다 (2026-11-02)
           if (!byBox.has(k)) {
             const bx = assigned[i].find(b => b.boxNo === k);
             // codes: 이 박스에 기록된 입고코드들(virtual_codes) · mixed: 둘 이상 = 입고일이 섞인 박스 (목록에 표시, 카드 진입 때 확인 모달)
             const codes = k ? [...((vb[no] || {}).codesByBox || {})[k] || []].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true })) : [];
             byBox.set(k, { orderNumber: no, boxNo: k || null, boxSize: bx ? bx.boxSize || null : null,
-              center: r.센터 || '', shippingDate: r.출고예정일 || '', batch: r.회차 || 1, total: 0, found: 0, missing: 0, qty: 0, kg: 0,
+              center: r.센터 || '', shippingDate: r.출고예정일 || '', batch: r.회차 || 1, total: 0, found: 0, missing: 0, foundQty: 0, shortQty: 0, qty: 0, kg: 0,
               codes, mixed: codes.length > 1 });
           }
           const o = byBox.get(k);
@@ -408,9 +354,7 @@ router.get('/api/inbound/mobile-orders', async (req, res) => {
           const q = k ? (assigned[i].find(b => b.boxNo === k) || {}).virtualQty || 0 : (parseInt(r.출고개수, 10) || 0);
           o.qty += q; o.kg += kgOf(r.바코드, q);
           o.total++;
-          const st = boxMark(r, k);   // 박스별 기록이 있으면 그 박스 것만 (2026-10-22)
-          if (st === 'found') o.found++;
-          else if (st === 'missing') o.missing++;
+          addMark(o, r, k, q);   // 박스별 기록이 있으면 그 박스 것만 (2026-10-22) · 찾은 수량 (2026-11-02)
           o.batch = Math.min(o.batch, r.회차 || 1);
         }
       });
@@ -479,9 +423,13 @@ router.post('/api/inbound/mobile-check', async (req, res) => {
     const worker = String(req.body.worker || '').trim().slice(0, 40);
     if (!Number.isFinite(allocId)) return res.status(400).json({ error: 'allocId 가 필요합니다.' });
     if (status !== null && status !== 'found' && status !== 'missing') return res.status(400).json({ error: 'status 는 found / missing / null 이어야 합니다.' });
+    // 찾은 수량(2026-11-02): marks:[{boxNo, qty, found}] — found 가 숫자면 그 수, 없으면 status 로 (예전 화면: found → 몫 전부, missing → 0)
+    const mErr = marksError(req.body.marks);
+    if (mErr) return res.status(400).json({ error: mErr });
+    const writes = !!status || (Array.isArray(req.body.marks) && req.body.marks.some((m) => m && m.found != null && m.found !== ''));
     // 이름 없는 찾음/없음은 받지 않는다 (2026-10-22) — 이름 입력(10-20)이 생기기 전 페이지를 새로고침 없이 계속 쓰는 폰이 이름 없이 저장하고 있었다(처리자 빈 칸 16건).
     //   새 화면은 이름 없이 여기까지 못 오므로, 이 오류는 "옛 페이지가 열려 있다" 는 뜻 → 새로고침 안내
-    if (status && !worker) return res.status(400).json({ error: '작업자 이름이 없습니다. 페이지를 새로고침한 뒤 첫 화면에서 이름을 입력하세요.' });
+    if (writes && !worker) return res.status(400).json({ error: '작업자 이름이 없습니다. 페이지를 새로고침한 뒤 첫 화면에서 이름을 입력하세요.' });
     // marks: [{boxNo, qty}] = 이번에 표시한 박스(들)의 몫 · shareTotal = 행의 박스 몫 합 → 박스별 기록 + 행 요약 (2026-10-22). 없으면 예전처럼 행 전체
     const { data: cur, error: e0 } = await sb.from('rk_cn_shipping').select('id, mobile_boxes').eq('id', allocId).limit(1);
     if (e0) throw e0;
@@ -506,48 +454,6 @@ router.post('/api/inbound/mobile-check', async (req, res) => {
 //   행 = rk_shipping_list status='출고예정' (재고 + 입고). 입고 행의 찾음/없음은 rk_cn_shipping(원본) 을 읽고 둘 다에 기록,
 //   재고 행은 rk_shipping_list 에만. 가상 박스 칩은 virtual_codes 의 '재고' 분량까지 본다 (loadVirtualBoxes includeStock)
 // ============================================================
-// 카드 순서(동선): 입고 먼저(가상스캔이 담는 순서) › 입고코드(오래된 것 먼저) › 박스명 / 위치 › id. 박스 번호 정렬은 배정 뒤에 한다
-//   extra(list): (선택) 첫 조회 결과로 함께 돌릴 조회 — 2단계 조회와 동시에 실행된다 (all-orders 의 무게 조회, 왕복 1회 절약)
-async function loadAllModeRows(orderNumbers, extra) {
-  const nos = [...new Set(orderNumbers.map(String).filter(Boolean))];
-  if (!nos.length) return [];
-  const list = await S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_shipping_list')
-    .select('id, source, order_number, barcode, product_name, center, shipping_date, qty, location, shipment_id, shipment_item_id, cn_shipping_id, batch_no, mobile_status, mobile_at, mobile_by, mobile_boxes, mobile_memo, mobile_memo_at, mobile_memo_by')
-    .eq('status', '출고예정').in('order_number', part).order('id', { ascending: true })));
-  const itemIds = [...new Set(list.filter((r) => r.source === '입고' && r.shipment_item_id).map((r) => r.shipment_item_id))];
-  const shipIds = [...new Set(list.filter((r) => r.source === '입고' && r.shipment_id).map((r) => r.shipment_id))];
-  const cnIds = [...new Set(list.filter((r) => r.source === '입고' && r.cn_shipping_id).map((r) => r.cn_shipping_id))];
-  const [items, ships, cns] = await Promise.all([
-    S.chunked(itemIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipment_items').select('id, box_name, order_number, product_name').in('id', part); if (error) throw error; return data || []; }),
-    S.chunked(shipIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipments').select('id, shipment_code, created_at').in('id', part); if (error) throw error; return data || []; }),
-    S.chunked(cnIds, 200, async (part) => { const { data, error } = await sb.from('rk_cn_shipping').select('id, mobile_status, mobile_at, mobile_by, mobile_boxes, mobile_memo, mobile_memo_at, mobile_memo_by').in('id', part); if (error) throw error; return data || []; }),
-    extra ? extra(list) : null,   // 함께 기다린다 (먼저 실패해도 처리 안 된 오류가 남지 않게)
-  ]);
-  const itemById = new Map(items.map((i) => [i.id, i]));
-  const shipById = new Map(ships.map((x) => [x.id, x]));
-  const cnById = new Map(cns.map((c) => [c.id, c]));
-  const rows = [];
-  for (const r of list) {
-    const inb = r.source === '입고';
-    if (inb && r.cn_shipping_id && !cnById.has(r.cn_shipping_id)) continue;   // 원본이 지워진 미러 (정상 경로에선 없다)
-    const it = inb ? itemById.get(r.shipment_item_id) || {} : {};
-    const sh = inb ? shipById.get(r.shipment_id) || {} : {};
-    const mob = inb && r.cn_shipping_id ? cnById.get(r.cn_shipping_id) : r;
-    rows.push({
-      listId: r.id, allocId: r.cn_shipping_id || null, source: r.source,
-      회차: r.batch_no || 1, 출고코드: inb ? String(sh.shipment_code || '') : VirtualPack.STOCK_KEY, codeAt: inb ? sh.created_at || '' : '',
-      출고번호: r.order_number, 센터: r.center || '', 출고예정일: r.shipping_date || '',
-      박스명: inb ? it.box_name || '' : '', 중국번호: inb ? it.order_number || '' : '', 위치: inb ? '' : (r.location || ''),
-      상품명: (inb ? it.product_name : null) || r.product_name || '', 바코드: r.barcode, 출고개수: parseInt(r.qty, 10) || 0,
-      모바일: mob.mobile_status || null, 모바일처리자: mob.mobile_by || null, 모바일시각: mob.mobile_at || null, 모바일박스: mob.mobile_boxes || null,
-      모바일메모: mob.mobile_memo || null, 모바일메모처리자: mob.mobile_memo_by || null, 모바일메모시각: mob.mobile_memo_at || null,
-    });
-  }
-  const cmp = (a, b) => String(a || '').localeCompare(String(b || ''), 'ko', { numeric: true });
-  rows.sort((a, b) => cmp(a.출고번호, b.출고번호) || ((a.source === '입고' ? 0 : 1) - (b.source === '입고' ? 0 : 1))
-    || cmp(a.codeAt, b.codeAt) || cmp(a.출고코드, b.출고코드) || cmp(a.source === '입고' ? a.박스명 : a.위치, b.source === '입고' ? b.박스명 : b.위치) || (a.listId - b.listId));
-  return rows;
-}
 const firstBoxNo = (bxs) => (bxs && bxs.length ? Math.min(...bxs.map((b) => b.boxNo)) : Infinity);
 
 // 목록 — 진행중(DONE 아님) 발주서 중 가상 박스(virtual_qty>0)가 있는 것만, (발주서, 박스) 단위. 모양은 mobile-orders 와 같다
@@ -584,19 +490,19 @@ router.get('/api/mobile/all-orders', async (req, res) => {
       ors.forEach((r, i) => {
         const keys = assigned[i].length ? assigned[i].map((b) => b.boxNo) : [0];
         for (const k of keys) {
+          if (k && ((vb[no] || {}).shipped || new Set()).has(k)) continue;   // 출고완료 박스는 목록에서 뺀다 (2026-11-02)
           if (!byBox.has(k)) {
             const bx = assigned[i].find((b) => b.boxNo === k);
             const codes = k ? [...(((vb[no] || {}).codesByBox || {})[k] || [])].sort((a, b) => a.localeCompare(b, 'ko', { numeric: true })) : [];
             byBox.set(k, { orderNumber: no, boxNo: k || null, boxSize: bx ? bx.boxSize || null : null,
               center: S.str(h.logistics_center) || r.센터 || '', shippingDate: S.dateToYmd(h.arrival_date) || r.출고예정일 || '',
-              total: 0, found: 0, missing: 0, qty: 0, kg: 0, codes, mixed: codes.length > 1, stockQty: 0, inboundQty: 0 });
+              total: 0, found: 0, missing: 0, foundQty: 0, shortQty: 0, qty: 0, kg: 0, codes, mixed: codes.length > 1, stockQty: 0, inboundQty: 0 });
           }
           const o = byBox.get(k);
           const q = k ? (assigned[i].find((b) => b.boxNo === k) || {}).virtualQty || 0 : r.출고개수;
           o.qty += q; o.kg += kgOf(r.바코드, q); o.total++;
           if (r.source === '재고') o.stockQty += q; else o.inboundQty += q;
-          const st = boxMark(r, k);   // 박스별 기록이 있으면 그 박스 것만 (2026-10-22)
-          if (st === 'found') o.found++; else if (st === 'missing') o.missing++;
+          addMark(o, r, k, q);   // 박스별 기록이 있으면 그 박스 것만 (2026-10-22) · 찾은 수량 (2026-11-02)
         }
       });
       for (const k of [...byBox.keys()].sort((a, b) => ((a === 0) - (b === 0)) || (a - b))) { const o = byBox.get(k); o.kg = Math.round(o.kg * 10) / 10; list.push(o); }
@@ -655,9 +561,13 @@ router.post('/api/mobile/check', async (req, res) => {
     const worker = String(req.body.worker || '').trim().slice(0, 40);
     if (!Number.isFinite(listId)) return res.status(400).json({ error: 'listId 가 필요합니다.' });
     if (status !== null && status !== 'found' && status !== 'missing') return res.status(400).json({ error: 'status 는 found / missing / null 이어야 합니다.' });
+    // 찾은 수량(2026-11-02): marks:[{boxNo, qty, found}] — found 가 숫자면 그 수, 없으면 status 로 (예전 화면: found → 몫 전부, missing → 0)
+    const mErr = marksError(req.body.marks);
+    if (mErr) return res.status(400).json({ error: mErr });
+    const writes = !!status || (Array.isArray(req.body.marks) && req.body.marks.some((m) => m && m.found != null && m.found !== ''));
     // 이름 없는 찾음/없음은 받지 않는다 (2026-10-22) — 이름 입력(10-20)이 생기기 전 페이지를 새로고침 없이 계속 쓰는 폰이 이름 없이 저장하고 있었다(처리자 빈 칸 16건).
     //   새 화면은 이름 없이 여기까지 못 오므로, 이 오류는 "옛 페이지가 열려 있다" 는 뜻 → 새로고침 안내
-    if (status && !worker) return res.status(400).json({ error: '작업자 이름이 없습니다. 페이지를 새로고침한 뒤 첫 화면에서 이름을 입력하세요.' });
+    if (writes && !worker) return res.status(400).json({ error: '작업자 이름이 없습니다. 페이지를 새로고침한 뒤 첫 화면에서 이름을 입력하세요.' });
     const { data: rs, error: e0 } = await sb.from('rk_shipping_list').select('id, source, cn_shipping_id, mobile_boxes').eq('id', listId).limit(1);
     if (e0) throw e0;
     if (!rs || !rs.length) return res.status(404).json({ error: '출고리스트 행을 찾을 수 없습니다 (취소됐을 수 있음).' });
@@ -785,15 +695,6 @@ router.get('/api/inbound/mobile-box-next', async (req, res) => {
 //   cards: [{ listId, allocId, keep, shareTotal }] — keep = 원래 박스에 남는 이 행의 몫. 0 이면 원래 박스 기록을 지우고, 남으면 그 수량으로 줄인다.
 //   새 박스에는 기록을 만들지 않는다(아직 안 담음). 입고 행은 원본(rk_cn_shipping) 기준으로 계산해 미러(rk_shipping_list)에도 같이 쓴다.
 //   박스 이동 자체는 이미 끝났으므로 여기서 실패해도 이동은 되돌리지 않고, 실패 건수만 돌려준다.
-function summarizeMarks(boxes, shareTotal) {
-  const list = Object.values(boxes);
-  if (!list.length) return { mobile_status: null, mobile_at: null, mobile_by: null, mobile_boxes: null };
-  const latest = list.reduce((a, b) => (!a || String(b.at || '') > String(a.at || '')) ? b : a, null);
-  const foundQty = list.filter((e) => e.status === 'found').reduce((s, e) => s + (parseInt(e.qty, 10) || 0), 0);
-  const total = parseInt(shareTotal, 10);
-  const st = list.some((e) => e.status === 'missing') ? 'missing' : (!Number.isFinite(total) || foundQty >= total) ? 'found' : null;
-  return { mobile_status: st, mobile_at: latest.at || null, mobile_by: latest.by || null, mobile_boxes: boxes };
-}
 async function trimMovedMarks(fromBoxNo, cards) {
   let failed = 0;
   const key = String(fromBoxNo);
@@ -811,7 +712,7 @@ async function trimMovedMarks(fromBoxNo, cards) {
       } else continue;
       const boxes = { ...boxEntries(cur) };
       if (!boxes[key]) continue;   // 원래 박스에 기록이 없으면 손댈 것 없음
-      if (keep > 0) boxes[key] = { ...boxes[key], qty: keep }; else delete boxes[key];
+      if (keep > 0) { const f = Math.min(entryFound(boxes[key]), keep); boxes[key] = { ...boxes[key], qty: keep, found: f, status: f >= keep ? 'found' : 'missing' }; } else delete boxes[key];
       const patch = summarizeMarks(boxes, c && c.shareTotal);
       if (Number.isFinite(allocId)) {
         const { error } = await sb.from('rk_cn_shipping').update(patch).eq('id', allocId); if (error) throw error;
