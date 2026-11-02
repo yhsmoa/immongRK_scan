@@ -69,16 +69,22 @@
         .mode .ic{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex:none;background:var(--ink);color:#fff;}
         .mode.inb .ic{background:var(--coral);}
         .mode.mv .ic{background:#3C3489;}
+        .cf-btns{display:flex;flex-direction:column;gap:8px;}
+        .cf-btns .btn{height:56px;font-size:17px;}
+        .kakao-tip{display:none;margin-top:14px;padding:12px 14px;border-radius:14px;background:#FFF4E0;color:#8A5A00;font-size:13.5px;font-weight:600;line-height:1.5;}
+        .kakao-tip.show{display:block;}
+        .kakao-tip button{margin-top:8px;width:100%;height:46px;border:1.5px solid #E0B46A;background:#fff;color:#8A5A00;border-radius:12px;font:inherit;font-size:15px;font-weight:800;}
         /* 위치이동 (2026-11-02) */
-        .locnow{min-height:48px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:8px 12px;border:1.5px solid var(--line);border-radius:14px;background:#fff;font-size:16px;font-weight:900;color:var(--ink);}
-        .locnow.empty{color:var(--muted);font-weight:600;font-size:14px;}
-        .locnow .lb{padding:4px 10px;border-radius:9px;background:#EEEDFE;color:#3C3489;}
-        .locnow .lb small{margin-left:4px;font-size:12px;font-weight:700;color:#6B66C9;}
-        .orow.mv{align-items:flex-start;}
-        .orow.mv .no .locb{display:inline-block;padding:3px 10px;border-radius:9px;background:#EEEDFE;color:#3C3489;font-size:18px;}
-        .orow.mv .meta{white-space:normal;line-height:1.45;margin-top:4px;}
-        .orow.mv .meta .bc{display:block;font-family:ui-monospace,Menlo,monospace;font-weight:700;color:var(--ink2);letter-spacing:.02em;}
-        .orow.mv .prog{margin-top:6px;}
+        .mvcard{display:none;gap:12px;align-items:center;padding:12px;border:1.5px solid var(--line);border-radius:16px;background:#fff;}
+        .mvcard.show{display:flex;}
+        .mvcard .img{flex:none;width:72px;height:72px;border-radius:12px;background:var(--fill);object-fit:cover;display:flex;align-items:center;justify-content:center;color:var(--muted2);overflow:hidden;}
+        .mvcard .img img{width:100%;height:100%;object-fit:cover;display:block;}
+        .mvcard .info{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;}
+        .mvcard .nm{font-size:14px;font-weight:700;color:var(--ink);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+        .mvcard .bc{font-size:14px;font-weight:600;color:var(--ink2);font-family:ui-monospace,Menlo,monospace;letter-spacing:.02em;}
+        .mvcard .tot{font-size:14px;font-weight:700;color:var(--muted);}
+        .mvcard .tot b{font-size:18px;font-weight:900;color:var(--coral-dark);margin:0 2px;}
+        .orow.mv .no{font-size:20px;font-weight:900;color:#3C3489;}
         .orow.mv.sel{border-color:var(--coral);background:var(--coral-tint);}
         .orow.mv.sel .prog{background:var(--coral);color:#fff;}
         .mv-bottom .act{flex:1;}
@@ -87,8 +93,8 @@
         .loc-pad button.wide{grid-column:span 2;}
         #mvsBack .mv-keep{letter-spacing:.06em;font-family:ui-monospace,Menlo,monospace;}
         #mvsBack .mv-keep.bad{border-color:#D97706;background:#FFFBEB;color:#B45309;}
-        .mvs-item{font-size:13.5px;font-weight:700;color:var(--ink2);margin:0 2px 10px;line-height:1.45;}
-        .mvs-item b{color:#3C3489;}
+        .mvs-item{font-size:14px;font-weight:600;color:var(--ink2);margin:0 2px 10px;line-height:1.5;}
+        .mvs-item b{color:#3C3489;font-weight:900;}
         .mode .tx{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
         .mode .tx b{font-size:21px;font-weight:900;letter-spacing:-.01em;}
         .mode .tx small{font-size:13px;color:var(--muted);font-weight:500;line-height:1.45;}
@@ -386,6 +392,7 @@
                     <span class="go"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-r"/></svg></span>
                 </button>
             </div>
+            <div class="kakao-tip" id="kakaoTip">카카오톡 안에서 열면 카메라 스캔이 안 될 수 있어요. 사진 찍기로 읽거나, 크롬·사파리로 열어 주세요.<button onclick="openExternal()">크롬 / 사파리로 열기</button></div>
         </div>
     </section>
 
@@ -467,9 +474,9 @@
                 <button class="cam" onclick="openCam('mvBarcode')" title="카메라로 바코드 스캔" aria-label="카메라로 바코드 스캔"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-scan"/></svg></button>
             </div>
             <button class="btn primary" style="height:54px;font-size:17px" onclick="mvLookup()">확인</button>
-            <div class="field"><span class="lab">현재 위치</span><div class="locnow empty" id="mvLocNow">바코드를 확인하면 위치가 나옵니다</div></div>
+            <div class="mvcard" id="mvCard"><div class="img" id="mvImg"></div><div class="info"><div class="nm" id="mvName"></div><div class="bc" id="mvBc"></div><div class="tot" id="mvTot"></div></div></div>
             <div class="olist">
-                <div class="sub"><span id="mvListSub">재고 목록</span><span id="mvName" style="font-weight:600;color:var(--ink2);max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span></div>
+                <div class="sub"><span id="mvListSub">재고 위치</span></div>
                 <div id="mvList" style="display:flex;flex-direction:column;gap:8px"><div class="empty">옮길 상품의 바코드를 입력하세요.</div></div>
             </div>
         </div>
@@ -502,6 +509,19 @@
         <video id="camVideo" playsinline muted autoplay></video>
         <div class="guide"></div>
         <div class="cam-top"><span id="camHint">발주서 바코드를 맞춰 주세요</span><button onclick="closeCam()">닫기</button></div>
+    </div>
+    <!-- 사진 찍어서 읽기 — 실시간 카메라가 안 되는 폰(카카오톡 인앱·아이폰 웹뷰). OS 카메라 앱으로 한 장 찍으면 그 사진에서 바코드를 읽는다 (2026-11-02) -->
+    <input type="file" id="camPhoto" accept="image/*" capture="environment" style="display:none" onchange="decodePhoto(this.files[0]);this.value=''">
+    <div class="sz-back" id="cfBack" onclick="if(event.target.id==='cfBack')closeCamFail()">
+        <div class="sz-sheet" role="dialog" aria-labelledby="cfTitle">
+            <h2 id="cfTitle">카메라를 열 수 없어요</h2>
+            <p id="cfMsg"></p>
+            <div class="cf-btns">
+                <button class="btn primary" onclick="closeCamFail();openPhotoScan()">📷 사진 찍어서 읽기</button>
+                <button class="btn" id="cfExt" style="display:none" onclick="openExternal()">크롬 / 사파리로 열기</button>
+                <button class="btn ghost" onclick="closeCamFail()">닫기 · 번호 직접 입력</button>
+            </div>
+        </div>
     </div>
 
     <!-- 입고일자 확인 — 발주서(또는 박스)에 여러 입고코드의 가상 분량이 섞여 있으면 [확인] 을 눌러야 카드로 들어간다 -->
@@ -574,6 +594,7 @@
         const $=id=>document.getElementById(id);
         const ICON=(id,size,sw)=>`<svg width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${sw||2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#${id}"/></svg>`;
         const LS={worker:'mobileInbound.worker', sel:'mobileInbound.sel'};
+        const IS_KAKAO=/KAKAOTALK/i.test(navigator.userAgent), IS_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent);   // 인앱 브라우저 판별 (카메라 대체 경로용, 2026-11-02)
         let shipments=[], sel={y:'',m:'',code:''};   // 1화면 휠 선택값 (휠이 보일 때만 바뀐다)
         let active={code:''};                          // [다음] 을 누른 시점의 출고코드 — 2·3화면은 이것만 쓴다
         let orders=[], curOrder=null, rows=[], idx=0;
@@ -651,6 +672,7 @@
         bindWheel($('wMonth'), v=>{ if(v===sel.m) return; sel.m=v; sel.code=''; refillCodes(); });
         bindWheel($('wCode'), v=>{ sel.code=v; refillCodes(true); });
 
+        if(IS_KAKAO){ document.addEventListener('DOMContentLoaded',()=>{ const t=$('kakaoTip'); if(t) t.classList.add('show'); }); if(document.readyState!=='loading'){ const t=$('kakaoTip'); if(t) t.classList.add('show'); } }
         async function init(){
             try{ $('worker').value=localStorage.getItem(LS.worker)||''; const s=JSON.parse(localStorage.getItem(LS.sel)||'{}'); if(s&&typeof s==='object') sel={...sel,...s}; }catch(_){}
             try{
@@ -685,7 +707,8 @@
             $('mvTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">위치이동</b><small>${esc(worker())}</small>`;
             show('s4'); setTimeout(()=>$('mvBarcode').focus(),50);
         }
-        function mvReset(){ mvRows=[]; mvSel=null; mvBarcodeCur=''; $('mvBarcode').value=''; $('mvName').textContent=''; renderMvList(); setTimeout(()=>$('mvBarcode').focus(),50); }
+        let mvInfo={name:'',img:null};
+        function mvReset(){ mvRows=[]; mvSel=null; mvBarcodeCur=''; mvInfo={name:'',img:null}; $('mvBarcode').value=''; renderMvList(); setTimeout(()=>$('mvBarcode').focus(),50); }
         async function mvLookup(bc){
             const barcode=String(bc!=null?bc:$('mvBarcode').value||'').trim();
             if(!barcode){ toast('상품 바코드를 입력하세요.'); $('mvBarcode').focus(); return; }
@@ -694,20 +717,24 @@
             try{
                 const res=await fetch('/api/stocks/by-barcode?barcode='+encodeURIComponent(barcode),{cache:'no-store'});
                 const d=await res.json(); if(!res.ok) throw new Error(d.error||'조회 실패');
-                mvRows=d.rows||[]; mvSel=null; mvBarcodeCur=barcode;
-                $('mvName').textContent=d.name||'';
+                mvRows=d.rows||[]; mvSel=null; mvBarcodeCur=barcode; mvInfo={name:d.name||'',img:d.img||null};
                 if(!mvRows.length){ playWarn(); toast(`${barcode} — 재고가 없습니다.`); } else playOk();
                 renderMvList();
             }catch(e){ playWarn(); toast(e.message); mvRows=[]; mvSel=null; renderMvList(); }
         }
         function renderMvList(){
-            const now=$('mvLocNow');
-            if(!mvRows.length){ now.className='locnow empty'; now.textContent=mvBarcodeCur?'재고 없음':'바코드를 확인하면 위치가 나옵니다'; }
-            else{ now.className='locnow'; now.innerHTML=mvRows.map(r=>`<span class="lb">${esc(r.location||'(위치 없음)')}<small>${r.qty}개</small></span>`).join(''); }
-            $('mvListSub').textContent=mvRows.length?`재고 ${mvRows.length}곳 · ${mvRows.reduce((s,r)=>s+r.qty,0)}개`:'재고 목록';
+            // 상품 카드: 이미지 · 상품명 · 바코드 · 전체 수량 (바코드를 확인한 뒤에만)
+            const card=$('mvCard'), total=mvRows.reduce((s,r)=>s+r.qty,0);
+            if(mvBarcodeCur){
+                card.classList.add('show');
+                $('mvImg').innerHTML=mvInfo.img?`<img src="${esc(mvInfo.img)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML=ICON('i-img',28,1.6)">`:ICON('i-img',28,1.6);
+                $('mvName').textContent=mvInfo.name||'(상품명 없음)';
+                $('mvBc').textContent=mvBarcodeCur;
+                $('mvTot').innerHTML=mvRows.length?`전체 <b>${total}</b>개 · ${mvRows.length}곳`:'재고 없음';
+            } else card.classList.remove('show');
+            $('mvListSub').textContent=mvRows.length?`재고 위치 ${mvRows.length}곳 — 옮길 위치를 고르세요`:'재고 위치';
             $('mvList').innerHTML=mvRows.length?mvRows.map(r=>`<div class="orow mv ${mvSel===r.id?'sel':''}" onclick="mvPick(${r.id})">
-                    <div class="body"><div class="no"><span class="locb">${esc(r.location||'(위치 없음)')}</span></div>
-                    <div class="meta">${esc(r.name||'')}<span class="bc">${esc(mvBarcodeCur)}</span></div></div>
+                    <div class="body"><div class="no">${esc(r.location||'(위치 없음)')}</div></div>
                     <span class="prog">${r.qty}개</span></div>`).join('')
                 :`<div class="empty">${mvBarcodeCur?'이 바코드의 재고가 없습니다.':'옮길 상품의 바코드를 입력하세요.'}</div>`;
             $('mvGoBtn').disabled=mvSel==null;
@@ -720,7 +747,7 @@
         function openMoveSheet(){
             const r=mvRows.find(x=>x.id===mvSel); if(!r){ toast('옮길 재고를 목록에서 고르세요.'); return; }
             mvsVal=''; $('mvsLoc').value='';
-            $('mvsItem').innerHTML=`<b>${esc(r.location||'(위치 없음)')}</b> 의 ${esc(r.name||'')} <b>${r.qty}개</b><br><span style="font-family:ui-monospace,monospace">${esc(mvBarcodeCur)}</span>`;
+            $('mvsItem').innerHTML=`<b>${esc(r.location||'(위치 없음)')}</b> 에 있는 <b>${r.qty}개</b> · ${esc(mvInfo.name||'')}`;
             $('mvsPad').innerHTML=LOC_KEYS.map(k=>`<button type="button" class="${k==='A'||k==='B'?'ab':k==='⌫'||k==='C'?'fn':''}${k==='C'?' wide':''}" onclick="mvsKey('${k}')">${k==='C'?'지우기':k}</button>`).join('');
             renderMvs();
             $('mvsBack').classList.add('show');
@@ -1425,9 +1452,55 @@
             if(!parseOrderCode(raw)) return false;          // 발주번호 형식이 아니면 계속 찾는다
             closeCam(); goOrderInput(raw); return true;   // 박스 라벨 → 바로 진행 · 발주번호 → 목록 검색 (2026-10-21)
         }
+        // 인앱 브라우저 판별 · 외부 브라우저로 열기 (카카오톡은 kakaotalk://web/openExternal 로 시스템 브라우저를 띄울 수 있다)
+        function openExternal(){
+            const url=location.href;
+            if(IS_KAKAO){ location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(url); return; }
+            try{ navigator.clipboard&&navigator.clipboard.writeText(url); }catch(_){}
+            toast('주소를 복사했어요. 크롬이나 사파리를 열어 붙여넣기 하세요.');
+        }
+        function showCamFail(msg){
+            $('cfMsg').textContent=msg||'';
+            $('cfExt').style.display=IS_KAKAO?'':'none';
+            $('cfBack').classList.add('show');
+        }
+        function closeCamFail(){ $('cfBack').classList.remove('show'); }
+        // 사진 찍어서 읽기 — OS 카메라 앱(모든 인앱 브라우저에서 됨) → 사진 1장 → BarcodeDetector 또는 ZXing 으로 해독
+        function openPhotoScan(target){ if(target) camTarget=target; $('camPhoto').click(); }
+        async function decodePhoto(file){
+            if(!file) return;
+            toast('사진에서 바코드를 읽는 중…');
+            let url=null;
+            try{
+                url=URL.createObjectURL(file);
+                let text=null;
+                if('BarcodeDetector' in window){
+                    try{
+                        const bmp=await createImageBitmap(file, {resizeWidth:1600, resizeQuality:'high'}).catch(()=>createImageBitmap(file));
+                        const codes=await new BarcodeDetector({formats:CAM_FORMATS}).detect(bmp);
+                        if(codes&&codes.length) text=codes[0].rawValue;
+                    }catch(_){}
+                }
+                if(!text){
+                    await loadZXing();
+                    const Z=window.ZXing, hints=new Map();
+                    hints.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.CODE_128,Z.BarcodeFormat.CODE_39,Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.QR_CODE,Z.BarcodeFormat.ITF]);
+                    hints.set(Z.DecodeHintType.TRY_HARDER,true);
+                    const r=await new Z.BrowserMultiFormatReader(hints).decodeFromImageUrl(url);
+                    text=r&&r.getText();
+                }
+                if(!text) throw new Error('바코드를 찾지 못했습니다');
+                if(!onCamCode(text)){ playWarn(); toast(`읽은 값: ${text} — 이 화면에서 쓰는 번호 형식이 아니에요.`); }
+            }catch(e){
+                playWarn(); reportClientError('photo',e&&e.message||String(e));
+                showCamFail('사진에서 바코드를 읽지 못했어요. 바코드가 화면에 크고 선명하게 나오게 다시 찍어 주세요.');
+            }finally{ if(url) URL.revokeObjectURL(url); }
+        }
         async function openCam(target){
             camTarget=target||'order';
             const v=$('camVideo');
+            // 실시간 카메라(getUserMedia)가 없는 브라우저 — 아이폰 카카오톡 인앱 등 → 바로 사진 찍기
+            if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){ reportClientError('cam','getUserMedia 없음'); openPhotoScan(); return; }
             try{
                 if(await nativeDetectorOk()){
                     camStream=await navigator.mediaDevices.getUserMedia({video:CAM_VIDEO,audio:false});
@@ -1441,7 +1514,14 @@
                     return;
                 }
                 await openCamZXing(v);
-            }catch(e){ stopCam(); toast('카메라를 열 수 없습니다: '+(e&&e.message||e)); }
+            }catch(e){ stopCam(); camFailed(e); }
+        }
+        // 실시간 카메라 실패 — 사유를 서버에 남기고(어느 폰에서 왜 안 되는지), 사진 찍기 / 외부 브라우저 안내
+        function camFailed(e){
+            const m=e&&e.message||String(e||'');
+            reportClientError('cam',(e&&e.name?e.name+': ':'')+m);
+            const why=/NotAllowed|Permission|denied/i.test(m+(e&&e.name))?'카메라 권한이 꺼져 있어요.':/NotFound|no camera|Requested device/i.test(m+(e&&e.name))?'카메라를 찾지 못했어요.':/내려받지/.test(m)?m:IS_KAKAO?'카카오톡 안에서는 카메라가 막혀 있을 때가 많아요.':'카메라를 열 수 없어요. ('+m+')';
+            showCamFail(why+' 아래 방법으로 계속할 수 있어요.');
         }
         // 아이폰(WebKit) 등 내장 인식기가 없거나 1D 를 못 읽는 경우: ZXing
         async function openCamZXing(v){
@@ -1459,7 +1539,7 @@
                     if(result && zxReader) onCamCode(result.getText());
                     // err 는 "이 프레임엔 바코드 없음" 이 대부분 — 무시하고 계속
                 });
-            }catch(e){ stopCam(); toast('카메라를 열 수 없습니다: '+(e&&e.message||e)); }
+            }catch(e){ stopCam(); camFailed(e); }
         }
         function stopCam(){
             clearInterval(camTimer); camTimer=null;
