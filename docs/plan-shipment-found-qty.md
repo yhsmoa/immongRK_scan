@@ -52,19 +52,19 @@
 | **확인 수량** | 실제 스캔 + 가상확인 = 지금 실제로 박스에 있는 수량 | 계산 |
 | **부족** | 가상 − 가상확인 (표시가 끝난 상품만) | 계산 |
 
-### 1-2. 데이터 (DB)
-`rk_cn_shipping`(입고 배정) · `rk_shipping_list`(재고 배정, source='재고') 두 테이블 공통:
+### 1-2. 데이터 (DB) — 구현 기준 (2026-11-02)
+`rk_cn_shipping`(입고 배정) · `rk_shipping_list`(재고 배정, source='재고' / 입고 미러) 두 테이블 공통 — **새 열 없음**:
 
 ```
-mobile_boxes      jsonb  { "<박스번호>": { found: <찾은 수량 0..qty>, qty: <그 박스 몫>, by, at } }   -- "0" = 박스 미정
-mobile_found_qty  int    Σ found (신규 열) · NULL = 아직 아무 입력 없음
-mobile_status     text   NULL(미입력) | 'found'(Σfound ≥ 몫 합) | 'short'(그 외, 0 포함)   -- 예전 'missing' 은 'short' 로
-mobile_at / mobile_by  그대로 (마지막 입력)
+mobile_boxes   jsonb  { "<박스번호>": { found: <찾은 수량 0..qty>, qty: <그 박스 몫>, status: 'found'|'missing', by, at } }   -- "0" = 박스 미정
+mobile_status  text   NULL(미입력) | 'found'(모든 박스 찾은 수 ≥ 몫) | 'missing'(하나라도 부족)   -- 예전 이름 그대로 ('short' 는 안 만들었다)
+mobile_at / mobile_by  마지막 입력
 ```
-- 기존 기록 변환(1회 SQL + 스크립트): 항목 `status:'found'` → `found = qty`, `status:'missing'` → `found = 0`; 행 `mobile_status='missing'` → `'short'`; `mobile_found_qty` 채움. 코드에서도 `found` 가 없는 예전 항목은 같은 규칙으로 읽는다(배포 사이 안전).
-- 판정 열쇠는 **(발주번호, 바코드, 박스번호)**. 한 박스 상품(`rk_ship_box_items`, `virtual_codes {코드: n}`)은 입고코드별 행 여러 개에 걸칠 수 있으므로 같은 박스 번호의 `found` 를 합산한다 (예: 145782435 2번 R236078420011 = 1021행 13 + 1025행 3).
+- 기존 기록은 **변환하지 않는다**. `found` 가 없는 항목은 읽을 때 status 로 본다: found → 몫 전부, missing → 0 (`rkMarks.entryFound`). 행 요약만 있는 예전 행(mobile_boxes 없음)은 행 전체가 입력된 것으로 본다.
+- 판정 열쇠는 **(발주번호, 바코드, 박스번호)** — `rkMarks.boxFoundMap` 이 모바일 [전체] 모드와 같은 행·배정(assignVirtualBoxes)으로 다시 계산한다. 배정 행이 없는 가상 분량(orphan)은 0개 입력된 것으로 본다.
 
-`rk_ship_boxes`: `shipped_at timestamptz` (신규) — [출고완료] 시각. `shipped_by` 는 /shipment 에 작업자 입력이 없어 두지 않는다.
+`rk_ship_boxes.shipped_at timestamptz` (supabase/rk_ship_boxes_shipped_at.sql) — [출고완료] 시각.
+내보내기 이력 `rk_export_log_items.confirmed_qty` 는 2026-11-02 부터 **확인수량**(그 전 행은 담은 수량) — 열은 안 늘렸다.
 
 ### 1-3. 판정 (routes/rkShared.js — 모든 화면이 이 하나를 쓴다)
 `mobileFoundByBox(orderNumbers)` → `Map("발주번호|바코드" → { byBox: { 박스번호: { found, qty, marked:true } }, row: { found, marked, legacy:true|false } })`

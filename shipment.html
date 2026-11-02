@@ -647,7 +647,7 @@
             const cnt={전체:0,미진행:0,진행:0,완료:0};
             if(orderMode==='seq'){ for(const o of live) for(const b of o.boxes) if(b.seq!=null&&boxPass(b)){ cnt.전체++; cnt[boxTab(b)]=(cnt[boxTab(b)]||0)+1; } }
             else for(const o of live) if(o.boxes.some(boxPass)){ cnt.전체++; cnt[o.ostate]=(cnt[o.ostate]||0)+1; }
-            const shipN=shippedOrders?(orderMode==='seq'?shippedOrders.reduce((s,o)=>s+o.boxes.filter(boxPass).length,0):shippedOrders.length):null;
+            const shipN=shippedOrders?(orderMode==='seq'?shippedOrders.reduce((s,o)=>s+o.boxes.filter(boxPass).length,0):shippedOrders.filter(o=>o.boxes.some(boxPass)).length):null;
             document.querySelectorAll('#tabSeg button').forEach(btn=>{
                 const t=btn.dataset.tab; btn.classList.toggle('on',t===tab);
                 const n=t==='출고'?shipN:cnt[t];
@@ -1015,7 +1015,7 @@
         //   계속이면 그 박스들의 미입력 몫을 0개(부족)로 기록하고 목록을 다시 읽은 뒤 true. 확인수량이 0 이 되는 박스는 파일에서 빠진다
         let pendingResolve=null;
         function pendingAnswer(ok){ document.getElementById('pdBack').classList.remove('show'); const r=pendingResolve; pendingResolve=null; if(r) r(ok); }
-        async function ensureInput(sel,boxes,what){
+        async function ensureInput(sel,boxes,what,again){
             let j;
             try{
                 const res=await fetch('/api/shipment/pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderNumbers:sel, boxes})});
@@ -1026,6 +1026,8 @@
                 return true;
             }
             const pd=j.pending;
+            // 0개 처리를 했는데도 남아 있으면(폰에서 입력할 카드가 없는 분량 등) 여기서 멈춘다 — 같은 모달이 끝없이 뜨지 않게
+            if(again){ toast(`0개 처리 뒤에도 미입력 상품 ${pd.length}개가 남아 있습니다: ${pd.slice(0,5).map(p=>`${p.orderNumber}-${p.boxNo} ${p.barcode}`).join(', ')}${pd.length>5?' …':''}\n모바일 입고에서 확인해 주세요.`); return false; }
             const boxSet=[...new Set(pd.map(p=>`${p.orderNumber}|${p.boxNo}`))];
             // 0개로 처리하면 통째로 빠지는 박스 = 지금 확인수량(실제 + 이미 찾은 수)이 0 인 박스
             const drop=boxSet.filter(k=>{ const b=findBox(keyToBox(k)); return b && b.okQty<=0; }).map(k=>k.replace('|','-'));
@@ -1043,7 +1045,7 @@
                 const z=await res.json(); if(!res.ok) throw new Error(z.error||'0개 처리 실패');
                 toast(`미입력 ${pd.length}개를 0개(부족)로 처리했습니다.`);
                 await loadOrders();
-                return true;
+                return await ensureInput(sel,boxes,what,true);   // 한 번 더 확인 — 남은 게 없어야 파일을 만든다
             }catch(e){ toast('0개 처리 실패: '+e.message); return false; }
             finally{ btn.disabled=false; }
         }
@@ -1176,10 +1178,12 @@
         }
         // 출력: 체크한 박스가 있으면 그것만, 없으면 순서 있는 박스 전부 (서버가 rk_ship_seq 로 다시 거른다 — 순서 없는 박스는 나가지 않는다)
         async function printDocs(kind){
+            const list=targetBoxes();
+            if(!list.length){ toast('출력할 박스가 없습니다. (체크하거나 화면에 보이는 박스가 대상)'); return; }
             const btn=document.getElementById(kind==='label'?'printLabelBtn':'printManifestBtn'); btn.disabled=true;
             const name=kind==='label'?'부착문서':'동봉문서';
             try{
-                const res=await fetch('/api/shipment/docs/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind, boxes:targetBoxes()})});
+                const res=await fetch('/api/shipment/docs/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind, boxes:list})});
                 if(!res.ok){ let j={}; try{ j=await res.json(); }catch(_){} throw new Error((j.error||'출력 실패')+(j.missing&&j.missing.length?`\n서류 없음: ${j.missing.join(', ')}`:'')); }
                 const blob=await res.blob();
                 const cd=res.headers.get('Content-Disposition')||''; const m=cd.match(/filename=(.+)$/);

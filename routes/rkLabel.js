@@ -301,13 +301,14 @@ router.post('/api/label/order-boxes', async (req, res) => {
     for (const no of orderNumbers) {
       const h = headerByNo.get(no);
       if (!h) { notFound.push(no); continue; }
-      // 출고완료 박스는 라벨을 다시 뽑지 않는다 (순번·박스 수 계산에서도 뺀다, 2026-11-02)
+      // 순번(bx_seq)·박스 수(po_box_count)는 출고완료 박스까지 포함한 전체 기준 — CJ 엑셀의 "총 M박스" 와 같은 수 (2026-11-02)
       const full = (boxesByOrder.get(no) || [])
-        .filter((b) => sumByBox.has(b.id) && !b.shipped_at)
+        .filter((b) => sumByBox.has(b.id))
         .sort((a, b) => ((parseInt(a.box_no, 10) || 0) - (parseInt(b.box_no, 10) || 0)) || (a.id - b.id));
       // 이미 뽑힌 박스 제외 — 순번(bx_seq)·박스 수(po_box_count)는 전체 박스 기준으로 유지한다 (3/5 처럼 실제 자리)
-      const list0 = pick ? full.filter((b) => pick.has(`${no}|${parseInt(b.box_no, 10)}`)) : full;   // 체크한 박스만
-      if (pick && !list0.length) continue;
+      // 출고완료 박스는 라벨을 다시 뽑지 않는다 · 체크한 박스만(pick) (2026-11-02)
+      const list0 = full.filter((b) => !b.shipped_at && (!pick || pick.has(`${no}|${parseInt(b.box_no, 10)}`)));
+      if (!list0.length && full.length) { allPrinted.push(no); continue; }   // 전부 출고됐거나 체크한 박스가 없음
       const list = skipPrinted
         ? list0.filter((b) => { const r = alreadyPrinted(b, sumByBox.get(b.id)); if (r) skipped.push({ orderNo: no, boxNo: b.box_no, reason: r }); return !r; })
         : list0;

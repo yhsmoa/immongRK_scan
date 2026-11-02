@@ -135,7 +135,8 @@ function assignVirtualBoxes(rows, virtualByBc) {
       if (take > 0) assigned.push({ boxNo: b.boxNo, boxSize: b.boxSize, qty: b.boxQty, virtualQty: take });
     }
     return assigned;
-  });}
+  });
+}
 
 // 카드 순서(동선): 입고 먼저(가상스캔이 담는 순서) › 입고코드(오래된 것 먼저) › 박스명 / 위치 › id. 박스 번호 정렬은 배정 뒤에 한다
 //   extra(list): (선택) 첫 조회 결과로 함께 돌릴 조회 — 2단계 조회와 동시에 실행된다 (all-orders 의 무게 조회, 왕복 1회 절약)
@@ -231,6 +232,7 @@ async function boxFoundMap(orderNumbers) {
 //     confirmed(납품수량) = (qty − virtual) + found
 function boxReadiness(boxes, items, fm) {
   const map = (fm && fm.map) || new Map();
+  const orphan = (fm && fm.orphan) || new Map();
   const byBox = new Map();
   for (const it of items || []) {
     if (!byBox.has(it.box_id)) byBox.set(it.box_id, new Map());
@@ -247,9 +249,13 @@ function boxReadiness(boxes, items, fm) {
     for (const [bc, v] of its) {
       const it = { qty: v.qty, virtual: Math.min(v.virtual, v.qty), marked: 0, found: 0, state: 'real' };
       if (it.virtual > 0) {
-        const f = map.get(`${b.order_number}|${bc}|${b.box_no}`);
+        const key = `${b.order_number}|${bc}|${b.box_no}`;
+        const f = map.get(key);
         it.marked = Math.min(it.virtual, f ? f.marked : 0);
         it.found = Math.min(it.marked, f ? f.found : 0);
+        // 배정 행이 없어 카드가 안 뜨는 분량(orphan: 배정이 줄었는데 가상 박스는 그대로) — 찾을 길이 없으니 0개(부족)로 입력된 것으로 본다
+        const orph = Math.min(it.virtual - it.marked, orphan.get(key) || 0);
+        if (orph > 0) { it.marked += orph; it.orphan = orph; }
         it.state = it.marked <= 0 ? 'none' : it.marked < it.virtual ? 'part' : it.found >= it.virtual ? 'found' : 'short';
         if (it.marked > 0) anyMark = true;
         res.vsum += it.virtual; res.total++; res.found += it.found;

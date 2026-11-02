@@ -756,7 +756,7 @@
                 if(!rows.length){
                     playWarn();
                     if(curBox===0) toast(`발주서 ${curOrder} 에 박스 미정 상품이 없습니다. (전부 가상 박스에 잡힘)`);
-                    else if(curBox!=null) toast(d.boxExists===false?`발주서 ${curOrder} 에 📦${curBox} 박스가 없습니다.`:mode==='all'?`📦${curBox} 에 가상으로 담긴 상품이 없습니다. (이미 실제로 담았음)`:`📦${curBox} 에 가상으로 담긴 입고코드 ${active.code} 상품이 없습니다. (이미 찾았거나 다른 입고코드)`);
+                    else if(curBox!=null) toast(d.shipped?`📦${curBox} 는 출고완료된 박스입니다. (쉽먼트에서 나감)`:d.boxExists===false?`발주서 ${curOrder} 에 📦${curBox} 박스가 없습니다.`:mode==='all'?`📦${curBox} 에 가상으로 담긴 상품이 없습니다. (이미 실제로 담았음)`:`📦${curBox} 에 가상으로 담긴 입고코드 ${active.code} 상품이 없습니다. (이미 찾았거나 다른 입고코드)`);
                     else toast(mode==='all'?`발주서 ${curOrder} 에 출고예정 배정(재고·입고)이 없습니다.`:`입고코드 ${active.code} 에 발주서 ${curOrder} 배정이 없습니다.`);
                     backToPick(); return;
                 }

@@ -408,6 +408,8 @@ router.get('/api/inbound/mobile-list', async (req, res) => {
       out.push({ ...r, img: img[r.바코드] || null, boxes: mine, shareTotal, 재고위치: stockLocs[r.바코드] || [] });
     });
     // mixed: 입고코드가 둘 이상 섞인 발주서/박스면 { codes, boxes } — 화면이 카드 진입 전에 "입고일자 확인" 모달을 띄운다 (2026-10-15)
+    // 출고완료 박스 (2026-11-02): 카드를 주지 않는다 — 나간 박스에 찾음을 적으면 쉽먼트 숫자와 어긋난다
+    if (boxNo > 0 && ((vb[orderNumber] || {}).shipped || new Set()).has(boxNo)) return res.json({ rows: [], boxNo, boxExists, shipped: true, mixed: null });
     res.json({ rows: out, boxNo, boxExists, mixed: mixedInboundCodes(vb[orderNumber], boxNo) });
   } catch (e) {
     console.error('[rk] inbound/mobile-list:', e);
@@ -545,6 +547,8 @@ router.get('/api/mobile/all-list', async (req, res) => {
     });
     // 박스 번호 순 → 같은 박스 안은 위 동선 순서 그대로 (stable sort)
     out.sort((a, b) => firstBoxNo(a.boxes) - firstBoxNo(b.boxes));
+    // 출고완료 박스 (2026-11-02): 카드를 주지 않는다 — 나간 박스에 찾음을 적으면 쉽먼트 숫자와 어긋난다
+    if (boxNo > 0 && ((vb[orderNumber] || {}).shipped || new Set()).has(boxNo)) return res.json({ rows: [], boxNo, boxExists, shipped: true, mixed: null });
     res.json({ rows: out, boxNo, boxExists, mixed: mixedInboundCodes(vb[orderNumber], boxNo) });
   } catch (e) {
     console.error('[rk] mobile/all-list:', e);

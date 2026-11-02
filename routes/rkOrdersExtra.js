@@ -29,9 +29,9 @@ async function shipScanOrders(orderNumbers, opts) {
   const hasShip = await M.hasShippedCol();
   const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty' + (hasShip ? ', shipped_at' : '');
   let all;
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();   // [출고] 탭: 최근 30일에 출고된 박스만 (발주서가 아니라 박스 단위)
   if (o.shipped) {
     if (!hasShip) return [];
-    const since = new Date(Date.now() - 30 * 86400000).toISOString();
     const shippedRows = await S.pageAll(() => S.supabase.from('rk_ship_boxes').select('order_number').gte('shipped_at', since).order('id', { ascending: true }));
     const nos = [...new Set(shippedRows.map((r) => String(r.order_number)))];
     all = nos.length ? await S.listOrdersFull('rk_orders', 'rk_order_items', { orderNumbers: nos }) : [];
@@ -102,7 +102,7 @@ async function shipScanOrders(orderNumbers, opts) {
       const box = boxById.get(it.box_id);
       if (!box) continue;
       const shipped = !!box.shipped_at;
-      if (o.shipped ? !shipped : shipped) continue;
+      if (o.shipped ? (!shipped || String(box.shipped_at) < since) : shipped) continue;
       if (pickBoxes && !pickBoxes.has(`${order.발주번호}|${box.box_no}`)) continue;
       const qty = parseInt(it.qty) || 0;
       if (qty <= 0) continue;
@@ -151,14 +151,15 @@ async function shipScanOrders(orderNumbers, opts) {
 // 미입력 상품 목록 — 쉽먼트 저장·CJ 엑셀 전에 "아직 처리가 안 된 데이터" 를 보여 주고 0개 처리를 묻는다 (2026-11-02)
 //   orders: shipScanOrders 결과 → [{ orderNumber, boxNo, boxSize, barcode, name, qty(담은), virtualQty, pendingQty(입력 안 된 가상), found }]
 function pendingItems(orders) {
-  const out = [];
+  const m = new Map();   // 같은 (발주서, 박스, 바코드) 행이 둘이면 한 줄로 합친다 (수량은 합, 찾은 수는 첫 행에만 있다)
   for (const order of orders) for (const p of order.상품정보) {
     if (p.입력상태 !== 'none' && p.입력상태 !== 'part') continue;
     const [boxNo, ...sz] = String(p.박스정보).split('-');
-    out.push({ orderNumber: order.발주번호, boxNo: parseInt(boxNo, 10), boxSize: sz.join('-'), barcode: p.상품바코드, name: p.상품이름,
-      qty: p.스캔수량, virtualQty: p.가상수량, found: p.찾은수량 });
+    const k = `${order.발주번호}|${boxNo}|${p.상품바코드}`;
+    const o = m.get(k) || m.set(k, { orderNumber: order.발주번호, boxNo: parseInt(boxNo, 10), boxSize: sz.join('-'), barcode: p.상품바코드, name: p.상품이름, qty: 0, virtualQty: 0, found: 0 }).get(k);
+    o.qty += p.스캔수량; o.virtualQty += p.가상수량; o.found += p.찾은수량;
   }
-  return out;
+  return [...m.values()];
 }
 // 박스별 확인수량 합 — 0 이면 그 박스는 파일에서 빠진다
 function confirmedByBox(order) {
@@ -392,8 +393,13 @@ router.post('/api/shipment/ship', async (req, res) => {
       if (eS) throw eS;
     }
     const nos = [...new Set(boxes.map((b) => b.orderNumber))];
-    const all = await S.chunked(nos, 200, (p) => S.pageAll(() => S.supabase.from('rk_ship_boxes').select('order_number, shipped_at').in('order_number', p).order('id', { ascending: true })));
-    const doneOrders = nos.filter((no) => { const l = all.filter((b) => String(b.order_number) === no); return l.length && l.every((b) => b.shipped_at); });
+    // 발주서의 "모든 박스" = 상품이 담긴 박스 (출고스캔 재저장은 아이템만 지우고 박스 행은 남기므로 빈 박스 행은 세지 않는다)
+    const [all, filledRows] = await Promise.all([
+      S.chunked(nos, 200, (p) => S.pageAll(() => S.supabase.from('rk_ship_boxes').select('id, order_number, shipped_at').in('order_number', p).order('id', { ascending: true }))),
+      S.chunked(nos, 200, (p) => S.pageAll(() => S.supabase.from('rk_ship_box_items').select('box_id').gt('qty', 0).in('order_number', p).order('id', { ascending: true }))),
+    ]);
+    const filled = new Set(filledRows.map((r) => r.box_id));
+    const doneOrders = nos.filter((no) => { const l = all.filter((b) => String(b.order_number) === no && filled.has(b.id)); return l.length && l.every((b) => b.shipped_at); });
     if (doneOrders.length) {
       const { error } = await S.supabase.from('rk_orders').update({ status: 'DONE' }).in('order_number', doneOrders);
       if (error) throw error;
