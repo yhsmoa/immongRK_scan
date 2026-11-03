@@ -910,12 +910,12 @@
                 // 스캔·모바일 입력이 그사이 바뀌었을 수 있어 최신 목록으로 다시 그린다
                 allOrders=await fetchOrders(false);
                 applySearch(true);
-                // 체크한 박스만(순서대로 보기) · 확인수량 0 인 박스는 파일에서 빠지므로 송장번호도 받지 않는다
+                // 체크한 박스만(순서대로 보기) · 스캔수량(실제 + 가상) 0 인 박스는 파일에서 빠지므로 송장번호도 받지 않는다 (2026-11-03)
                 invOrders=allOrders.filter(o=>sel.includes(o.발주번호))
-                    .map(o=>({...o, boxes:o.boxes.filter(b=>(!pickSet||pickSet.has(`${o.발주번호}|${Number(b.no)}`)) && b.okQty>0)}))
+                    .map(o=>({...o, boxes:o.boxes.filter(b=>(!pickSet||pickSet.has(`${o.발주번호}|${Number(b.no)}`)) && b.qty>0)}))
                     .filter(o=>o.boxes.length);
             }catch(e){ toast('발주서 정보를 가져오지 못했습니다: '+e.message); return; }
-            if(!invOrders.length){ toast('선택한 박스에 내보낼 수량(확인수량)이 없습니다.'); return; }
+            if(!invOrders.length){ toast('선택한 박스에 내보낼 수량(스캔수량)이 없습니다.'); return; }
             document.getElementById('invSection').innerHTML=invOrders.map(o=>`
                 <div class="inv-order">
                     <h4>${esc(o.발주번호)}<span>${esc(o.물류센터)} · ${esc(o.입고예정일)}</span></h4>
