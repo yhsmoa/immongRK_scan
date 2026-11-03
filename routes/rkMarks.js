@@ -292,55 +292,9 @@ function orderStateOf(boxStates) {
   return '진행';
 }
 
-// ── 아직 입력 안 된 가상 분량을 0개(부족)로 기록 — 쉽먼트 저장 [0개로 처리하고 계속] ──
-//   targets: [{ orderNumber, boxNo }] — 그 박스의 미입력 몫을 행마다 found 0 으로. 이미 입력한 기록의 찾은 수는 그대로 둔다.
-//   예전 행 요약만 있는 행은 입력된 것으로 보므로 건드리지 않는다. 반환 { written(박스 기록 수), failed(행 수) }
-async function zeroFillUnmarked(targets, worker) {
-  const want = new Set((targets || []).map((t) => `${t.orderNumber}|${parseInt(t.boxNo, 10)}`));
-  const nos = [...new Set((targets || []).map((t) => String(t.orderNumber)))];
-  if (!nos.length) return { written: 0, failed: 0 };
-  const fm = await boxFoundMap(nos);
-  const byRow = new Map();   // 행 → { allocId, listId, shareTotal, marks:[{boxNo, qty}] }
-  for (const [k, v] of fm.map) {
-    const [no, , box] = k.split('|');
-    if (!want.has(`${no}|${box}`)) continue;
-    for (const r of v.rows) {
-      if (r.marked >= r.share) continue;
-      const rk = r.allocId ? `a${r.allocId}` : `l${r.listId}`;
-      const o = byRow.get(rk) || byRow.set(rk, { ...r, marks: [] }).get(rk);
-      o.marks.push({ boxNo: parseInt(box, 10), qty: r.share, found: 0 });
-    }
-  }
-  let written = 0, failed = 0;
-  for (const r of byRow.values()) {
-    try {
-      const table = r.allocId ? 'rk_cn_shipping' : 'rk_shipping_list';
-      const { data, error } = await sb.from(table).select('mobile_boxes').eq('id', r.allocId || r.listId).limit(1);
-      if (error) throw error;
-      if (!data || !data.length) continue;
-      const cur = data[0].mobile_boxes;
-      // 몫 일부만 기록된 박스: 찾은 수는 살리고 몫을 지금 몫으로 맞춘다 (= 나머지는 0개)
-      const e = boxEntries(cur);
-      const marks = r.marks.map((m) => { const old = e[String(m.boxNo)]; return old ? { ...m, found: entryFound(old) } : m; });
-      const patch = markPatch(cur, null, worker, marks, r.shareTotal);
-      if (r.allocId) {
-        const { error: e1 } = await sb.from('rk_cn_shipping').update(patch).eq('id', r.allocId); if (e1) throw e1;
-        const { error: eM } = await sb.from('rk_shipping_list').update(patch).eq('cn_shipping_id', r.allocId); if (eM) throw eM;
-      } else {
-        const { error: e1 } = await sb.from('rk_shipping_list').update(patch).eq('id', r.listId); if (e1) throw e1;
-      }
-      written += r.marks.length;
-    } catch (e) {
-      failed++;
-      console.error('[rk] 미입력 0개 처리 실패(계속):', e.message);
-    }
-  }
-  return { written, failed };
-}
-
 module.exports = {
   boxEntries, entryFound, summarizeMarks, markPatch, marksError,
   loadVirtualBoxes, assignVirtualBoxes, loadAllModeRows,
-  boxFoundMap, boxReadiness, orderStateOf, zeroFillUnmarked,
+  boxFoundMap, boxReadiness, orderStateOf,
   hasShippedCol, SHIPPED_SQL_MSG, hasLabelCol, LABEL_SQL_MSG, hasBoxCol,
 };

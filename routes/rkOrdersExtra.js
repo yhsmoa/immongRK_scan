@@ -18,7 +18,8 @@ const router = express.Router();
 //
 // 수량 (2026-11-02, docs/plan-shipment-found-qty.md):
 //   스캔수량(=담은 수량) = 박스에 담기로 한 수량 (실제 스캔 + 가상) · 가상수량 = 그중 가상스캔
-//   찾은수량 = 가상 분량 중 모바일 입고에서 찾았다고 입력한 수 · 확인수량(=가상확인) = (담은 − 가상) + 찾은 = 쉽먼트 납품수량
+//   찾은수량 = 가상 분량 중 모바일 입고에서 찾았다고 입력한 수 · 확인수량(=가상확인) = (담은 − 가상) + 찾은 — 화면 표시(진행·부족)에만 쓴다
+//   서류(쉽먼트·CJ)의 수량은 언제나 스캔수량이다 (2026-11-03): 가상스캔은 확정수량으로 치고, 모바일 입고 입력 여부는 서류에 영향을 주지 않는다
 //   입력상태 = real(실제 스캔만) · none(미입력) · part(일부 입력) · found(다 찾음) · short(부족)
 //   박스상태 = 실제 · 미진행 · 진행 · 완료 (M.boxReadiness) · 출고시각 = rk_ship_boxes.shipped_at
 // opts.shipped: true → [출고] 탭 — 최근 30일 안에 출고완료된 박스만 (처리완료 발주서 포함)
@@ -147,25 +148,6 @@ async function shipScanOrders(orderNumbers, opts) {
   return result;
 }
 
-// 미입력 상품 목록 — 쉽먼트 저장·CJ 엑셀 전에 "아직 처리가 안 된 데이터" 를 보여 주고 0개 처리를 묻는다 (2026-11-02)
-//   orders: shipScanOrders 결과 → [{ orderNumber, boxNo, boxSize, barcode, name, qty(담은), virtualQty, pendingQty(입력 안 된 가상), found }]
-function pendingItems(orders) {
-  const m = new Map();   // 같은 (발주서, 박스, 바코드) 행이 둘이면 한 줄로 합친다 (수량은 합, 찾은 수는 첫 행에만 있다)
-  for (const order of orders) for (const p of order.상품정보) {
-    if (p.입력상태 !== 'none' && p.입력상태 !== 'part') continue;
-    const [boxNo, ...sz] = String(p.박스정보).split('-');
-    const k = `${order.발주번호}|${boxNo}|${p.상품바코드}`;
-    const o = m.get(k) || m.set(k, { orderNumber: order.발주번호, boxNo: parseInt(boxNo, 10), boxSize: sz.join('-'), barcode: p.상품바코드, name: p.상품이름, qty: 0, virtualQty: 0, found: 0 }).get(k);
-    o.qty += p.스캔수량; o.virtualQty += p.가상수량; o.found += p.찾은수량;
-  }
-  return [...m.values()];
-}
-// 박스별 확인수량 합 — 0 이면 그 박스는 파일에서 빠진다
-function confirmedByBox(order) {
-  const m = new Map();
-  for (const p of order.상품정보) { const no = String(p.박스정보).split('-')[0]; m.set(no, (m.get(no) || 0) + (parseInt(p.확인수량, 10) || 0)); }
-  return m;
-}
 // body.boxes 정리 — [{orderNumber, boxNo}] 또는 null
 function bodyBoxes(v) {
   if (!Array.isArray(v) || !v.length) return null;
@@ -338,41 +320,6 @@ router.get('/api/shipment/orders', async (req, res) => {
   }
 });
 
-// ── 미입력 상품 확인 ([쉽먼트 저장]·[CJ 엑셀] 전에) — body: { orderNumbers, boxes? } → { pending:[…], dropBoxes:[…] } ──
-//   pending = 모바일 입고에서 아직 입력 안 된 가상 상품 (발주서·박스·바코드·상품명·담은 수량)
-//   dropBoxes = 지금 기준으로 확인수량이 0 이라 파일에서 빠질 박스 (미입력이 0 으로 처리되면 더 늘 수 있어 zeroIfPending 으로 다시 계산)
-router.post('/api/shipment/pending', async (req, res) => {
-  try {
-    const { orderNumbers } = req.body;
-    if (!Array.isArray(orderNumbers) || !orderNumbers.length) return res.status(400).json({ error: '발주서를 선택해주세요.' });
-    const orders = await shipScanOrders(orderNumbers, { boxes: bodyBoxes(req.body.boxes) });
-    const pending = pendingItems(orders);
-    // 미입력을 0 으로 보면 빠지는 박스: 박스의 (실제 + 이미 찾은) 합이 0
-    const dropBoxes = [];
-    for (const o of orders) for (const [no, q] of confirmedByBox(o)) if (q <= 0) dropBoxes.push(`${o.발주번호}-${no}`);
-    res.json({ pending, dropBoxes });
-  } catch (e) {
-    console.error('[rk] shipment/pending:', e);
-    res.status(500).json({ error: '미입력 확인 실패: ' + e.message });
-  }
-});
-
-// ── 미입력 → 0개(부족) 처리 — body: { boxes:[{orderNumber, boxNo}] } ([0개로 처리하고 계속]) ──
-//   모바일 입고에 found 0 으로 기록한다 (기록자 'PC(쉽먼트)'). 재고·배정은 건드리지 않는다 (부족 = 덜 들어온 것)
-router.post('/api/shipment/zero-fill', async (req, res) => {
-  try {
-    const boxes = bodyBoxes(req.body.boxes);
-    if (!boxes) return res.status(400).json({ error: '처리할 박스가 없습니다.' });
-    const r = await M.zeroFillUnmarked(boxes, 'PC(쉽먼트)');
-    console.log(`[rk] shipment/zero-fill: 박스 ${boxes.length}개 · 기록 ${r.written} · 실패 ${r.failed}`);
-    if (r.failed) return res.status(500).json({ error: `일부 저장 실패 (${r.failed}건). 다시 시도하세요.`, ...r });
-    res.json({ ok: true, ...r });
-  } catch (e) {
-    console.error('[rk] shipment/zero-fill:', e);
-    res.status(500).json({ error: '0개 처리 실패: ' + e.message });
-  }
-});
-
 // ── 출고완료 — body: { boxes:[{orderNumber, boxNo}] } ([순서대로] 보기 [출고완료]) ──
 //   1) rk_ship_boxes.shipped_at = 지금 (이미 출고된 박스는 그대로)  2) 그 박스의 출고 순서(rk_ship_seq) 삭제
 //   3) 발주서의 모든 박스가 출고되면 rk_orders.status = 'DONE'. 재고·배정은 건드리지 않는다.
@@ -465,10 +412,6 @@ router.post('/api/shipment/export', async (req, res) => {
   try {
     const { orderNumbers, invoiceNumbers } = req.body;
     const orders = await shipScanOrders(orderNumbers, { boxes: bodyBoxes(req.body.boxes) });   // boxes: [순서대로] 에서 체크한 박스만
-    // 모바일 입고 입력이 안 끝난 상품이 있으면 파일을 만들지 않는다 (2026-11-02) — 화면이 먼저 /api/shipment/pending 으로 묻고
-    //   [0개로 처리하고 계속] 이면 zero-fill 뒤에 다시 부른다. 여기까지 왔는데 남아 있으면(그 사이 바뀜) 목록과 함께 409
-    const pending = pendingItems(orders);
-    if (pending.length) return res.status(409).json({ error: `모바일 입고 입력이 안 끝난 상품이 ${pending.length}개 있습니다.`, pending });
 
     // 운송장번호를 박스에 남긴다 (rk_ship_boxes.invoice_no, 2026-10-15) — [순서정리] 가 쿠팡 PDF 의 운송장번호로 우리 박스를 찾는 열쇠.
     //   엑셀 생성과 무관하게 먼저 저장하고, 실패해도 내보내기는 계속한다 (기록 저장 실패가 쉽먼트 저장을 막지 않게).
@@ -497,15 +440,15 @@ router.post('/api/shipment/export', async (req, res) => {
     headers.forEach((header, index) => { mainSheet.cell(1, index + 1).value(header); });
 
     let rowIndex = 2;
-    const logItems = [];   // 내보내기 이력 — 파일의 행마다 (납품수량 = 가상확인 수량, 그중 가상 분량)
-    // 납품수량 = 확인수량(실제 스캔 + 모바일로 찾은 수, 2026-11-02). 0 인 상품은 줄을 만들지 않는다 (박스가 통째로 0 이면 박스도 빠진다)
+    const logItems = [];   // 내보내기 이력 — 파일의 행마다 (납품수량 = 스캔수량, 그중 가상 분량)
+    // 납품수량 = 스캔수량(실제 스캔 + 가상스캔, 2026-11-03). 모바일 입고 입력 여부는 서류에 영향을 주지 않는다 — 확인수량은 화면 표시용
     orders.forEach((order) => {
-      const scannedProducts = order.상품정보.filter((p) => p.확인수량 > 0 && p.박스정보 && p.박스정보 !== '-');
+      const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-');
       scannedProducts.forEach((product) => {
         const boxNumber = product.박스정보.split('-')[0];
         const invoiceNumber = (invoiceNumbers && invoiceNumbers[order.발주번호]?.[boxNumber]) || '';
         logItems.push({ order_number: order.발주번호, barcode: product.상품바코드, order_qty: product.발주수량,
-          confirmed_qty: product.확인수량, virtual_qty: product.가상수량, box_info: product.박스정보 });
+          confirmed_qty: product.스캔수량, virtual_qty: product.가상수량, box_info: product.박스정보 });
         mainSheet.cell(rowIndex, 1).value(order.발주번호);
         mainSheet.cell(rowIndex, 2).value(order.물류센터);
         mainSheet.cell(rowIndex, 3).value('쉽먼트');
@@ -515,7 +458,7 @@ router.post('/api/shipment/export', async (req, res) => {
         mainSheet.cell(rowIndex, 7).value(product.상품이름);
         mainSheet.cell(rowIndex, 8).value(product.확정수량);
         mainSheet.cell(rowIndex, 9).value(invoiceNumber);
-        mainSheet.cell(rowIndex, 10).value(product.확인수량);
+        mainSheet.cell(rowIndex, 10).value(product.스캔수량);
         rowIndex++;
       });
     });
@@ -541,10 +484,6 @@ router.post('/api/shipment/export-cj', async (req, res) => {
   try {
     const { orderNumbers, ordered } = req.body;   // ordered: 화면의 [순서대로] 가 켜져 있으면 출고 순서(rk_ship_seq)대로
     const orders = await shipScanOrders(orderNumbers, { boxes: bodyBoxes(req.body.boxes) });
-    // 모바일 입고 입력이 안 끝난 상품이 있으면 파일을 만들지 않는다 (2026-11-02) — 화면이 먼저 /api/shipment/pending 으로 묻고
-    //   [0개로 처리하고 계속] 이면 zero-fill 뒤에 다시 부른다. 여기까지 왔는데 남아 있으면(그 사이 바뀜) 목록과 함께 409
-    const pending = pendingItems(orders);
-    if (pending.length) return res.status(409).json({ error: `모바일 입고 입력이 안 끝난 상품이 ${pending.length}개 있습니다.`, pending });
 
     const { data: centerData } = await S.supabase.from('coupang_centers').select('center, contact, address');
     const centerMap = new Map();
@@ -566,15 +505,14 @@ router.post('/api/shipment/export-cj', async (req, res) => {
     const cjData = [];
     const processedBoxes = new Set();
     orders.forEach((order) => {
-      // 수량 = 박스의 확인수량 합 (2026-11-02) — 0 인 박스는 빠진다. 총 M박스 = 발주서의 상품 담긴 박스 전체(출고된 것 포함) − 이번에 빈 박스
-      const scannedProducts = order.상품정보.filter((p) => p.확인수량 > 0 && p.박스정보 && p.박스정보 !== '-');
+      // 수량 = 박스의 스캔수량 합 (실제 + 가상, 2026-11-03). 총 M박스 = 발주서의 상품 담긴 박스 전체(출고된 것 포함)
+      const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-');
       const qtyByBox = new Map();   // 박스번호 → 그 박스에 담긴 수량
       for (const p of scannedProducts) {
         const no = p.박스정보.split('-')[0];
-        qtyByBox.set(no, (qtyByBox.get(no) || 0) + (parseInt(p.확인수량, 10) || 0));
+        qtyByBox.set(no, (qtyByBox.get(no) || 0) + (parseInt(p.스캔수량, 10) || 0));
       }
-      const emptyNow = [...confirmedByBox(order).values()].filter((q) => q <= 0).length;
-      const boxTotal = Math.max(qtyByBox.size, (order.박스전체 || qtyByBox.size) - emptyNow);
+      const boxTotal = Math.max(qtyByBox.size, order.박스전체 || qtyByBox.size);
       scannedProducts.forEach((product) => {
         const boxParts = product.박스정보.split('-');
         const boxNumber = boxParts[0];
