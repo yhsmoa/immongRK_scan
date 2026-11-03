@@ -32,6 +32,53 @@
             border-radius:7px;font-size:13.5px;font-weight:500;color:#334155;cursor:pointer;
             white-space:nowrap;font-family:inherit;height:auto;}
         .dd-menu button:hover{background:var(--hover,#f8fafc);}
+        /* 마우스를 올리면 열리는 드롭다운 (혼용률/권장연령) — 클릭으로도 열린다(터치). 버튼과 메뉴 사이 틈은 ::after 로 이어 hover 가 끊기지 않게 */
+        .dd.hover::after{content:"";position:absolute;top:100%;left:0;right:0;height:8px;}
+        .dd.hover:hover>.dd-menu{display:block;}
+
+        /* 혼용률/권장연령 모달 (xlsx 등록 미리보기 · 이유몽 미입력) */
+        .ca-modal{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;border-radius:12px;
+            box-shadow:0 8px 30px rgba(0,0,0,.25);z-index:1000;width:980px;max-width:96vw;max-height:92vh;flex-direction:column;overflow:hidden;}
+        .ca-modal.active{display:flex;}
+        .ca-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #e5e7eb;}
+        .ca-head h3{margin:0;font-size:16px;color:var(--ink);}
+        .ca-head .ca-sub{font-size:12.5px;color:#64748b;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .ca-body{padding:14px 18px;overflow:auto;flex:1 1 auto;min-height:120px;}
+        .ca-foot{display:flex;align-items:center;gap:8px;padding:12px 18px;border-top:1px solid #e5e7eb;}
+        .ca-foot .ca-status{flex:1;font-size:13px;color:#334155;}
+        .ca-foot .ca-status.err{color:#dc2626;}
+        .ca-foot .ca-status.ok{color:#15803d;}
+        .ca-note{font-size:12.5px;color:#64748b;margin:0 0 10px;line-height:1.55;}
+        .ca-note.warn{color:#b45309;}
+        .ca-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+        .ca-box{border:1px solid #e5e9f0;border-radius:10px;padding:10px 12px;}
+        .ca-box h4{margin:0 0 6px;font-size:13px;color:var(--ink);}
+        .ca-box table{width:100%;border-collapse:collapse;}
+        .ca-box td{border:0;padding:3px 0;font-size:13px;text-align:left;}
+        .ca-box td.n{text-align:right;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;}
+        .ca-box tr.go td{color:#4338ca;}
+        .ca-box tr.go td.n{color:#4338ca;}
+        .ca-box tr.dim td{color:#94a3b8;}
+        .ca-chk{display:flex;align-items:center;gap:6px;font-size:13px;margin:4px 0 12px;cursor:pointer;}
+        .ca-chk input{width:15px;height:15px;}
+        .ca-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+        .ca-tab{height:30px;padding:0 11px;border:1px solid #e2e8f0;background:#fff;border-radius:8px;font-size:12.5px;cursor:pointer;color:#334155;font-family:inherit;}
+        .ca-tab.on{background:#eef2ff;border-color:#c7d2fe;color:#4338ca;font-weight:600;}
+        .ca-tab:disabled{opacity:.45;cursor:default;}
+        .ca-list{border:1px solid #e5e9f0;border-radius:10px;overflow:auto;max-height:44vh;}
+        .ca-list table{width:100%;border-collapse:collapse;}
+        .ca-list th{position:sticky;top:0;background:#f1f3f6;font-size:12px;color:#64748b;padding:7px 8px;border-bottom:1px solid #e5e9f0;text-align:left;white-space:nowrap;}
+        .ca-list td{font-size:12.5px;padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:left;vertical-align:top;}
+        .ca-list td.nm{min-width:320px;}
+        .ca-list .empty{color:#dc2626;font-weight:600;}
+        .ca-list .new{color:#4338ca;font-weight:600;}
+        .ca-list .old{color:#94a3b8;text-decoration:line-through;}
+        .ca-list .none{padding:18px;text-align:center;color:#94a3b8;font-size:13px;}
+        .ca-more{font-size:12px;color:#94a3b8;padding:6px 2px 0;}
+        .ca-btn{height:36px;padding:0 14px;border:1px solid #e2e8f0;background:#fff;color:#334155;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:500;font-family:inherit;white-space:nowrap;}
+        .ca-btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600;}
+        .ca-btn:disabled{opacity:.5;cursor:default;}
+        @media (max-width:768px){ .ca-grid{grid-template-columns:1fr;} }
 
         /* 버튼 (발주서 스타일) */
         .upload-section{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -380,6 +427,16 @@
                 </div>
                 <div class="actions upload-section">
                     <button id="labelPrintBtn" class="upload-btn" onclick="openLabelPrint()">라벨출력</button>
+                    <!-- 혼용률/권장연령 (2026-11-03) — 마우스를 올리면 메뉴: xlsx 등록(엑셀 모델명 → 혼용률 + 이유몽 사이즈 → 권장연령) · 이유몽 미입력 -->
+                    <div class="dd hover">
+                        <button class="upload-btn" onclick="toggleDd(event,'ddCompAge')">혼용률/권장연령
+                            <svg class="caret" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </button>
+                        <div class="dd-menu" id="ddCompAge">
+                            <button onclick="ddRun(pickCompAgeFile)">xlsx 등록</button>
+                            <button onclick="ddRun(openEyoumongMissing)">이유몽 미입력</button>
+                        </div>
+                    </div>
                     <button id="registerBtn" class="upload-btn" onclick="openRegisterModal()">직접 등록</button>
                     <button id="locationSaveBtn" class="upload-btn" onclick="saveSelectedLocations()">위치저장</button>
                     <div class="dd">
@@ -396,6 +453,7 @@
                     <button id="deleteBtn" class="delete-btn" onclick="deleteInventoryData()">삭제</button>
                     <input type="file" id="fileInput" style="display: none" accept=".xlsx,.xls">
                     <input type="file" id="consoleFileInput" style="display: none" accept=".xlsx,.xls,.csv">
+                    <input type="file" id="compAgeFileInput" style="display: none" accept=".xlsx,.xls">
                 </div>
             </div>
 
@@ -469,6 +527,21 @@
         <iframe id="labelPrintFrame" title="라벨 출력"
                 allow="loopback-network; local-network; local-network-access"></iframe>
         <div class="label-modal-status" id="labelPrintStatus"></div>
+    </div>
+
+    <!-- 혼용률/권장연령 모달 — xlsx 등록 미리보기·적용 / 이유몽 미입력 목록 (같은 틀을 두 화면이 쓴다) -->
+    <div class="overlay" id="caOverlay" onclick="closeCompAge()"></div>
+    <div class="ca-modal" id="caModal" role="dialog" aria-modal="true">
+        <div class="ca-head">
+            <h3 id="caTitle">혼용률/권장연령</h3>
+            <span class="ca-sub" id="caSub"></span>
+        </div>
+        <div class="ca-body" id="caBody"></div>
+        <div class="ca-foot">
+            <span class="ca-status" id="caStatus"></span>
+            <button class="ca-btn" onclick="closeCompAge()">닫기</button>
+            <button class="ca-btn primary" id="caActionBtn" style="display:none"></button>
+        </div>
     </div>
 
     <!-- 로딩 인디케이터 (진행률 바 포함) -->
@@ -557,6 +630,7 @@
             // 엑셀 파일 업로드 처리
             document.getElementById('fileInput').addEventListener('change', handleFileUpload);
             document.getElementById('consoleFileInput').addEventListener('change', handleConsoleUpload);
+            document.getElementById('compAgeFileInput').addEventListener('change', handleCompAgeFile);
 
             // 전체 선택 체크박스 기능
             document.getElementById('selectAll').addEventListener('change', function() {
@@ -1067,6 +1141,266 @@
         document.addEventListener('click', closeDd);
 
         function pickConsoleFile() { document.getElementById('consoleFileInput').click(); }
+
+        // ============================================================
+        // 혼용률/권장연령 (2026-11-03) — 규칙은 서버 compAge.js 한 곳 (routes/rkCompAge.js)
+        //   xlsx 등록: 엑셀의 작업리스트BR · 작업리스트ER 시트만 읽어 D열(모델명) · I열(혼용률)을 서버로 보낸다
+        //     → 미리보기(읽기만) → [적용] 때 서버가 그 시점 DB 로 다시 계산해 저장
+        //     혼용률 = 상품명의 모델명(첫 콤마 앞 마지막 단어)이 엑셀 모델명과 같은 상품. 기본은 빈칸만, 체크하면 다른 값도 바꾼다
+        //     권장연령 = 이유몽 상품의 숫자 사이즈로 (빈칸만)
+        //   이유몽 미입력: 상품명이 "이유몽" 인데 혼용률 또는 권장연령이 빈 상품 목록 + [사이즈로 권장연령 채우기]
+        // ============================================================
+        const CA_SHEETS = ['작업리스트BR', '작업리스트ER'];
+        let caMode = null;          // 'xlsx' | 'missing'
+        let caRows = null, caFileName = '', caSheetNote = '', caOverwrite = false;
+        let caPreviewData = null, caTab = '', caReq = 0, caBusy = false;
+        let caMissing = null, caMissFilter = 'all';
+
+        function caOpen(title) {
+            document.getElementById('caTitle').textContent = title;
+            document.getElementById('caSub').textContent = '';
+            document.getElementById('caBody').innerHTML = '<div class="ca-note">불러오는 중…</div>';
+            caSetStatus('');
+            caSetAction(null);
+            document.getElementById('caOverlay').classList.add('active');
+            document.getElementById('caModal').classList.add('active');
+        }
+        function closeCompAge() {
+            if (caBusy) return;   // 저장 중에는 닫지 않는다 (결과를 못 보고 다시 누르는 일이 없게)
+            document.getElementById('caOverlay').classList.remove('active');
+            document.getElementById('caModal').classList.remove('active');
+            caMode = null; caRows = null; caPreviewData = null; caMissing = null; caReq++;
+        }
+        function caSetStatus(text, kind) {
+            const el = document.getElementById('caStatus');
+            el.textContent = text || '';
+            el.className = 'ca-status' + (kind ? ' ' + kind : '');
+        }
+        function caSetAction(label, fn, enabled) {
+            const b = document.getElementById('caActionBtn');
+            if (!label) { b.style.display = 'none'; b.onclick = null; return; }
+            b.style.display = '';
+            b.textContent = label;
+            b.disabled = !enabled || caBusy;
+            b.onclick = fn;
+        }
+        const caNum = (v) => Number(v || 0).toLocaleString();
+
+        // ── xlsx 등록 ──
+        function pickCompAgeFile() {
+            const input = document.getElementById('compAgeFileInput');
+            input.value = '';
+            input.click();
+        }
+        async function handleCompAgeFile(e) {
+            const file = e.target.files && e.target.files[0];
+            e.target.value = '';
+            if (!file) return;
+            caMode = 'xlsx'; caOverwrite = false; caTab = ''; caPreviewData = null;
+            caOpen('혼용률/권장연령 · xlsx 등록');
+            document.getElementById('caSub').textContent = file.name;
+            try {
+                if (!window.XLSX) throw new Error('엑셀 라이브러리를 불러오지 못했습니다. 새로고침 후 다시 해 주세요.');
+                const u8 = new Uint8Array(await file.arrayBuffer());
+                // 시트 이름만 먼저 읽고(빠름) 필요한 두 시트만 해석한다 — 다른 시트는 보지 않는다
+                const names = XLSX.read(u8, { type: 'array', bookSheets: true }).SheetNames || [];
+                const pick = CA_SHEETS.map((want) => ({ want, name: names.find((n) => String(n).trim() === want) || null }));
+                const found = pick.filter((p) => p.name);
+                if (!found.length) throw new Error('작업리스트BR · 작업리스트ER 시트가 없습니다. 이 파일의 시트: ' + (names.join(', ') || '없음'));
+                const wb = XLSX.read(u8, { type: 'array', sheets: found.map((p) => p.name) });
+                const rows = [];
+                for (const p of found) {
+                    const ws = wb.Sheets[p.name];
+                    if (!ws) continue;
+                    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false, raw: false });
+                    aoa.forEach((r, i) => {
+                        const model = String(r[3] == null ? '' : r[3]);   // D열 = 모델명
+                        const comp = String(r[8] == null ? '' : r[8]);    // I열 = 혼용률
+                        if (!model.trim() && !comp.trim()) return;
+                        rows.push({ sheet: p.want, row: (r.__rowNum__ != null ? r.__rowNum__ : i) + 1, model, comp });
+                    });
+                }
+                if (!rows.length) throw new Error('두 시트의 D열(모델명) · I열(혼용률)이 비어 있습니다.');
+                caRows = rows; caFileName = file.name;
+                const missing = pick.filter((p) => !p.name).map((p) => p.want);
+                caSheetNote = '읽은 시트: ' + found.map((p) => p.want).join(' · ') + (missing.length ? ' — ⚠ ' + missing.join(' · ') + ' 시트는 파일에 없어 건너뜀' : '');
+                await caPreview();
+            } catch (err) {
+                document.getElementById('caBody').innerHTML = '<div class="ca-note warn">' + esc(err.message) + '</div>';
+                caSetStatus('엑셀을 읽지 못했습니다.', 'err');
+            }
+        }
+        async function caPreview() {
+            if (!caRows) return;
+            const token = ++caReq;
+            caSetStatus('미리보기 계산 중… (상품관리 전체와 대조)');
+            caSetAction('적용', null, false);
+            try {
+                const res = await fetch('/api/inventory/comp-age', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: caRows, overwrite: caOverwrite, apply: false }) });
+                const j = await res.json();
+                if (!res.ok) throw new Error(j.error || '미리보기 실패');
+                if (token !== caReq || caMode !== 'xlsx') return;
+                caPreviewData = j;
+                renderCaPreview();
+            } catch (err) {
+                if (token !== caReq) return;
+                caSetStatus(err.message, 'err');
+            }
+        }
+        // 미리보기 목록 탭: [키, 이름, 개수, 목록, 열]
+        function caTabsOf(j) {
+            const c = j.comp, a = j.age;
+            const tabs = [
+                ['compFill', '혼용률 채움', c.fillCount, c.fill, 'comp'],
+                j.overwrite ? ['compChange', '혼용률 바꿈', c.changeCount, c.change, 'comp'] : ['compKeep', '혼용률 다름(그대로)', c.keepCount, c.keep, 'comp'],
+                ['compConflict', '충돌로 건너뛴 상품', c.conflictCount, c.conflict, 'conflict'],
+                ['excelConflict', '엑셀 충돌 모델', j.excel.conflictCount, j.excel.conflicts, 'excel'],
+                ['ageFill', '권장연령 채움', a.fillCount, a.fill, 'age'],
+                ['ageUnresolved', '사이즈로 못 정함', a.unresolvedCount, a.unresolved, 'age'],
+                ['ageDiffer', '권장연령 규칙과 다름', a.differCount, a.differ, 'age'],
+            ];
+            return tabs;
+        }
+        function renderCaPreview() {
+            const j = caPreviewData;
+            if (!j) return;
+            const c = j.comp, a = j.age, x = j.excel;
+            const row = (label, n, cls) => '<tr class="' + (cls || '') + '"><td>' + label + '</td><td class="n">' + caNum(n) + '</td></tr>';
+            const keepOrChange = j.overwrite ? row('다른 값 → 엑셀 값으로 바꿈', c.changeCount, 'go') : row('다른 값이 이미 있음 (그대로 둠)', c.keepCount);
+            const tabs = caTabsOf(j);
+            if (!tabs.some((t) => t[0] === caTab && t[2] > 0)) caTab = (tabs.find((t) => t[2] > 0) || tabs[0])[0];
+            const cur = tabs.find((t) => t[0] === caTab);
+            let html = '';
+            html += '<p class="ca-note">' + esc(caSheetNote) + ' · 엑셀 모델 <b>' + caNum(x.models) + '</b>개 (행 ' + caNum(x.rows) + (x.blankComp ? ' · 혼용률 빈 행 ' + caNum(x.blankComp) : '') + ')'
+                + (x.conflictCount ? ' · <span style="color:#b45309">같은 모델에 혼용률이 둘 이상인 모델 ' + caNum(x.conflictCount) + '개는 건너뜀</span>' : '') + '</p>';
+            html += '<div class="ca-grid">'
+                + '<div class="ca-box"><h4>혼용률 (엑셀 모델명 = 상품명의 모델명)</h4><table>'
+                + row('빈칸 → 채움', c.fillCount, 'go') + keepOrChange + row('이미 같은 값', c.same, 'dim')
+                + row('엑셀 충돌 모델이라 건너뜀', c.conflictCount) + row('엑셀에 없는 모델', c.noMatch, 'dim') + row('상품명에 모델명 없음 (콤마 없음)', c.noModel, 'dim')
+                + '</table></div>'
+                + '<div class="ca-box"><h4>권장연령 (이유몽 · 숫자 사이즈, 빈칸만)</h4><table>'
+                + row('빈칸 → 채움', a.fillCount, 'go') + row('사이즈로 못 정함 (그대로 둠)', a.unresolvedCount) + row('이미 있음', a.has, 'dim')
+                + row('이미 있는데 사이즈 규칙과 다름 (바꾸지 않음)', a.differCount)
+                + '</table><p class="ca-note" style="margin:6px 0 0">120 → 5-7세 · 130 → 7-9세 · 140 → 9-11세 · 150 → 11-12세 · 160 → 12-14세 (110~120 처럼 범위면 큰 숫자)</p></div>'
+                + '</div>';
+            html += '<label class="ca-chk"><input type="checkbox" id="caOverwrite"' + (j.overwrite ? ' checked' : '') + (caBusy ? ' disabled' : '') + ' onchange="caToggleOverwrite(this)"> 혼용률이 이미 있는 상품도 엑셀 값으로 바꾸기'
+                + (!j.overwrite && c.keepCount ? ' <span style="color:#64748b">(' + caNum(c.keepCount) + '개)</span>' : '') + '</label>';
+            html += '<div class="ca-tabs">' + tabs.map((t) => '<button class="ca-tab' + (t[0] === caTab ? ' on' : '') + '"' + (t[2] ? '' : ' disabled') + ' onclick="caPickTab(\'' + t[0] + '\')">' + t[1] + ' ' + caNum(t[2]) + '</button>').join('') + '</div>';
+            html += caListHtml(cur);
+            document.getElementById('caBody').innerHTML = html;
+            const total = c.fillCount + (j.overwrite ? c.changeCount : 0) + a.fillCount;
+            caSetStatus(total ? '적용하면 혼용률 ' + caNum(c.fillCount + (j.overwrite ? c.changeCount : 0)) + '개 · 권장연령 ' + caNum(a.fillCount) + '개를 저장합니다.' : '바꿀 상품이 없습니다.');
+            caSetAction('적용', caApply, total > 0);
+        }
+        function caListHtml(tab) {
+            if (!tab || !tab[2]) return '<div class="ca-list"><div class="none">해당 상품이 없습니다.</div></div>';
+            const [, , count, list, kind] = tab;
+            let head, body;
+            if (kind === 'excel') {
+                head = '<tr><th>모델명</th><th>엑셀의 혼용률 (시트 · 행)</th></tr>';
+                body = list.map((m) => '<tr><td>' + esc(m.model) + '</td><td>' + m.values.map((v) => esc(v.comp) + ' <span style="color:#94a3b8">(' + esc(v.sheet.replace('작업리스트', '')) + ' ' + v.row + '행)</span>').join('<br>') + '</td></tr>').join('');
+            } else {
+                const isAge = kind === 'age';
+                head = '<tr><th>SKU</th><th>상품명</th><th>바코드</th><th>' + (isAge ? '사이즈' : '모델명') + '</th><th>지금</th>' + (kind === 'conflict' ? '' : '<th>바뀔 값</th>') + '</tr>';
+                body = list.map((r) => '<tr><td>' + esc(r.sku) + '</td><td class="nm">' + esc(r.name) + '</td><td>' + esc(r.barcode) + '</td><td>' + esc(isAge ? (r.size || '—') : r.model) + '</td>'
+                    + '<td>' + (r.before ? '<span' + (r.after && kind !== 'age' ? ' class="old"' : '') + '>' + esc(r.before) + '</span>' : '<span class="empty">없음</span>') + '</td>'
+                    + (kind === 'conflict' ? '' : '<td>' + (r.after ? '<span class="new">' + esc(r.after) + '</span>' : '—') + '</td>') + '</tr>').join('');
+            }
+            return '<div class="ca-list"><table><thead>' + head + '</thead><tbody>' + body + '</tbody></table></div>'
+                + (count > list.length ? '<div class="ca-more">앞 ' + caNum(list.length) + '개만 표시 (전체 ' + caNum(count) + '개)</div>' : '');
+        }
+        function caPickTab(k) { caTab = k; renderCaPreview(); }
+        function caToggleOverwrite(el) { caOverwrite = !!el.checked; caPreview(); }
+        async function caApply() {
+            const j = caPreviewData;
+            if (!j || caBusy) return;
+            const compN = j.comp.fillCount + (j.overwrite ? j.comp.changeCount : 0);
+            const msg = '저장합니다.\n\n혼용률 ' + caNum(compN) + '개' + (j.overwrite && j.comp.changeCount ? ' (빈칸 ' + caNum(j.comp.fillCount) + ' · 바꿈 ' + caNum(j.comp.changeCount) + ')' : '') + '\n권장연령 ' + caNum(j.age.fillCount) + '개 (이유몽 · 빈칸만)';
+            if (!confirm(msg)) return;
+            await caRunApply({ rows: caRows, overwrite: j.overwrite, apply: true }, async (applied) => {
+                const done = '저장 완료 — 혼용률 ' + caNum(applied.compFill + applied.compChange) + '개 · 권장연령 ' + caNum(applied.age) + '개';
+                await caPreview();   // 저장 뒤 상태로 미리보기를 다시 (채움 0 이 정상)
+                caSetStatus(done, 'ok');
+            });
+        }
+        // 저장 공통 — 중복 클릭 방지 · 끝나면 상품관리 표도 다시 읽는다
+        async function caRunApply(body, after) {
+            caBusy = true;
+            caSetAction(document.getElementById('caActionBtn').textContent, null, false);
+            caSetStatus('저장 중…');
+            const token = ++caReq;
+            try {
+                const res = await fetch('/api/inventory/comp-age', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const j = await res.json();
+                if (!res.ok) throw new Error(j.error || '저장 실패');
+                caBusy = false;
+                loadInventoryData();
+                if (token === caReq) await after(j.applied || { compFill: 0, compChange: 0, age: 0 });
+            } catch (err) {
+                caBusy = false;
+                caSetStatus('저장 실패: ' + err.message, 'err');
+                if (caMode === 'xlsx') renderCaPreview(); else renderEyoumongMissing();
+                caSetStatus('저장 실패: ' + err.message, 'err');
+            } finally {
+                caBusy = false;
+            }
+        }
+
+        // ── 이유몽 미입력 ──
+        async function openEyoumongMissing() {
+            caMode = 'missing'; caMissFilter = 'all'; caMissing = null;
+            caOpen('이유몽 미입력 — 혼용률 또는 권장연령이 빈 상품');
+            await loadEyoumongMissing();
+        }
+        async function loadEyoumongMissing() {
+            const token = ++caReq;
+            caSetStatus('불러오는 중…');
+            try {
+                const res = await fetch('/api/inventory/eyoumong-missing');
+                const j = await res.json();
+                if (!res.ok) throw new Error(j.error || '조회 실패');
+                if (token !== caReq || caMode !== 'missing') return;
+                caMissing = j;
+                renderEyoumongMissing();
+            } catch (err) {
+                if (token !== caReq) return;
+                document.getElementById('caBody').innerHTML = '<div class="ca-note warn">' + esc(err.message) + '</div>';
+                caSetStatus('');
+            }
+        }
+        function renderEyoumongMissing() {
+            const j = caMissing;
+            if (!j) return;
+            const k = j.counts;
+            document.getElementById('caSub').textContent = '상품명이 "이유몽" 으로 시작하는 상품 중';
+            const f = caMissFilter;
+            const rows = j.rows.filter((r) => f === 'all' || (f === 'comp' ? !r.composition : !r.age));
+            const chip = (key, label, n) => '<button class="ca-tab' + (f === key ? ' on' : '') + '" onclick="caMissPick(\'' + key + '\')">' + label + ' ' + caNum(n) + '</button>';
+            let html = '<p class="ca-note">혼용률은 <b>xlsx 등록</b>(엑셀 모델명 → 혼용률)으로, 권장연령은 아래 <b>사이즈로 권장연령 채우기</b>(또는 xlsx 등록)로 채웁니다. 사이즈 숫자가 없는 상품(양말 L·M 등)은 직접 넣어야 합니다.</p>';
+            html += '<div class="ca-tabs">' + chip('all', '전체', k.total) + chip('comp', '혼용률 없음', k.noComp) + chip('age', '권장연령 없음', k.noAge) + '</div>';
+            if (!rows.length) html += '<div class="ca-list"><div class="none">' + (k.total ? '해당 상품이 없습니다.' : '빈 데이터가 있는 이유몽 상품이 없습니다. 👍') + '</div></div>';
+            else {
+                html += '<div class="ca-list"><table><thead><tr><th>#</th><th>SKU</th><th>상품명</th><th>바코드</th><th>모델명</th><th>혼용률</th><th>권장연령</th></tr></thead><tbody>'
+                    + rows.map((r, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(r.sku) + '</td><td class="nm">' + esc(r.name) + '</td><td>' + esc(r.barcode) + '</td><td>' + esc(r.model || '—') + '</td>'
+                        + '<td>' + (r.composition ? esc(r.composition) : '<span class="empty">없음</span>') + '</td>'
+                        + '<td>' + (r.age ? esc(r.age) : '<span class="empty">없음</span>' + (r.sizeAge ? ' <span class="new">→ ' + esc(r.sizeAge) + '</span>' : (r.size ? ' <span style="color:#94a3b8">(' + esc(r.size) + ' 표에 없음)</span>' : ''))) + '</td></tr>').join('')
+                    + '</tbody></table></div>';
+            }
+            document.getElementById('caBody').innerHTML = html;
+            caSetStatus(k.ageFillable ? '권장연령 ' + caNum(k.ageFillable) + '개는 사이즈로 채울 수 있습니다.' : '');
+            caSetAction('사이즈로 권장연령 채우기' + (k.ageFillable ? ' (' + caNum(k.ageFillable) + ')' : ''), caFillAgeOnly, k.ageFillable > 0);
+        }
+        function caMissPick(key) { caMissFilter = key; renderEyoumongMissing(); }
+        async function caFillAgeOnly() {
+            const k = caMissing && caMissing.counts;
+            if (!k || !k.ageFillable || caBusy) return;
+            if (!confirm('이유몽 상품 ' + caNum(k.ageFillable) + '개의 빈 권장연령을 사이즈로 채웁니다.\n(혼용률은 바뀌지 않습니다)')) return;
+            await caRunApply({ rows: null, apply: true }, async (applied) => {
+                await loadEyoumongMissing();
+                caSetStatus('저장 완료 — 권장연령 ' + caNum(applied.age) + '개', 'ok');
+            });
+        }
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.getElementById('caModal').classList.contains('active')) closeCompAge(); });
 
         // ── 콘솔 복사: 현재 최대 SKU를 기준으로 추출 스크립트 생성 → 클립보드 복사 ──
         async function copyConsoleScript() {

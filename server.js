@@ -107,6 +107,7 @@ app.use(require('./routes/rkOrders')(io));
 app.use(require('./routes/rkOrdersExtra'));
 app.use(require('./routes/rkNewOrders'));
 app.use(require('./routes/rkInventory'));
+app.use(require('./routes/rkCompAge')); // 상품관리 [혼용률/권장연령] — 엑셀로 혼용률 · 이유몽 사이즈로 권장연령 (compAge.js)
 app.use(require('./routes/rkChinaImport'));
 app.use(require('./routes/rkStocks'));
 app.use(require('./routes/rkInbound'));
