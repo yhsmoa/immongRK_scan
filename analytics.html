@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>데이터 분석</title>
+    <style>
+        /* ================================================================
+           데이터 분석 — 발주수량 · 확정수량 추이 (설계: docs/plan-analytics.md)
+           사이트 기본 톤(따뜻한 흰 배경 · 먹색 글자 · 주황 포인트) + 차트 2색(발주 파랑 · 확정 주황, 색각 검증 통과)
+           ================================================================ */
+        :root{
+            --bg:#FBFAF9; --surface:#FFFFFF; --ink:#1C1B1A; --accent:#F0492F; --accent-soft:#FDEBE6; --accent-line:#F7C9BE;
+            --line:#EEECE9; --line2:#EBE8E4; --muted:#6E6A67; --muted2:#918D89; --muted3:#B6B0AA;
+            --grid:#F0EEEB;
+            --s-order:#2a78d6;      /* 발주 */
+            --s-conf:#eb6834;       /* 확정 */
+            --s-conf-soft:#F6B79C;  /* 확정(진행중) — 같은 색의 옅은 단계 + 빗금 */
+        }
+        *{box-sizing:border-box;}
+        body{margin:0;background:var(--bg);color:var(--ink);
+            font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;
+            -webkit-font-smoothing:antialiased;}
+        .num{font-variant-numeric:tabular-nums;}
+
+        .page{max-width:1400px;width:94%;margin:0 auto;padding:22px 0 80px;}
+        .head{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px 14px;margin-bottom:14px;}
+        .title{margin:0;font-size:24px;font-weight:800;letter-spacing:-.03em;}
+        .subtitle{font-size:13px;color:var(--muted2);font-weight:500;}
+        .as-of{margin-left:auto;font-size:12.5px;color:var(--muted3);}
+
+        /* ── 필터 줄 (모든 아래 내용에 적용) ── */
+        .filters{display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:12px 14px;margin-bottom:16px;
+            background:var(--surface);border:1px solid var(--line);border-radius:14px;position:sticky;top:0;z-index:20;}
+        .f-group{display:flex;align-items:center;flex-wrap:wrap;gap:6px;min-width:0;}
+        .seg{max-width:100%;overflow-x:auto;}
+        .f-label{font-size:12px;color:var(--muted2);font-weight:700;margin-right:2px;white-space:nowrap;}
+        .f-sep{width:1px;height:24px;background:var(--line2);margin:0 4px;}
+        .seg{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#fff;}
+        .seg button{height:32px;padding:0 12px;border:0;border-left:1px solid var(--line2);background:transparent;
+            font-family:inherit;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;}
+        .seg button:first-child{border-left:0;}
+        .seg button:hover{background:#F5F3F1;}
+        .seg button.active{background:var(--ink);color:#fff;font-weight:700;}
+        select,input[type=date]{height:32px;padding:0 8px;border:1px solid var(--line2);border-radius:9px;background:#fff;
+            font-family:inherit;font-size:12.5px;color:var(--ink);}
+        .btn{height:32px;padding:0 12px;border:1px solid var(--line2);border-radius:9px;background:#fff;
+            font-family:inherit;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap;}
+        .btn:hover{background:#F5F3F1;}
+        .btn:disabled{opacity:.5;cursor:default;}
+        .custom-range{display:none;align-items:center;gap:4px;}
+        .custom-range.on{display:flex;}
+        .range-text{font-size:12.5px;color:var(--muted);font-weight:600;}
+
+        /* ── 카드 ── */
+        .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px 20px;margin-bottom:16px;}
+        .card-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;margin-bottom:12px;}
+        .card-title{margin:0;font-size:16px;font-weight:800;letter-spacing:-.02em;}
+        .card-sub{font-size:12.5px;color:var(--muted2);}
+        .card-tools{margin-left:auto;display:flex;align-items:center;gap:8px;}
+        .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+        .grid2 > .card{margin-bottom:0;min-width:0;}   /* 넓은 표가 카드를 밀어 페이지가 가로로 넘치지 않게 (표는 카드 안에서 가로 스크롤) */
+        .row-gap{margin-bottom:16px;}
+
+        /* ── 지표 타일 ── */
+        .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px;}
+        .kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0;}
+        .kpi .k-label{font-size:12.5px;color:var(--muted);font-weight:700;display:flex;align-items:center;gap:6px;}
+        .kpi .k-key{width:10px;height:10px;border-radius:3px;flex:none;}
+        .kpi .k-val{margin-top:6px;font-size:26px;font-weight:800;letter-spacing:-.03em;line-height:1.1;}
+        .kpi .k-unit{font-size:13px;font-weight:700;color:var(--muted);margin-left:2px;}
+        .kpi .k-foot{margin-top:6px;font-size:12px;color:var(--muted2);line-height:1.45;}
+        .kpi .k-delta b{color:var(--ink);font-weight:700;}
+
+        /* ── 차트 ── */
+        .chart-wrap{position:relative;}
+        .chart-wrap svg{display:block;width:100%;overflow:visible;}
+        .chart-wrap.loading,.loading-dim{opacity:.45;transition:opacity .15s;}
+        .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted);font-weight:600;}
+        .legend span{display:inline-flex;align-items:center;gap:6px;}
+        .legend i{width:12px;height:12px;border-radius:3px;display:inline-block;}
+        .legend i.line{height:2px;border-radius:1px;width:16px;}
+        .axis text{font-size:11px;fill:var(--muted2);font-family:inherit;}
+        .empty{padding:36px 0;text-align:center;color:var(--muted2);font-size:13.5px;}
+        .note{font-size:12px;color:var(--muted2);margin-top:8px;line-height:1.55;}
+
+        .tip{position:fixed;z-index:50;pointer-events:none;min-width:180px;max-width:300px;padding:10px 12px;
+            background:#fff;border:1px solid var(--line2);border-radius:10px;box-shadow:0 12px 30px -14px rgba(28,27,26,.35);
+            font-size:12.5px;line-height:1.5;display:none;}
+        .tip .t-head{font-weight:800;margin-bottom:6px;}
+        .tip .t-row{display:flex;align-items:center;gap:8px;}
+        .tip .t-row i{width:12px;height:2px;border-radius:1px;flex:none;}
+        .tip .t-row b{font-variant-numeric:tabular-nums;font-weight:800;min-width:64px;text-align:right;}
+        .tip .t-row span{color:var(--muted);}
+        .tip .t-foot{margin-top:6px;padding-top:6px;border-top:1px solid var(--line);color:var(--muted);}
+
+        /* ── 표 ── */
+        .tbl-wrap{overflow-x:auto;}
+        table{width:100%;border-collapse:collapse;font-size:13px;}
+        th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;}
+        th{font-size:12px;color:var(--muted);font-weight:700;background:#FAF9F7;position:sticky;top:0;}
+        th:first-child,td:first-child{text-align:left;}
+        td{font-variant-numeric:tabular-nums;}
+        tr.total td{font-weight:800;background:#FAF9F7;}
+        tr.click{cursor:pointer;}
+        tr.click:hover td{background:#FBF4F1;}
+        td.name{max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;}
+        td.muted,span.muted{color:var(--muted3);}
+        .mini{display:inline-block;vertical-align:middle;width:90px;height:8px;background:var(--grid);border-radius:4px;position:relative;margin-left:8px;}
+        .mini > i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;}
+        .scroll-y{max-height:460px;overflow:auto;}
+        .yr-head{text-align:center !important;border-left:1px solid var(--line);}
+        .bl{border-left:1px solid var(--line);}
+
+        .tag{display:inline-block;padding:1px 6px;border-radius:6px;font-size:11px;font-weight:700;background:#F5F3F1;color:var(--muted);margin-left:6px;}
+        .err{padding:14px 16px;border:1px solid #F3C2BA;background:#FDF1EE;color:#9A2F1F;border-radius:12px;margin-bottom:16px;font-size:13px;display:none;}
+
+        .defs{font-size:12.5px;color:var(--muted);line-height:1.7;}
+        .defs b{color:var(--ink);}
+        .defs ul{margin:6px 0 0;padding-left:18px;}
+
+        @media (max-width:1100px){ .kpis{grid-template-columns:repeat(3,1fr);} .grid2{grid-template-columns:1fr;} }
+        @media (max-width:640px){ .page{width:auto;padding:16px 16px 60px;} .kpis{grid-template-columns:repeat(2,1fr);}
+            .filters{position:static;} .kpi .k-val{font-size:22px;} }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+
+    <main class="page">
+        <div class="head">
+            <h1 class="title">데이터 분석</h1>
+            <span class="subtitle">쿠팡 발주수량 · 확정수량 추이 — 일 · 주 · 월 · 연도</span>
+            <span class="as-of" id="asOf"></span>
+        </div>
+
+        <!-- 필터: 아래 모든 지표·차트·표에 같이 적용 -->
+        <section class="filters" aria-label="필터">
+            <div class="f-group">
+                <span class="f-label">기간</span>
+                <div class="seg" id="presetSeg">
+                    <button data-p="w4">최근 4주</button>
+                    <button data-p="m1">이번 달</button>
+                    <button data-p="d90">최근 90일</button>
+                    <button data-p="ytd">올해</button>
+                    <button data-p="all">전체</button>
+                    <button data-p="custom">직접</button>
+                </div>
+                <select id="yearSel" title="연도 전체"><option value="">연도</option></select>
+                <span class="custom-range" id="customRange">
+                    <input type="date" id="fromIn"> ~ <input type="date" id="toIn">
+                    <button class="btn" id="applyRange">적용</button>
+                </span>
+                <span class="range-text num" id="rangeText"></span>
+            </div>
+            <div class="f-sep"></div>
+            <div class="f-group">
+                <span class="f-label">날짜 기준</span>
+                <div class="seg" id="basisSeg">
+                    <button data-b="reg" title="쿠팡 발주등록일시">발주일</button>
+                    <button data-b="arrival" title="발주서의 입고예정일">입고예정일</button>
+                </div>
+            </div>
+            <div class="f-sep"></div>
+            <div class="f-group">
+                <span class="f-label">브랜드</span>
+                <select id="brandSel">
+                    <option value="">전체</option>
+                    <option value="아이엠몽">아이엠몽</option>
+                    <option value="이유몽">이유몽</option>
+                    <option value="기타">기타</option>
+                </select>
+                <span class="f-label" style="margin-left:6px">센터</span>
+                <select id="centerSel"><option value="">전체</option></select>
+            </div>
+            <div class="f-group" style="margin-left:auto">
+                <button class="btn" id="refreshBtn" title="저장된 집계를 무시하고 다시 계산">새로고침</button>
+            </div>
+        </section>
+
+        <div class="err" id="err"></div>
+
+        <div id="content">
+            <!-- 지표 -->
+            <section class="kpis" id="kpis"></section>
+
+            <!-- 추이 -->
+            <section class="card">
+                <div class="card-head">
+                    <h2 class="card-title">발주 · 확정 추이</h2>
+                    <div class="legend">
+                        <span><i style="background:var(--s-order)"></i>발주수량</span>
+                        <span><i style="background:var(--s-conf)"></i>확정수량</span>
+                        <span><i style="background:repeating-linear-gradient(135deg,var(--s-conf-soft) 0 3px,#fff 3px 5px);border:1px solid var(--s-conf-soft)"></i>확정(진행중 · 지금까지 스캔)</span>
+                    </div>
+                    <div class="card-tools">
+                        <div class="seg" id="unitSeg">
+                            <button data-u="day">일별</button>
+                            <button data-u="week">주별</button>
+                            <button data-u="month">월별</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-wrap" id="trendChart"></div>
+                <div class="card-head" style="margin:14px 0 6px">
+                    <h3 class="card-title" style="font-size:14px">확정률</h3>
+                    <span class="card-sub">처리완료 발주서의 확정수량 ÷ 발주수량 (진행중 발주서는 빼고 계산)</span>
+                </div>
+                <div class="chart-wrap" id="rateChart"></div>
+            </section>
+
+            <!-- 기간별 표 -->
+            <section class="card">
+                <div class="card-head">
+                    <h2 class="card-title" id="periodTitle">기간별 상세</h2>
+                    <span class="card-sub" id="periodSub"></span>
+                    <div class="card-tools"><button class="btn" id="csvBtn">CSV 내려받기</button></div>
+                </div>
+                <div class="tbl-wrap scroll-y" id="periodTable"></div>
+            </section>
+
+            <!-- 연도 × 월 -->
+            <section class="card">
+                <div class="card-head">
+                    <h2 class="card-title">연도별 · 월별 비교</h2>
+                    <span class="card-sub">기간 선택과 무관하게 전체 기간 (날짜 기준·브랜드·센터는 적용)</span>
+                </div>
+                <div class="tbl-wrap" id="yearTable"></div>
+            </section>
+
+            <div class="grid2 row-gap">
+                <!-- 요일 -->
+                <section class="card">
+                    <div class="card-head">
+                        <h2 class="card-title">요일별 발주</h2>
+                        <span class="card-sub">그 요일 하루 평균 발주수량 (기간 안의 그 요일 수로 나눔)</span>
+                    </div>
+                    <div class="chart-wrap" id="weekdayChart"></div>
+                </section>
+                <!-- 브랜드 -->
+                <section class="card">
+                    <div class="card-head">
+                        <h2 class="card-title">브랜드별</h2>
+                        <span class="card-sub">상품명 앞머리 기준 · 행을 누르면 그 브랜드로 거릅니다</span>
+                    </div>
+                    <div class="tbl-wrap" id="brandTable"></div>
+                </section>
+            </div>
+
+            <div class="grid2 row-gap">
+                <!-- 센터 -->
+                <section class="card">
+                    <div class="card-head">
+                        <h2 class="card-title">물류센터별</h2>
+                        <span class="card-sub">행을 누르면 그 센터로 거릅니다</span>
+                    </div>
+                    <div class="tbl-wrap scroll-y" id="centerTable"></div>
+                </section>
+                <!-- 상품 -->
+                <section class="card">
+                    <div class="card-head">
+                        <h2 class="card-title">상품별</h2>
+                        <div class="card-tools">
+                            <div class="seg" id="prodSeg">
+                                <button data-s="oq">발주 많은 순</button>
+                                <button data-s="short">미확정 많은 순</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tbl-wrap scroll-y" id="productTable"></div>
+                    <div class="note">상품 = 상품명 끝의 색상·사이즈를 뗀 이름 (랭킹과 같은 묶음). 미확정 = 처리완료 발주서의 발주 − 확정.</div>
+                </section>
+            </div>
+
+            <section class="card defs">
+                <h2 class="card-title" style="margin-bottom:6px">계산 기준</h2>
+                <ul>
+                    <li><b>발주수량</b> — 쿠팡 발주서 업로드 파일의 발주수량 합 (박스 분할 행 제외).</li>
+                    <li><b>확정수량</b> — 출고스캔(박스에 담은 수량) 합. 쿠팡에 올리는 "발주리스트 확정" 파일의 확정수량과 같은 값입니다.
+                        발주서 DB 의 확정수량 칸은 업로드 때 발주수량이 그대로 들어가 있어 쓰지 않습니다.</li>
+                    <li><b>진행중</b> — 처리완료 전 발주서. 확정수량은 지금까지 스캔한 만큼이라 더 늘어날 수 있습니다. 확정률·미확정 계산에서는 뺍니다.</li>
+                    <li><b>확정률</b> — 처리완료 발주서의 확정수량 ÷ 발주수량. 처리완료인데 스캔이 0 인 발주서는 전량 미납(0%)으로 들어갑니다.</li>
+                    <li><b>금액</b> — 수량 × 매입가(부가세 포함 단가).</li>
+                    <li><b>날짜 기준</b> — 발주일 = 쿠팡 발주등록일시(한국 시간). 입고예정일 = 발주서의 입고예정일. 주는 월요일 시작.</li>
+                    <li><b>전 기간 대비</b> — 고른 기간 바로 앞의 같은 길이 기간과 비교.</li>
+                </ul>
+            </section>
+        </div>
+    </main>
+
+    <div class="tip" id="tip" role="tooltip"></div>
+
+    <script>
+    (function () {
+        'use strict';
+        fetch('/header').then(r => r.text()).then(h => { document.getElementById('header-container').innerHTML = h; }).catch(() => {});
+
+        // ── 상태 ──
+        const LS_KEY = 'analytics_view_v1';
+        const state = { preset: 'd90', from: '', to: '', year: '', basis: 'reg', brand: '', center: '', unit: 'week', prodSort: 'oq', data: null, loading: false };
+        try {
+            const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+            if (saved) for (const k of ['preset', 'from', 'to', 'year', 'basis', 'unit', 'prodSort']) if (saved[k] !== undefined) state[k] = saved[k];
+        } catch (e) { /* 저장소를 못 쓰면 기본값 */ }
+        const saveView = () => { try { localStorage.setItem(LS_KEY, JSON.stringify({ preset: state.preset, from: state.from, to: state.to, year: state.year, basis: state.basis, unit: state.unit, prodSort: state.prodSort })); } catch (e) {} };
+
+        // ── 날짜 도우미 (브라우저 지역 시간 = 한국) ──
+        const pad = (n) => String(n).padStart(2, '0');
+        const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+        const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return ymd(d); };
+        const today = () => ymd(new Date());
+        const dayDiff = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+        const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+        const mondayOf = (s) => { const d = parse(s); const k = (d.getDay() + 6) % 7; d.setDate(d.getDate() - k); return ymd(d); };
+        const monthOf = (s) => s.slice(0, 8) + '01';
+
+        function rangeOfPreset() {
+            const t = today();
+            switch (state.preset) {
+                case 'w4': return [addDays(t, -27), t];
+                case 'm1': return [monthOf(t), t];
+                case 'd90': return [addDays(t, -89), t];
+                case 'ytd': return [t.slice(0, 4) + '-01-01', t];
+                case 'year': return [state.year + '-01-01', state.year + '-12-31'];
+                case 'all': {
+                    const min = (state.data && state.data.meta && state.data.meta.minDate) || addDays(t, -365);
+                    const max = (state.data && state.data.meta && state.data.meta.maxDate) || t;
+                    const end = max > t ? max : t;
+                    const start = dayDiff(min, end) > 1100 ? addDays(end, -1100) : min;
+                    return [start, end];
+                }
+                case 'custom': return [state.from || addDays(t, -89), state.to || t];
+                default: return [addDays(t, -89), t];
+            }
+        }
+
+        // ── 숫자 ──
+        const nf = new Intl.NumberFormat('ko-KR');
+        const fmt = (v) => nf.format(Math.round(Number(v) || 0));
+        const pct = (a, b) => (b > 0 ? (a / b) * 100 : null);
+        const fmtPct = (v, d = 1) => (v == null ? '–' : v.toFixed(d) + '%');
+        function money(v) {
+            v = Number(v) || 0;
+            if (Math.abs(v) >= 1e8) return (v / 1e8).toFixed(v >= 1e10 ? 0 : 1) + '억';
+            if (Math.abs(v) >= 1e4) return nf.format(Math.round(v / 1e4)) + '만';
+            return nf.format(Math.round(v));
+        }
+
+        // ── DOM 도우미 (값은 textContent 로만 넣는다) ──
+        function el(tag, attrs, ...kids) {
+            const n = document.createElement(tag);
+            if (attrs) for (const k of Object.keys(attrs)) {
+                const v = attrs[k];
+                if (v == null || v === false) continue;
+                if (k === 'class') n.className = v;
+                else if (k === 'style') n.style.cssText = v;
+                else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+                else n.setAttribute(k, v);
+            }
+            for (const c of kids.flat(Infinity)) if (c != null && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+            return n;
+        }
+        const SVGNS = 'http://www.w3.org/2000/svg';
+        function sv(tag, attrs) { const n = document.createElementNS(SVGNS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); return n; }
+
+        // ── 툴팁 ──
+        const tip = document.getElementById('tip');
+        function showTip(ev, head, rows, foot) {
+            tip.replaceChildren(el('div', { class: 't-head' }, head));
+            for (const r of rows) tip.append(el('div', { class: 't-row' }, el('i', { style: `background:${r.color || 'transparent'}` }), el('b', null, r.value), el('span', null, r.label)));
+            if (foot) tip.append(el('div', { class: 't-foot' }, foot));
+            tip.style.display = 'block';
+            moveTip(ev);
+        }
+        function moveTip(ev) {
+            const w = tip.offsetWidth, h = tip.offsetHeight;
+            let x = ev.clientX + 14, y = ev.clientY + 14;
+            if (x + w > window.innerWidth - 8) x = ev.clientX - w - 14;
+            if (y + h > window.innerHeight - 8) y = ev.clientY - h - 14;
+            tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+        }
+        const hideTip = () => { tip.style.display = 'none'; };
+
+        // ── 기간 라벨 ──
+        function periodLabel(unit, p, short) {
+            const d = parse(p);
+            if (unit === 'day') return `${d.getMonth() + 1}/${d.getDate()}${short ? '' : `(${DOW[d.getDay()]})`}`;
+            if (unit === 'week') { const e = parse(addDays(p, 6)); return `${d.getMonth() + 1}/${d.getDate()}~${e.getMonth() + 1}/${e.getDate()}`; }
+            return short ? `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}` : `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
+        }
+
+        // 고른 기간을 단위로 빈칸 없이 채운다 (발주가 없는 날·주도 0 으로 보여야 간격이 맞다).
+        // 데이터가 시작되기 전·끝난 뒤의 빈 구간은 그리지 않는다.
+        function filledSeries(unit) {
+            const d = state.data; if (!d) return [];
+            const rows = (d.series && d.series[unit]) || [];
+            const by = new Map(rows.map((r) => [r.p, r]));
+            let [from, to] = [d.range.from, d.range.to];
+            const minD = d.meta && d.meta.minDate, maxD = d.meta && d.meta.maxDate;
+            if (minD && minD > from) from = minD;
+            const t = today();
+            const end = maxD && maxD > t ? maxD : t;
+            if (end < to) to = end;
+            if (from > to) return [];
+            const start = unit === 'day' ? from : unit === 'week' ? mondayOf(from) : monthOf(from);
+            const out = [];
+            for (let p = start, guard = 0; p <= to && guard < 2000; guard++) {
+                const r = by.get(p) || { p, orders: 0, skus: 0, oq: 0, cq: 0, oqDone: 0, cqDone: 0, oqOpen: 0, cqOpen: 0, amt: 0, camt: 0 };
+                // 기간 경계에 걸쳐 잘린 주·월 표시
+                const pEnd = unit === 'day' ? p : unit === 'week' ? addDays(p, 6) : addDays(ymd(new Date(parse(p).getFullYear(), parse(p).getMonth() + 1, 1)), -1);
+                out.push(Object.assign({}, r, { partial: unit !== 'day' && (p < d.range.from || pEnd > d.range.to) }));
+                p = unit === 'day' ? addDays(p, 1) : unit === 'week' ? addDays(p, 7) : ymd(new Date(parse(p).getFullYear(), parse(p).getMonth() + 1, 1));
+            }
+            return out;
+        }
+
+        // ── 축 눈금 ──
+        // 눈금 간격은 1·2·2.5·5 × 10^k 로, 눈금 4~5개. 최댓값 = 간격 × 눈금 수
+        function niceScale(v, target = 4) {
+            if (!(v > 0)) return { max: 1, step: 0.25, ticks: 4 };
+            const raw = v / target, e = Math.pow(10, Math.floor(Math.log10(raw)));
+            const step = [1, 2, 2.5, 5, 10].map((m) => m * e).find((s) => s >= raw);
+            const ticks = Math.max(1, Math.ceil(v / step - 1e-9));
+            return { max: step * ticks, step, ticks };
+        }
+
+        // ================================================================
+        // 렌더
+        // ================================================================
+        function renderAll() {
+            const d = state.data; if (!d) return;
+            renderKpis(d);
+            renderTrend();
+            renderPeriodTable();
+            renderYears(d);
+            renderWeekday(d);
+            renderBrands(d);
+            renderCenters(d);
+            renderProducts(d);
+        }
+
+        // ── 지표 타일 ──
+        function renderKpis(d) {
+            const t = d.totals || {};
+            // 앞 기간이 자료 시작일보다 앞에 걸치면 비교하지 않는다 (일부만 있는 기간과 비교하면 ▲2000% 같은 값이 나온다)
+            const prevOk = !!(d.prev && d.meta && d.meta.minDate && d.range.prevFrom >= d.meta.minDate);
+            const p = prevOk ? d.prev : {};
+            const rate = pct(t.cqDone, t.oqDone), prate = prevOk ? pct(p.cqDone, p.oqDone) : null;
+            const short = Math.max(0, (t.oqDone || 0) - (t.cqDone || 0));
+            const noPrev = prevOk ? '전 기간 자료 없음' : '비교할 앞 기간 자료가 모자람';
+            const delta = (cur, prev) => {
+                if (!prev) return el('span', { class: 'k-delta' }, noPrev);
+                const r = ((cur - prev) / prev) * 100;
+                return el('span', { class: 'k-delta' }, '전 기간 대비 ', el('b', null, (r >= 0 ? '▲ ' : '▼ ') + Math.abs(r).toFixed(1) + '%'));
+            };
+            const tile = (label, key, val, unit, foot) => el('div', { class: 'kpi' },
+                el('div', { class: 'k-label' }, key ? el('i', { class: 'k-key', style: `background:${key}` }) : null, label),
+                el('div', { class: 'k-val num' }, val, unit ? el('span', { class: 'k-unit' }, unit) : null),
+                el('div', { class: 'k-foot' }, foot));
+            const box = document.getElementById('kpis');
+            box.replaceChildren(
+                tile('발주수량', 'var(--s-order)', fmt(t.oq), '개', delta(t.oq, p.oq)),
+                tile('확정수량', 'var(--s-conf)', fmt(t.cq), '개', [delta(t.cq, p.cq), t.cqOpen ? el('div', null, `그중 진행중 ${fmt(t.cqOpen)}개`) : null]),
+                tile('확정률', null, fmtPct(rate), '', [prate == null ? el('span', null, noPrev)
+                    : el('span', { class: 'k-delta' }, '전 기간 ', el('b', null, fmtPct(prate))), el('div', null, '처리완료 발주서 기준')]),
+                tile('미확정 수량', null, fmt(short), '개', el('span', null, '처리완료 발주서의 발주 − 확정')),
+                tile('발주서', null, fmt(t.orders), '건', [delta(t.orders, p.orders), el('div', null, `SKU ${fmt(t.skus)}종 · 진행중 ${fmt(t.ordersOpen)}건`)]),
+                tile('발주금액', null, money(t.amt), '원', [delta(t.amt, p.amt), el('div', null, `확정금액 ${money(t.camt)}원`)]),
+            );
+        }
+
+        // ── 추이 차트 (막대: 발주 · 확정 나란히) + 확정률 선 (별도 차트, 같은 X) ──
+        function renderTrend() {
+            const rows = filledSeries(state.unit);
+            const box = document.getElementById('trendChart'), rbox = document.getElementById('rateChart');
+            box.replaceChildren(); rbox.replaceChildren();
+            if (!rows.length || rows.every((r) => !r.oq && !r.cq)) { box.append(el('div', { class: 'empty' }, '이 기간에 발주가 없습니다.')); return; }
+
+            const W = Math.max(320, box.clientWidth), H = 300, RH = 150;
+            const m = { l: 56, r: 12, t: 18, b: 30 };
+            const pw = W - m.l - m.r, ph = H - m.t - m.b;
+            const n = rows.length, gw = pw / n;
+            const scale = niceScale(Math.max(...rows.map((r) => Math.max(r.oq, r.cq))));
+            const yMax = scale.max;
+            const y = (v) => m.t + ph - (v / yMax) * ph;
+            const barW = Math.max(1.5, Math.min(26, (gw - 6) / 2 - 1));   // 두 막대 + 2px 틈
+            const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': '발주수량과 확정수량 추이' });
+            const defs = sv('defs', {});
+            const pat = sv('pattern', { id: 'hatch', width: 5, height: 5, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+            pat.append(sv('rect', { width: 5, height: 5, fill: '#FCE3D8' }), sv('rect', { width: 2.4, height: 5, fill: getCss('--s-conf-soft') }));
+            defs.append(pat); svg.append(defs);
+
+            // 격자·Y축 (가는 실선)
+            const ax = sv('g', { class: 'axis' });
+            for (let i = 0; i <= scale.ticks; i++) {
+                const v = scale.step * i, yy = y(v);
+                ax.append(sv('line', { x1: m.l, x2: W - m.r, y1: yy, y2: yy, stroke: i === 0 ? '#DEDAD5' : getCss('--grid'), 'stroke-width': 1 }));
+                const tx = sv('text', { x: m.l - 8, y: yy + 4, 'text-anchor': 'end' }); tx.textContent = fmt(v); ax.append(tx);
+            }
+            // X 라벨 — 최대 12개 정도만
+            const step = Math.max(1, Math.ceil(n / Math.max(4, Math.floor(pw / 78))));
+            rows.forEach((r, i) => {
+                if (i % step !== 0) return;
+                const tx = sv('text', { x: m.l + gw * i + gw / 2, y: H - 10, 'text-anchor': 'middle' });
+                tx.textContent = periodLabel(state.unit, r.p, true) + (r.partial ? '*' : '');
+                ax.append(tx);
+            });
+            svg.append(ax);
+
+            // 막대 — 위쪽 끝만 둥글게(4px), 바닥에 붙인다
+            const bar = (x, top, bottom, fill, roundTop) => {
+                const h = bottom - top; if (h <= 0) return null;
+                const rr = roundTop ? Math.min(4, barW / 2, h) : 0;
+                const d = `M${x},${bottom} V${top + rr} Q${x},${top} ${x + rr},${top} H${x + barW - rr} Q${x + barW},${top} ${x + barW},${top + rr} V${bottom} Z`;
+                return sv('path', { d, fill });
+            };
+            const gBars = sv('g', {});
+            let peak = null;
+            rows.forEach((r, i) => {
+                const cx = m.l + gw * i + gw / 2;
+                const x1 = cx - barW - 1, x2 = cx + 1;
+                const base = y(0);
+                const b1 = bar(x1, y(r.oq), base, getCss('--s-order'), true); if (b1) gBars.append(b1);
+                // 확정 = 완료분(진한 색, 아래) + 진행중분(빗금, 위)
+                const doneTop = y(r.cqDone);
+                const openTop = y(r.cqDone + r.cqOpen);
+                if (r.cqOpen > 0) {
+                    const b3 = bar(x2, openTop, doneTop - (r.cqDone > 0 ? 2 : 0), 'url(#hatch)', true); if (b3) gBars.append(b3);
+                    const b2 = bar(x2, doneTop, base, getCss('--s-conf'), false); if (b2) gBars.append(b2);
+                } else {
+                    const b2 = bar(x2, doneTop, base, getCss('--s-conf'), true); if (b2) gBars.append(b2);
+                }
+                if (!peak || r.oq > peak.r.oq) peak = { r, cx: x1 + barW / 2 };
+            });
+            svg.append(gBars);
+            // 직접 라벨은 최댓값 한 곳만
+            if (peak && peak.r.oq > 0) {
+                const t = sv('text', { x: peak.cx, y: y(peak.r.oq) - 6, 'text-anchor': 'middle', style: 'font-size:11px;font-weight:700;fill:var(--ink)' });
+                t.textContent = fmt(peak.r.oq); svg.append(t);
+            }
+            // 호버: 기간마다 전체 높이의 투명 영역
+            const hl = sv('rect', { x: 0, y: m.t, width: gw, height: ph, fill: '#1C1B1A', opacity: 0, 'pointer-events': 'none' });
+            svg.append(hl);
+            rows.forEach((r, i) => {
+                const hit = sv('rect', { x: m.l + gw * i, y: m.t, width: gw, height: ph, fill: 'transparent', tabindex: 0 });
+                const on = (ev) => { hl.setAttribute('x', m.l + gw * i); hl.setAttribute('opacity', .05); showPeriodTip(ev, r); };
+                hit.addEventListener('pointerenter', on); hit.addEventListener('focus', (ev) => on(fakeEv(hit)));
+                hit.addEventListener('pointermove', moveTip);
+                hit.addEventListener('pointerleave', () => { hl.setAttribute('opacity', 0); hideTip(); });
+                hit.addEventListener('blur', () => { hl.setAttribute('opacity', 0); hideTip(); });
+                svg.append(hit);
+            });
+            box.append(svg);
+            if (rows.some((r) => r.partial)) box.append(el('div', { class: 'note' }, '* 표시는 고른 기간에 일부만 걸친 주·월입니다 (기간 안의 날만 셉니다).'));
+
+            // ── 확정률 선 ──
+            const rsvg = sv('svg', { viewBox: `0 0 ${W} ${RH}`, height: RH, role: 'img', 'aria-label': '확정률 추이' });
+            const rph = RH - m.t - 26;
+            const ry = (v) => m.t + rph - (v / 100) * rph;
+            const rax = sv('g', { class: 'axis' });
+            for (const v of [0, 50, 100]) {
+                rax.append(sv('line', { x1: m.l, x2: W - m.r, y1: ry(v), y2: ry(v), stroke: v === 0 ? '#DEDAD5' : getCss('--grid') }));
+                const tx = sv('text', { x: m.l - 8, y: ry(v) + 4, 'text-anchor': 'end' }); tx.textContent = v + '%'; rax.append(tx);
+            }
+            rsvg.append(rax);
+            const pts = rows.map((r, i) => ({ r, x: m.l + gw * i + gw / 2, v: pct(r.cqDone, r.oqDone) }));
+            // 값이 없는 기간(처리완료 발주 0)은 선을 끊는다
+            let dpath = '', pen = false;
+            for (const p of pts) { if (p.v == null) { pen = false; continue; } dpath += (pen ? 'L' : 'M') + p.x.toFixed(1) + ',' + ry(p.v).toFixed(1); pen = true; }
+            if (dpath) rsvg.append(sv('path', { d: dpath, fill: 'none', stroke: getCss('--s-conf'), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+            // 점이 하나뿐인 구간은 선이 안 보이므로 점으로
+            pts.forEach((p, i) => {
+                if (p.v == null) return;
+                const lone = (i === 0 || pts[i - 1].v == null) && (i === pts.length - 1 || pts[i + 1].v == null);
+                if (lone || n <= 31) rsvg.append(sv('circle', { cx: p.x, cy: ry(p.v), r: 3, fill: getCss('--s-conf'), stroke: '#fff', 'stroke-width': 2 }));
+            });
+            // 마지막 값 직접 라벨
+            const last = [...pts].reverse().find((p) => p.v != null);
+            if (last) { const t = sv('text', { x: Math.min(last.x + 6, W - m.r), y: ry(last.v) - 8, 'text-anchor': last.x > W - 60 ? 'end' : 'start', style: 'font-size:11px;font-weight:700;fill:var(--ink)' }); t.textContent = fmtPct(last.v); rsvg.append(t); }
+            // 십자선 (가장 가까운 기간으로)
+            const cross = sv('line', { x1: 0, x2: 0, y1: m.t, y2: m.t + rph, stroke: '#9C968F', 'stroke-width': 1, opacity: 0 });
+            const dot = sv('circle', { r: 5, fill: getCss('--s-conf'), stroke: '#fff', 'stroke-width': 2, opacity: 0 });
+            rsvg.append(cross, dot);
+            const overlay = sv('rect', { x: m.l, y: 0, width: pw, height: RH, fill: 'transparent' });
+            overlay.addEventListener('pointermove', (ev) => {
+                const bb = rsvg.getBoundingClientRect();
+                const xx = (ev.clientX - bb.left) * (W / bb.width);
+                const i = Math.max(0, Math.min(n - 1, Math.floor((xx - m.l) / gw)));
+                const p = pts[i];
+                cross.setAttribute('x1', p.x); cross.setAttribute('x2', p.x); cross.setAttribute('opacity', 1);
+                if (p.v != null) { dot.setAttribute('cx', p.x); dot.setAttribute('cy', ry(p.v)); dot.setAttribute('opacity', 1); } else dot.setAttribute('opacity', 0);
+                showPeriodTip(ev, p.r);
+            });
+            overlay.addEventListener('pointerleave', () => { cross.setAttribute('opacity', 0); dot.setAttribute('opacity', 0); hideTip(); });
+            rsvg.append(overlay);
+            rbox.append(rsvg);
+        }
+        function fakeEv(node) { const b = node.getBoundingClientRect(); return { clientX: b.left + b.width / 2, clientY: b.top + 20 }; }
+        function showPeriodTip(ev, r) {
+            const rate = pct(r.cqDone, r.oqDone);
+            showTip(ev, periodLabel(state.unit, r.p) + (r.partial ? ' (일부)' : ''), [
+                { color: getCss('--s-order'), value: fmt(r.oq), label: '발주수량' },
+                { color: getCss('--s-conf'), value: fmt(r.cq), label: r.cqOpen ? `확정수량 (진행중 ${fmt(r.cqOpen)})` : '확정수량' },
+                { value: fmtPct(rate), label: '확정률 (처리완료분)' },
+            ], `발주서 ${fmt(r.orders)}건 · SKU ${fmt(r.skus)}종 · 발주금액 ${money(r.amt)}원`);
+        }
+        const cssCache = {};
+        function getCss(name) { return cssCache[name] || (cssCache[name] = getComputedStyle(document.documentElement).getPropertyValue(name).trim()); }
+
+        // ── 기간별 표 ──
+        const UNIT_NAME = { day: '일별', week: '주별', month: '월별' };
+        function periodRows() { return filledSeries(state.unit); }
+        function renderPeriodTable() {
+            const rows = periodRows();
+            document.getElementById('periodTitle').textContent = `${UNIT_NAME[state.unit]} 상세`;
+            document.getElementById('periodSub').textContent = '최근 기간이 위 · 위의 [일별/주별/월별] 을 따릅니다';
+            const box = document.getElementById('periodTable');
+            if (!rows.length) { box.replaceChildren(el('div', { class: 'empty' }, '자료가 없습니다.')); return; }
+            const head = el('tr', null, ['기간', '발주서', 'SKU', '발주수량', '확정수량', '진행중 확정', '미확정', '확정률', '발주금액', '확정금액'].map((h) => el('th', null, h)));
+            const body = [...rows].reverse().map((r) => {
+                const short = Math.max(0, r.oqDone - r.cqDone);
+                const rate = pct(r.cqDone, r.oqDone);
+                return el('tr', null,
+                    el('td', null, periodLabel(state.unit, r.p), r.partial ? el('span', { class: 'tag' }, '일부') : null),
+                    el('td', null, fmt(r.orders)), el('td', null, fmt(r.skus)),
+                    el('td', null, fmt(r.oq)), el('td', null, fmt(r.cq)),
+                    el('td', { class: r.cqOpen ? null : 'muted' }, fmt(r.cqOpen)),
+                    el('td', null, fmt(short)),
+                    el('td', null, fmtPct(rate), el('span', { class: 'mini' }, el('i', { style: `width:${Math.min(100, rate || 0)}%;background:var(--s-conf)` }))),
+                    el('td', null, fmt(r.amt)), el('td', null, fmt(r.camt)));
+            });
+            const t = state.data.totals;
+            const total = el('tr', { class: 'total' },
+                el('td', null, '합계'), el('td', null, fmt(t.orders)), el('td', null, fmt(t.skus)),
+                el('td', null, fmt(t.oq)), el('td', null, fmt(t.cq)), el('td', null, fmt(t.cqOpen)),
+                el('td', null, fmt(Math.max(0, t.oqDone - t.cqDone))), el('td', null, fmtPct(pct(t.cqDone, t.oqDone))),
+                el('td', null, fmt(t.amt)), el('td', null, fmt(t.camt)));
+            box.replaceChildren(el('table', null, el('thead', null, head), el('tbody', null, body, total)));
+        }
+        function downloadCsv() {
+            const rows = periodRows(); if (!rows.length) return;
+            const q = (v) => { const s = String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+            const lines = [['기간시작', '기간', '일부', '발주서', 'SKU', '발주수량', '확정수량', '진행중확정', '처리완료발주', '처리완료확정', '미확정', '확정률(%)', '발주금액', '확정금액'].join(',')];
+            for (const r of rows) {
+                const rate = pct(r.cqDone, r.oqDone);
+                lines.push([r.p, periodLabel(state.unit, r.p), r.partial ? 'Y' : '', r.orders, r.skus, r.oq, r.cq, r.cqOpen, r.oqDone, r.cqDone,
+                    Math.max(0, r.oqDone - r.cqDone), rate == null ? '' : rate.toFixed(1), Math.round(r.amt), Math.round(r.camt)].map(q).join(','));
+            }
+            const f = state.data.filters;
+            const name = `발주분석_${UNIT_NAME[state.unit]}_${f.from}_${f.to}${f.brand ? '_' + f.brand : ''}${f.center ? '_' + f.center : ''}.csv`;
+            const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+            const a = el('a', { href: URL.createObjectURL(blob), download: name });
+            document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+        }
+
+        // ── 연도 × 월 ──
+        function renderYears(d) {
+            const box = document.getElementById('yearTable');
+            const list = d.years || [];
+            if (!list.length) { box.replaceChildren(el('div', { class: 'empty' }, '자료가 없습니다.')); return; }
+            const years = [...new Set(list.map((r) => r.y))].sort();
+            const get = (y, m) => list.find((r) => r.y === y && r.m === m);
+            const maxOq = Math.max(...list.map((r) => r.oq));
+            const multi = years.length > 1;
+            const h1 = el('tr', null, el('th', { rowspan: 2 }, '월'),
+                years.map((y, i) => el('th', { class: 'yr-head', colspan: multi && i > 0 ? 5 : 4 }, `${y}년`)));
+            const h2 = el('tr', null, years.map((y, i) => [
+                el('th', { class: 'bl' }, '발주서'), el('th', null, '발주수량'), el('th', null, '확정수량'), el('th', null, '확정률'),
+                multi && i > 0 ? el('th', null, '전년 대비') : null]));
+            const body = [];
+            const sum = {};
+            for (let mth = 1; mth <= 12; mth++) {
+                const cells = years.map((y, i) => {
+                    const r = get(y, mth);
+                    const s = sum[y] || (sum[y] = { orders: 0, oq: 0, cq: 0, oqDone: 0, cqDone: 0 });
+                    if (r) { s.orders += r.orders; s.oq += r.oq; s.cq += r.cq; s.oqDone += r.oqDone; s.cqDone += r.cqDone; }
+                    const prev = i > 0 ? get(years[i - 1], mth) : null;
+                    const yoy = r && prev && prev.oq ? ((r.oq - prev.oq) / prev.oq) * 100 : null;
+                    return [
+                        el('td', { class: 'bl' + (r ? '' : ' muted') }, r ? fmt(r.orders) : '–'),
+                        el('td', { class: r ? null : 'muted' }, r ? fmt(r.oq) : '–', r ? el('span', { class: 'mini', style: 'width:60px' }, el('i', { style: `width:${(r.oq / maxOq) * 100}%;background:var(--s-order)` })) : null),
+                        el('td', { class: r ? null : 'muted' }, r ? fmt(r.cq) : '–'),
+                        el('td', { class: r ? null : 'muted' }, r ? fmtPct(pct(r.cqDone, r.oqDone)) : '–'),
+                        multi && i > 0 ? el('td', { class: yoy == null ? 'muted' : null }, yoy == null ? '–' : (yoy >= 0 ? '▲ ' : '▼ ') + Math.abs(yoy).toFixed(1) + '%') : null,
+                    ];
+                });
+                body.push(el('tr', null, el('td', null, `${mth}월`), cells));
+            }
+            body.push(el('tr', { class: 'total' }, el('td', null, '합계'), years.map((y, i) => {
+                const s = sum[y]; const ps = i > 0 ? sum[years[i - 1]] : null;
+                return [el('td', { class: 'bl' }, fmt(s.orders)), el('td', null, fmt(s.oq)), el('td', null, fmt(s.cq)), el('td', null, fmtPct(pct(s.cqDone, s.oqDone))),
+                    multi && i > 0 ? el('td', null, ps && ps.oq ? ((s.oq - ps.oq) / ps.oq * 100 >= 0 ? '▲ ' : '▼ ') + Math.abs((s.oq - ps.oq) / ps.oq * 100).toFixed(1) + '%' : '–') : null];
+            })));
+            box.replaceChildren(el('table', null, el('thead', null, h1, h2), el('tbody', null, body)));
+        }
+
+        // ── 요일 ──
+        function renderWeekday(d) {
+            const box = document.getElementById('weekdayChart');
+            const by = new Map((d.weekday || []).map((w) => [w.dow, w]));
+            // 기간 안의 요일 수 (데이터 시작 이후만)
+            let from = d.range.from; const minD = d.meta && d.meta.minDate; if (minD && minD > from) from = minD;
+            let to = d.range.to; const t = today(); const maxD = (d.meta && d.meta.maxDate) || t; const end = maxD > t ? maxD : t; if (end < to) to = end;
+            const cnt = [0, 0, 0, 0, 0, 0, 0, 0];
+            for (let p = from, g = 0; p <= to && g < 1200; p = addDays(p, 1), g++) { const k = parse(p).getDay(); cnt[k === 0 ? 7 : k]++; }
+            const rows = [1, 2, 3, 4, 5, 6, 7].map((k) => { const w = by.get(k) || { oq: 0, cq: 0, orders: 0, days: 0 }; return Object.assign({ dow: k, n: cnt[k], avg: cnt[k] ? w.oq / cnt[k] : 0 }, w); });
+            const total = rows.reduce((s, r) => s + r.oq, 0);
+            if (!total) { box.replaceChildren(el('div', { class: 'empty' }, '자료가 없습니다.')); return; }
+            const max = Math.max(...rows.map((r) => r.avg));
+            const names = ['', '월', '화', '수', '목', '금', '토', '일'];
+            const list = el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, rows.map((r) => {
+                const row = el('div', { style: 'display:grid;grid-template-columns:28px 1fr 150px;align-items:center;gap:10px;font-size:13px;cursor:default', tabindex: 0 },
+                    el('b', null, names[r.dow]),
+                    el('div', { style: 'height:18px;background:var(--grid);border-radius:4px;position:relative' },
+                        el('div', { style: `position:absolute;left:0;top:0;bottom:0;width:${max ? (r.avg / max) * 100 : 0}%;background:var(--s-order);border-radius:0 4px 4px 0` })),
+                    el('span', { class: 'num', style: 'text-align:right;color:var(--muted)' }, el('b', { style: 'color:var(--ink)' }, fmt(r.avg)), ` 개/일 · ${fmtPct(pct(r.oq, total), 0)}`));
+                const on = (ev) => showTip(ev, `${names[r.dow]}요일`, [
+                    { color: getCss('--s-order'), value: fmt(r.avg), label: '하루 평균 발주수량' },
+                    { value: fmt(r.oq), label: '발주수량 합' },
+                    { value: fmtPct(pct(r.oq, total)), label: '전체 중 비중' },
+                ], `기간 안 ${names[r.dow]}요일 ${r.n}번 중 발주 들어온 날 ${r.days}번 · 발주서 ${fmt(r.orders)}건`);
+                row.addEventListener('pointerenter', on); row.addEventListener('pointermove', moveTip); row.addEventListener('pointerleave', hideTip);
+                row.addEventListener('focus', () => on(fakeEv(row))); row.addEventListener('blur', hideTip);
+                return row;
+            }));
+            box.replaceChildren(list);
+        }
+
+        // ── 브랜드 · 센터 · 상품 표 ──
+        function shareTable(items, opts) {
+            const max = Math.max(1, ...items.map((r) => r.oq));
+            const total = items.reduce((s, r) => s + r.oq, 0) || 1;
+            const head = el('tr', null, [opts.nameHead, '발주서', '발주수량', '확정수량', '확정률', '비중'].map((h) => el('th', null, h)));
+            const body = items.map((r) => {
+                const tr = el('tr', { class: opts.onClick ? 'click' : null, title: opts.onClick ? `${r.name} 만 보기` : null },
+                    el('td', { class: 'name' }, r.name, opts.active === r.name ? el('span', { class: 'tag' }, '선택됨') : null),
+                    el('td', null, fmt(r.orders)),
+                    el('td', null, fmt(r.oq), el('span', { class: 'mini' }, el('i', { style: `width:${(r.oq / max) * 100}%;background:var(--s-order)` }))),
+                    el('td', null, fmt(r.cq)),
+                    el('td', null, fmtPct(pct(r.cqDone, r.oqDone))),
+                    el('td', null, fmtPct(pct(r.oq, total), 1)));
+                if (opts.onClick) tr.addEventListener('click', () => opts.onClick(r.name));
+                return tr;
+            });
+            return el('table', null, el('thead', null, head), el('tbody', null, body));
+        }
+        function renderBrands(d) {
+            const box = document.getElementById('brandTable');
+            const items = d.brands || [];
+            if (!items.length) { box.replaceChildren(el('div', { class: 'empty' }, '자료가 없습니다.')); return; }
+            box.replaceChildren(shareTable(items, { nameHead: '브랜드', active: state.brand,
+                onClick: (name) => { state.brand = state.brand === name ? '' : name; document.getElementById('brandSel').value = state.brand; load(); } }),
+                el('div', { class: 'note' }, '한 발주서에 두 브랜드가 함께 있으면 양쪽 발주서 수에 모두 셉니다.'));
+        }
+        function renderCenters(d) {
+            const box = document.getElementById('centerTable');
+            const items = d.centers || [];
+            if (!items.length) { box.replaceChildren(el('div', { class: 'empty' }, '자료가 없습니다.')); return; }
+            box.replaceChildren(shareTable(items, { nameHead: '센터', active: state.center,
+                onClick: (name) => { state.center = state.center === name ? '' : name; document.getElementById('centerSel').value = state.center; load(); } }));
+        }
+        function renderProducts(d) {
+            const box = document.getElementById('productTable');
+            let items = (d.products || []).slice();
+            if (!items.length) { box.replaceChildren(el('div', { class: 'empty' }, '자료가 없습니다.')); return; }
+            const short = (r) => Math.max(0, r.oqDone - r.cqDone);
+            items.sort(state.prodSort === 'short' ? (a, b) => short(b) - short(a) || b.oq - a.oq : (a, b) => b.oq - a.oq);
+            items = items.slice(0, 30);
+            const head = el('tr', null, ['#', '상품', '옵션', '발주수량', '확정수량', '미확정', '확정률'].map((h) => el('th', null, h)));
+            const body = items.map((r, i) => el('tr', null,
+                el('td', { class: 'muted' }, i + 1),
+                el('td', { class: 'name', title: r.name }, r.name),
+                el('td', null, fmt(r.opts)), el('td', null, fmt(r.oq)), el('td', null, fmt(r.cq)),
+                el('td', null, fmt(short(r))), el('td', null, fmtPct(pct(r.cqDone, r.oqDone)))));
+            box.replaceChildren(el('table', null, el('thead', null, head), el('tbody', null, body)));
+            // 상품명은 두 번째 칸이라 표 기본(첫 칸만 왼쪽 정렬)을 덮어 왼쪽 정렬
+            box.querySelectorAll('td.name, th:nth-child(2)').forEach((n) => { n.style.textAlign = 'left'; });
+        }
+
+        // ================================================================
+        // 불러오기
+        // ================================================================
+        let reqSeq = 0;
+        async function load(fresh) {
+            const [from, to] = rangeOfPreset();
+            state.from = state.preset === 'custom' ? state.from : from;
+            state.to = state.preset === 'custom' ? state.to : to;
+            syncControls(from, to);
+            saveView();
+            const qs = new URLSearchParams({ from, to, basis: state.basis });
+            if (state.brand) qs.set('brand', state.brand);
+            if (state.center) qs.set('center', state.center);
+            if (fresh) qs.set('fresh', '1');
+            const my = ++reqSeq;
+            document.getElementById('content').classList.add('loading-dim');
+            document.getElementById('refreshBtn').disabled = true;
+            const err = document.getElementById('err'); err.style.display = 'none';
+            try {
+                const res = await fetch('/api/analytics?' + qs.toString());
+                const j = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+                if (my !== reqSeq) return;          // 더 최근 요청이 있으면 버린다
+                state.data = j;
+                fillCenterList(j.centerList || []);
+                fillYearList(j.meta);
+                const at = new Date(j.generatedAt);
+                document.getElementById('asOf').textContent = `집계 ${pad(at.getHours())}:${pad(at.getMinutes())}${j.cached ? ' (저장된 값 · 5분)' : ''}`;
+                renderAll();
+            } catch (e) {
+                if (my !== reqSeq) return;
+                err.textContent = '불러오지 못했습니다: ' + e.message; err.style.display = 'block';
+            } finally {
+                if (my === reqSeq) {
+                    document.getElementById('content').classList.remove('loading-dim');
+                    document.getElementById('refreshBtn').disabled = false;
+                }
+            }
+        }
+
+        function fillCenterList(list) {
+            const sel = document.getElementById('centerSel');
+            if (sel.options.length - 1 === list.length) return;
+            sel.replaceChildren(el('option', { value: '' }, '전체'), ...list.map((c) => el('option', { value: c }, c)));
+            sel.value = state.center;
+        }
+        function fillYearList(meta) {
+            const sel = document.getElementById('yearSel');
+            if (!meta || !meta.minDate) return;
+            const y0 = Number(meta.minDate.slice(0, 4)), y1 = Math.max(Number((meta.maxDate || today()).slice(0, 4)), Number(today().slice(0, 4)));
+            const want = [];
+            for (let y = y1; y >= y0; y--) want.push(String(y));
+            if (sel.options.length - 1 === want.length) { sel.value = state.preset === 'year' ? state.year : ''; return; }
+            sel.replaceChildren(el('option', { value: '' }, '연도'), ...want.map((y) => el('option', { value: y }, `${y}년`)));
+            sel.value = state.preset === 'year' ? state.year : '';
+        }
+
+        function syncControls(from, to) {
+            document.querySelectorAll('#presetSeg button').forEach((b) => b.classList.toggle('active', b.dataset.p === state.preset));
+            document.querySelectorAll('#basisSeg button').forEach((b) => b.classList.toggle('active', b.dataset.b === state.basis));
+            document.querySelectorAll('#unitSeg button').forEach((b) => b.classList.toggle('active', b.dataset.u === state.unit));
+            document.querySelectorAll('#prodSeg button').forEach((b) => b.classList.toggle('active', b.dataset.s === state.prodSort));
+            document.getElementById('customRange').classList.toggle('on', state.preset === 'custom');
+            document.getElementById('fromIn').value = from; document.getElementById('toIn').value = to;
+            document.getElementById('yearSel').value = state.preset === 'year' ? state.year : '';
+            document.getElementById('rangeText').textContent = state.preset === 'custom' ? '' : `${from.replace(/-/g, '.')} ~ ${to.replace(/-/g, '.')} (${dayDiff(from, to) + 1}일)`;
+        }
+
+        // ── 이벤트 ──
+        document.getElementById('presetSeg').addEventListener('click', (ev) => {
+            const b = ev.target.closest('button'); if (!b) return;
+            if (b.dataset.p === 'custom') {
+                const [f, t] = rangeOfPreset(); state.from = f; state.to = t; state.preset = 'custom'; syncControls(f, t); return;
+            }
+            state.preset = b.dataset.p;
+            // 기간 길이에 맞는 기본 단위
+            if (state.preset === 'w4' || state.preset === 'm1') state.unit = 'day';
+            else if (state.preset === 'd90') state.unit = 'week';
+            else state.unit = 'month';
+            load();
+        });
+        document.getElementById('yearSel').addEventListener('change', (ev) => {
+            if (!ev.target.value) return;
+            state.preset = 'year'; state.year = ev.target.value; state.unit = 'month'; load();
+        });
+        document.getElementById('applyRange').addEventListener('click', () => {
+            const f = document.getElementById('fromIn').value, t = document.getElementById('toIn').value;
+            const err = document.getElementById('err');
+            if (!f || !t || f > t) { err.textContent = '시작일과 종료일을 바르게 고르세요.'; err.style.display = 'block'; return; }
+            if (dayDiff(f, t) > 1100) { err.textContent = '기간은 3년 이내로 고르세요.'; err.style.display = 'block'; return; }
+            state.preset = 'custom'; state.from = f; state.to = t;
+            const len = dayDiff(f, t);
+            state.unit = len <= 45 ? 'day' : len <= 180 ? 'week' : 'month';
+            load();
+        });
+        document.getElementById('basisSeg').addEventListener('click', (ev) => { const b = ev.target.closest('button'); if (!b || b.dataset.b === state.basis) return; state.basis = b.dataset.b; load(); });
+        document.getElementById('brandSel').addEventListener('change', (ev) => { state.brand = ev.target.value; load(); });
+        document.getElementById('centerSel').addEventListener('change', (ev) => { state.center = ev.target.value; load(); });
+        document.getElementById('unitSeg').addEventListener('click', (ev) => {
+            const b = ev.target.closest('button'); if (!b) return; state.unit = b.dataset.u; saveView();
+            document.querySelectorAll('#unitSeg button').forEach((x) => x.classList.toggle('active', x.dataset.u === state.unit));
+            renderTrend(); renderPeriodTable();
+        });
+        document.getElementById('prodSeg').addEventListener('click', (ev) => {
+            const b = ev.target.closest('button'); if (!b) return; state.prodSort = b.dataset.s; saveView();
+            document.querySelectorAll('#prodSeg button').forEach((x) => x.classList.toggle('active', x.dataset.s === state.prodSort));
+            if (state.data) renderProducts(state.data);
+        });
+        document.getElementById('refreshBtn').addEventListener('click', () => load(true));
+        document.getElementById('csvBtn').addEventListener('click', downloadCsv);
+        let rT = null;
+        window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (state.data) renderTrend(); }, 120); });
+
+        load();
+    })();
+    </script>
+</body>
+</html>

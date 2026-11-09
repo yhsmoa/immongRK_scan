@@ -119,6 +119,7 @@ app.use(require('./routes/rkLabel'));   // 라벨 출력 연동 (label-service �
 app.use(require('./routes/rkShipDocs')); // 쉽먼트 [순서정리] — 쿠팡 부착문서·동봉문서 PDF 재정렬
 app.use(require('./routes/rkRanking')); // 발주 랭킹 (/ranking · /api/ranking)
 app.use(require('./routes/rkWeihai')); // 상품부족 위해 주문·장바구니 (purchase-agent DB · immongbr)
+app.use(require('./routes/rkAnalytics')); // 데이터 분석 (/analytics · /api/analytics) — docs/plan-analytics.md
 
 // 발주서 목록 가져오기
 app.get('/api/orders', async (req, res) => {

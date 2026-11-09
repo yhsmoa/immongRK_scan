@@ -48,16 +48,16 @@ begin
     stock_id bigint, location text, shipment_id bigint, shipment_item_id bigint, qty int
   ) on commit drop;
 
+  -- 발주번호·바코드는 넣을 때부터 trim (Supabase API 세션은 safeupdate 가 켜져 있어 WHERE 없는 UPDATE 가 거부된다)
   insert into _a
-  select '재고', x->>'orderNumber', x->>'center', x->>'shippingDate', x->>'barcode', x->>'productName',
+  select '재고', trim(x->>'orderNumber'), x->>'center', x->>'shippingDate', trim(x->>'barcode'), x->>'productName',
          (x->>'stockId')::bigint, x->>'location', null, null, (x->>'qty')::int
     from jsonb_array_elements(coalesce(p->'stock', '[]'::jsonb)) x;
   insert into _a
-  select '입고', x->>'orderNumber', x->>'center', x->>'shippingDate', x->>'barcode', x->>'productName',
+  select '입고', trim(x->>'orderNumber'), x->>'center', x->>'shippingDate', trim(x->>'barcode'), x->>'productName',
          null, null, (x->>'shipmentId')::bigint, (x->>'shipmentItemId')::bigint, (x->>'qty')::int
     from jsonb_array_elements(coalesce(p->'inbound', '[]'::jsonb)) x;
 
-  update _a set order_number = trim(order_number), barcode = trim(barcode);
   if exists (select 1 from _a where coalesce(qty, 0) <= 0 or coalesce(order_number, '') = '' or coalesce(barcode, '') = '') then
     raise exception 'ALLOC:수량·발주번호·바코드가 비어 있는 배정이 있습니다.';
   end if;
