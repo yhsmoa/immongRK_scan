@@ -682,14 +682,23 @@ router.post('/api/inbound/mobile-box-size', async (req, res) => {
 });
 
 // 다음 박스 번호 미리보기 (2026-10-27) — [박스 이동] 화면이 "145530590-4 로 생성" 을 미리 보여준다. 분할 라우트와 같은 규칙(그 발주서의 최대 + 1)
+//   2026-11-09: [박스 이동 › 기존박스] 후보 목록도 같이 준다 — boxes: [{ boxNo, boxSize, qty(담긴 합), virtualQty(가상 합), shipped(출고완료) }]
 router.get('/api/inbound/mobile-box-next', async (req, res) => {
   try {
     const orderNumber = String(req.query.orderNumber || '').trim();
     if (!orderNumber) return res.status(400).json({ error: '발주번호가 필요합니다.' });
-    const { data, error } = await sb.from('rk_ship_boxes').select('box_no').eq('order_number', orderNumber);
+    const hasShipped = await M.hasShippedCol();
+    const { data, error } = await sb.from('rk_ship_boxes').select('id, box_no, box_size' + (hasShipped ? ', shipped_at' : '')).eq('order_number', orderNumber).order('box_no', { ascending: true });
     if (error) throw error;
     const nextBoxNo = Math.max(0, ...(data || []).map(b => parseInt(b.box_no, 10) || 0)) + 1;
-    res.json({ orderNumber, nextBoxNo });
+    const sum = new Map();   // box_id → { qty, vq }
+    const ids = (data || []).map(b => b.id);
+    if (ids.length) {
+      const its = await S.pageAll(() => sb.from('rk_ship_box_items').select('id, box_id, qty, virtual_qty').in('box_id', ids).order('id', { ascending: true }));
+      for (const it of its) { const s = sum.get(it.box_id) || { qty: 0, vq: 0 }; s.qty += parseInt(it.qty, 10) || 0; s.vq += parseInt(it.virtual_qty, 10) || 0; sum.set(it.box_id, s); }
+    }
+    const boxes = (data || []).map(b => { const s = sum.get(b.id) || { qty: 0, vq: 0 }; return { boxNo: b.box_no, boxSize: b.box_size || '', qty: s.qty, virtualQty: s.vq, shipped: !!(hasShipped && b.shipped_at) }; });
+    res.json({ orderNumber, nextBoxNo, boxes });
   } catch (e) {
     console.error('[rk] inbound/mobile-box-next:', e);
     res.status(500).json({ error: '다음 박스 번호 조회 실패: ' + e.message });
@@ -700,9 +709,12 @@ router.get('/api/inbound/mobile-box-next', async (req, res) => {
 //   cards: [{ listId, allocId, keep, shareTotal }] — keep = 원래 박스에 남는 이 행의 몫. 0 이면 원래 박스 기록을 지우고, 남으면 그 수량으로 줄인다.
 //   새 박스에는 기록을 만들지 않는다(아직 안 담음). 입고 행은 원본(rk_cn_shipping) 기준으로 계산해 미러(rk_shipping_list)에도 같이 쓴다.
 //   박스 이동 자체는 이미 끝났으므로 여기서 실패해도 이동은 되돌리지 않고, 실패 건수만 돌려준다.
-async function trimMovedMarks(fromBoxNo, cards) {
+//   2026-11-09 to = { boxNo, add } (기존박스로 옮기기): 옮겨 간 박스에 이 행의 기록이 이미 있으면 몫(qty)을 add 만큼 늘린다 —
+//     화면은 기록의 qty 를 몫으로 읽으므로, 늘리지 않으면 아직 찾을 게 남았는데 "찾음" 으로 보인다. 기록이 없으면 만들지 않는다(아직 안 담음)
+async function adjustMovedMarks(fromBoxNo, cards, to) {
   let failed = 0;
   const key = String(fromBoxNo);
+  const toKey = to && to.boxNo > 0 && to.add > 0 ? String(to.boxNo) : null;
   for (const c of (Array.isArray(cards) ? cards : [])) {
     try {
       const allocId = parseInt(c && c.allocId, 10), listId = parseInt(c && c.listId, 10);
@@ -716,8 +728,10 @@ async function trimMovedMarks(fromBoxNo, cards) {
         if (error) throw error; cur = data && data[0] ? data[0].mobile_boxes : null;
       } else continue;
       const boxes = { ...boxEntries(cur) };
-      if (!boxes[key]) continue;   // 원래 박스에 기록이 없으면 손댈 것 없음
-      if (keep > 0) { const f = Math.min(entryFound(boxes[key]), keep); boxes[key] = { ...boxes[key], qty: keep, found: f, status: f >= keep ? 'found' : 'missing' }; } else delete boxes[key];
+      const hasTo = !!(toKey && boxes[toKey]);
+      if (!boxes[key] && !hasTo) continue;   // 두 박스 다 기록이 없으면 손댈 것 없음
+      if (boxes[key]) { if (keep > 0) { const f = Math.min(entryFound(boxes[key]), keep); boxes[key] = { ...boxes[key], qty: keep, found: f, status: f >= keep ? 'found' : 'missing' }; } else delete boxes[key]; }
+      if (hasTo) { const q = Math.max(0, parseInt(boxes[toKey].qty, 10) || 0) + to.add, f = entryFound(boxes[toKey]); boxes[toKey] = { ...boxes[toKey], qty: q, found: f, status: f >= q ? 'found' : 'missing' }; }
       const patch = summarizeMarks(boxes, c && c.shareTotal);
       if (Number.isFinite(allocId)) {
         const { error } = await sb.from('rk_cn_shipping').update(patch).eq('id', allocId); if (error) throw error;
@@ -732,6 +746,7 @@ async function trimMovedMarks(fromBoxNo, cards) {
   }
   return failed;
 }
+const trimMovedMarks = (fromBoxNo, cards) => adjustMovedMarks(fromBoxNo, cards, null);   // 새박스 나눔(split) — 옮겨 간 박스는 새 박스라 기록이 없다
 
 // 박스 추가하기 (2026-10-22) — 대2로 바꿔도 다 안 들어갈 때, 지금 보는 카드부터 (화면 순서로) 마지막 카드까지의 몫을 **새 가상 박스**로 옮긴다.
 //   카드 순서는 서버 정렬(mobileCmp · [전체]는 박스번호 › 동선)이라 접속할 때마다 같으므로 "이 카드부터 끝까지" 가 뜻이 있다.
@@ -834,6 +849,112 @@ router.post('/api/inbound/mobile-box-split', async (req, res) => {
   } catch (e) {
     console.error('[rk] inbound/mobile-box-split:', e);
     res.status(500).json({ error: '박스 추가 실패: ' + e.message });
+  }
+});
+
+// 기존 박스로 옮기기 (2026-11-09) — [박스 이동 › 기존박스]. 지금 카드 상품만, 입력한 개수만 같은 발주서의 다른(출고 안 된) 박스로 옮긴다.
+//   빼는 순서는 split 과 같다 — 그 출고코드로 기록된 가상 분량 먼저, 그다음 코드 미기록 분량. 부족하면 화면이 오래된 것(409).
+//   받는 박스: 같은 바코드 줄이 있으면 qty·virtual_qty 를 늘리고 virtual_codes 에 그 코드로 더한다, 없으면 새 줄. 가상 분량이 생기므로 is_virtual = true.
+//   트랜잭션이 없어 받는 박스를 먼저 쓰고 원래 박스를 줄인다. 중간에 실패하면 받는 박스를 되돌린다(넣은 줄 삭제 / 예전 값 복원).
+//   찾음 기록: 원래 박스 몫은 keep 으로 줄이고, 받는 박스에 이 행 기록이 있으면 몫을 늘린다(adjustMovedMarks). 두 박스 라벨 출력 기록을 지운다.
+//   body: { orderNumber, fromBoxNo, toBoxNo, worker, barcode, code, qty, card:{ listId, allocId, keep, shareTotal } }
+//     → { ok, orderNumber, fromBoxNo, toBoxNo, boxSize, movedQty, markFailed }
+router.post('/api/inbound/mobile-box-move', async (req, res) => {
+  try {
+    const orderNumber = String(req.body.orderNumber || '').trim();
+    const fromBoxNo = parseInt(req.body.fromBoxNo, 10), toBoxNo = parseInt(req.body.toBoxNo, 10);
+    const worker = String(req.body.worker || '').trim().slice(0, 40);
+    const barcode = String(req.body.barcode || '').trim();
+    const code = req.body.code != null && String(req.body.code).trim() !== '' ? String(req.body.code).trim() : null;
+    const n = Number(req.body.qty);
+    if (!orderNumber || !Number.isFinite(fromBoxNo) || fromBoxNo <= 0 || !Number.isFinite(toBoxNo) || toBoxNo <= 0) return res.status(400).json({ error: '발주번호와 박스번호가 필요합니다.' });
+    if (fromBoxNo === toBoxNo) return res.status(400).json({ error: '같은 박스로는 옮길 수 없습니다.' });
+    if (!barcode) return res.status(400).json({ error: '바코드가 필요합니다.' });
+    if (!Number.isInteger(n) || n < 1) return res.status(400).json({ error: '옮길 개수는 1 이상의 정수여야 합니다.' });
+
+    const { data: boxes, error: e1 } = await sb.from('rk_ship_boxes').select('id, box_no, box_size, is_virtual' + ((await M.hasShippedCol()) ? ', shipped_at' : '')).eq('order_number', orderNumber).order('box_no', { ascending: true });
+    if (e1) throw e1;
+    const from = (boxes || []).find(b => b.box_no === fromBoxNo), to = (boxes || []).find(b => b.box_no === toBoxNo);
+    if (!from) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${fromBoxNo} 박스가 없습니다.` });
+    if (!to) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${toBoxNo} 박스가 없습니다.` });
+    if (to.shipped_at) return res.status(409).json({ error: `📦${toBoxNo} 는 출고완료된 박스입니다.` });
+    const [{ data: items, error: e2 }, { data: toItems, error: e3 }] = await Promise.all([
+      sb.from('rk_ship_box_items').select('id, barcode, product_name, qty, virtual_qty, virtual_codes').eq('box_id', from.id).order('id', { ascending: true }),
+      sb.from('rk_ship_box_items').select('id, barcode, qty, virtual_qty, virtual_codes').eq('box_id', to.id).eq('barcode', barcode).order('id', { ascending: true }).limit(1),
+    ]);
+    if (e2) throw e2;
+    if (e3) throw e3;
+
+    // 원래 박스에서 빼기 (메모리) — split 과 같은 순서. 부족하면 아무것도 바꾸지 않고 돌려보낸다
+    const work = [];   // { item, qty, vq, codes }
+    for (const it of (items || [])) {
+      const vq = Math.max(0, parseInt(it.virtual_qty, 10) || 0);
+      work.push({ item: it, qty: Math.max(0, parseInt(it.qty, 10) || 0), vq, codes: VirtualPack.trimCodes(it.virtual_codes, vq) || {} });
+    }
+    let need = n, movedCodes = null, productName = null;
+    for (const w of work) {
+      if (need <= 0) break;
+      if (w.item.barcode !== barcode) continue;
+      let take = 0;
+      if (code != null && (w.codes[code] || 0) > 0) { const t = Math.min(need, w.codes[code]); w.codes[code] -= t; if (!w.codes[code]) delete w.codes[code]; take += t; }
+      const free = Math.max(0, w.vq - VirtualPack.sumCodes(w.codes) - take);
+      if (need - take > 0 && free > 0) take += Math.min(need - take, free);
+      if (!take) continue;
+      w.vq -= take; w.qty -= take; need -= take;
+      if (productName == null) productName = w.item.product_name || null;
+      movedCodes = VirtualPack.addCode(movedCodes, code, take);
+    }
+    if (need > 0) return res.status(409).json({ error: `📦${fromBoxNo} 의 내용이 화면과 다릅니다. 새로고침 후 다시 시도하세요.` });
+
+    // 받는 박스 먼저 — 같은 바코드 줄이 있으면 늘리고, 없으면 새 줄
+    const now = new Date().toISOString();
+    const old = toItems && toItems[0] ? toItems[0] : null;
+    const wasVirtual = !!to.is_virtual;
+    let insertedId = null;
+    const undoTarget = async () => {   // 받는 박스 되돌리기 (실패해도 원래 오류를 던진다)
+      try {
+        if (insertedId != null) await sb.from('rk_ship_box_items').delete().eq('id', insertedId);
+        else if (old) await sb.from('rk_ship_box_items').update({ qty: old.qty, virtual_qty: old.virtual_qty, virtual_codes: old.virtual_codes }).eq('id', old.id);
+        if (!wasVirtual) await sb.from('rk_ship_boxes').update({ is_virtual: false }).eq('id', to.id);
+      } catch (e) { console.error('[rk] 박스 이동 되돌리기 실패:', e.message); }
+    };
+    if (old) {
+      const oq = Math.max(0, parseInt(old.qty, 10) || 0), ovq = Math.max(0, parseInt(old.virtual_qty, 10) || 0);
+      const nvq = ovq + n;
+      const { error } = await sb.from('rk_ship_box_items').update({ qty: oq + n, virtual_qty: nvq, virtual_codes: VirtualPack.trimCodes(VirtualPack.addCode(VirtualPack.trimCodes(old.virtual_codes, ovq), code, n), nvq), updated_at: now }).eq('id', old.id);
+      if (error) throw error;
+    } else {
+      const { data: ins, error } = await sb.from('rk_ship_box_items').insert({ box_id: to.id, order_number: orderNumber, barcode, product_name: productName, qty: n, virtual_qty: n, virtual_codes: VirtualPack.trimCodes(movedCodes, n) }).select('id').single();
+      if (error) throw error;
+      insertedId = ins.id;
+    }
+    try {
+      if (!wasVirtual) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: true }).eq('id', to.id); if (error) throw error; }   // 가상 분량이 생겼다 (rkShipScan 저장 규칙)
+      // 원래 박스 줄이기
+      for (const w of work) {
+        const it = w.item;
+        if (w.qty === (parseInt(it.qty, 10) || 0) && w.vq === (parseInt(it.virtual_qty, 10) || 0)) continue;
+        if (w.qty <= 0) { const { error } = await sb.from('rk_ship_box_items').delete().eq('id', it.id); if (error) throw error; continue; }
+        const { error } = await sb.from('rk_ship_box_items').update({ qty: w.qty, virtual_qty: w.vq, virtual_codes: VirtualPack.trimCodes(w.codes, w.vq), updated_at: now }).eq('id', it.id);
+        if (error) throw error;
+      }
+    } catch (err) {
+      await undoTarget();
+      throw err;
+    }
+    // 원래 박스에 가상 분량이 하나도 안 남으면 가상 표시·확정 해제 (split 과 같은 규칙). 이동은 끝났으므로 실패해도 되돌리지 않는다
+    if (!work.some(w => w.vq > 0)) {
+      const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: false, virtual_confirmed_qty: 0, virtual_confirmed_at: null }).eq('id', from.id);
+      if (error) console.error('[rk] 박스 이동 뒤 가상 표시 해제 실패(계속):', error.message);
+    }
+    const markFailed = await adjustMovedMarks(fromBoxNo, req.body.card ? [req.body.card] : [], { boxNo: toBoxNo, add: n });
+    console.log(`[rk] inbound/mobile-box-move: ${orderNumber}-${fromBoxNo} → 📦${toBoxNo} ${barcode} ${n}개 (${worker || '작업자 미입력'})${markFailed ? ` · 찾음 기록 정리 실패 ${markFailed}건` : ''}`);
+    // 두 박스 모두 내용이 바뀌어 라벨을 다시 뽑아야 한다 — 출력 기록을 지운다 (실패해도 이동은 끝난 것)
+    try { if (await M.hasLabelCol()) await sb.from('rk_ship_boxes').update({ label_printed_at: null }).in('id', [from.id, to.id]); } catch (e) { console.error('[rk] 박스 이동 뒤 라벨 기록 지우기 실패(계속):', e.message); }
+    res.json({ ok: true, orderNumber, fromBoxNo, toBoxNo, boxSize: to.box_size || '', movedQty: n, markFailed });
+  } catch (e) {
+    console.error('[rk] inbound/mobile-box-move:', e);
+    res.status(500).json({ error: '박스 이동 실패: ' + e.message });
   }
 });
 
