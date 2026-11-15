@@ -22,7 +22,7 @@ const XlsxPopulate = require('xlsx-populate');
 const fs = require('fs');
 const ChinaImport = require('./models/chinaImport');
 const { createClient } = require('@supabase/supabase-js');
-const { weihaiQtyByBarcode } = require('./routes/rkWeihai');
+const { weihaiQtyByBarcode, storageQtyByBarcode } = require('./routes/rkWeihai');
 
 const app = express();
 const server = http.createServer(app);
@@ -3002,7 +3002,7 @@ app.get('/api/shortage', async (req, res) => {
 
         const invP = rkShared.chunkedPool(bcAll, 200, (batch) => pageAllRetry(
             () => supabase.from('rk_inventories').select('barcode, sku_id, img, purchase_price, weihai_order').in('barcode', batch).order('id', { ascending: true })), POOL);
-        const [scanRows, invRows, forecastRows, yiwuRows, stockRows, weihai, histRows, cn] = await Promise.all([
+        const [scanRows, invRows, forecastRows, yiwuRows, stockRows, weihai, cnStock, histRows, cn] = await Promise.all([
             rkShared.chunkedPool(bcAll, 200, (batch) => pagedQuery(
                 () => supabase.from('rk_ship_box_items').select('order_number, barcode, qty').in('barcode', batch),
                 'rk_ship_box_items 조회 오류:'), POOL),
@@ -3033,6 +3033,11 @@ app.get('/api/shortage', async (req, res) => {
             weihaiQtyByBarcode(bcAll).catch((weihaiErr) => {
                 console.error('위해 주문·장바구니 조회 실패:', weihaiErr);
                 return { err: weihaiErr.message || String(weihaiErr) };
+            }),
+            // 5.65단계: 🇨🇳 위해 창고 재고 (purchase-agent [재고관리 › 재고], immongbr) — routes/rkWeihai.js
+            storageQtyByBarcode().catch((cnStockErr) => {
+                console.error('위해 창고 재고 조회 실패:', cnStockErr);
+                return { err: cnStockErr.message || String(cnStockErr) };
             }),
             // 6단계: 쿠팡 발주내역 최근 8주 (주간 열)
             rkShared.chunkedPool(bcAll, 50, (batch) => pagedQuery(
@@ -3122,6 +3127,12 @@ app.get('/api/shortage', async (req, res) => {
         //   위해를 못 불러왔으면 위해 값은 null(모름)로 두고 합계는 이우만 — 화면이 경고를 띄운다
         const weihaiOk = !weihai.err;
         if (!weihaiOk) res.set('X-Weihai-Error', encodeURIComponent(weihai.err));
+        const cnStockOk = !cnStock.err;
+        if (!cnStockOk) res.set('X-CnStock-Error', encodeURIComponent(cnStock.err));
+        // 🇨🇳 잔량은 있는데 바코드를 정할 수 없어 어디에도 못 더한 분량 — 조용히 빠지지 않게 알린다
+        else if (cnStock.unmapped.products) {
+            res.set('X-CnStock-Warn', encodeURIComponent(`위해 창고 재고 중 바코드를 찾지 못한 상품 ${cnStock.unmapped.products}개(수량 ${cnStock.unmapped.qty})는 재고에 넣지 못했습니다`));
+        }
         if (warnings.length) res.set('X-Shortage-Warn', encodeURIComponent(warnings.join(' · ')));
         shortageList.forEach(item => {
             const bc = item.상품바코드;
@@ -3139,9 +3150,16 @@ app.get('/api/shortage', async (req, res) => {
             if (r.qty != null) { cur.sum += (parseInt(r.qty) || 0); cur.has = true; }
             stockMap.set(r.barcode, cur);
         });
+        // '재고' 열 = 🇰🇷 재고관리(rk_stocks) + 🇨🇳 위해 창고(5.65단계) — 바코드 기준 (2026-11-15)
+        //   🇰🇷 rk_stocks 행이 없거나 qty 가 전부 NULL → null(모름), 🇨🇳 를 못 불러왔으면 null — 합계엔 아는 값만 더하고 화면이 알린다
+        //   둘 다 없고(🇰🇷 null) 🇨🇳 도 0 이면 예전처럼 빈칸(null)
         shortageList.forEach(item => {
             const s = stockMap.get(item.상품바코드);
-            item.재고 = (!s || !s.has) ? null : Math.max(0, s.sum);
+            const kr = (!s || !s.has) ? null : Math.max(0, s.sum);
+            const cnQty = cnStockOk ? Math.max(0, cnStock.qty.get(item.상품바코드) || 0) : null;
+            item.stockKrQty = kr;
+            item.stockCnQty = cnQty;
+            item.재고 = (kr == null && !cnQty) ? null : (kr || 0) + (cnQty || 0);
         });
 
         // 5.7단계: 잔여 = 재고정리(stockArrange) '처리중'(pending) 남은수량 바코드별 합 (위에서 계산한 remainMap)

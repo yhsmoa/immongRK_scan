@@ -12,6 +12,8 @@
  *                주문 품목 하나가 음수가 되지 않게 0 에서 자른 뒤 바코드별로 더한다
  *   세트 상품은 stock_management 와 같이 set_seq 가 1(또는 없음)인 행만 센다 (세트 구성 행 중복 방지)
  *
+ * '재고' 열의 🇨🇳 위해 창고 재고도 여기서 읽는다 (storageQtyByBarcode, 2026-11-15) — 🇰🇷 rk_stocks 와 더해 보여 준다.
+ *
  * 계정: 서버가 ORDER_ACCOUNT_USERNAME(immongbr) 으로 ft_users.id 를 찾아 고정한다. 화면이 보낸 계정 값은 받지 않는다.
  *
  *   GET  /api/shortage/weihai-carts  → { account, shipmentTypes, carts:[{ id, cart_name, status, created_at }] }  (NEW 카트만, 최신순)
@@ -63,11 +65,14 @@ async function readPage(makeQuery) {
   }
   return { data: null, error: lastError };
 }
-// 1000행 넘게 이어 읽기 — 페이지 사이 겹침/빠짐이 없도록 id 로 정렬, 페이지마다 재시도
-async function pageAll(build) {
+// 1000행 넘게 이어 읽기 — 페이지 사이 겹침/빠짐이 없도록 고유한 열(기본 id)로 정렬, 페이지마다 재시도
+//   id 가 없는 뷰는 행을 하나로 정하는 열 조합을 orderBy 로 넘긴다
+async function pageAll(build, orderBy = ['id']) {
   const all = [];
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await readPage(() => build().order('id', { ascending: true }).range(from, from + 999));
+    const { data, error } = await readPage(() => orderBy
+      .reduce((q, col) => q.order(col, { ascending: true }), build())
+      .range(from, from + 999));
     if (error) throw error;
     all.push(...(data || []));
     if (!data || data.length < 1000) break;
@@ -134,6 +139,46 @@ async function weihaiQtyByBarcode(barcodes) {
   live.forEach((r) => add(order, r.barcode, Math.max(0, toInt(r.order_qty) - (minus.get(r.id) || 0))));
 
   return { cart, order };
+}
+
+/**
+ * 바코드별 위해 창고 재고 (2026-11-15) — purchase-agent [재고관리 › 재고] 탭과 같은 숫자
+ *   · 잔량 = 뷰 ft_storage_balance(상품 × 위치, 원장 합) 의 qty 를 상품(product_id)별로 더한다.
+ *     음수 칸(조정 오류)도 창고 화면처럼 그대로 더한다 — 바코드 합이 음수면 부르는 쪽이 0 으로 본다.
+ *     [작업중](입고됐지만 아직 위치에 안 올린 분량)은 세지 않는다 — 화면 [재고] 탭과 같다.
+ *   · product_id → 바코드 = 그 화면과 같은 대표 행: 같은 계정의 ft_order_items 중 set_seq 가 가장 앞선 행
+ *     (없으면 0 으로 보고, 같으면 item_no 순). 세트는 1세트 = 1 이라 대표 바코드 하나에만 더한다.
+ *   · 잔량은 있는데 바코드를 정할 수 없는 상품은 어디에도 더하지 않고 unmapped 로 돌려준다 (부르는 쪽이 알린다).
+ * 실패하면 throw — 0 으로 덮으면 재고가 조용히 덜 잡힌다.
+ * @returns {{ qty: Map<string, number>, unmapped: { products: number, qty: number } }}
+ */
+async function storageQtyByBarcode() {
+  const uid = await accountId();
+  // 뷰라 id 가 없다 — (product_id, location_id) 가 계정 안에서 한 행을 정한다
+  const balance = await pageAll(() => odb.from('ft_storage_balance')
+    .select('product_id, location_id, qty').eq('user_id', uid), ['product_id', 'location_id']);
+
+  const byProduct = new Map();   // product_id → 잔량 합
+  balance.forEach((r) => { if (r.product_id) byProduct.set(r.product_id, (byProduct.get(r.product_id) || 0) + toInt(r.qty)); });
+  const qty = new Map();
+  const unmapped = { products: 0, qty: 0 };
+  if (!byProduct.size) return { qty, unmapped };
+
+  const items = await S.chunkedPool([...byProduct.keys()], CHUNK, (pids) => pageAll(() => odb.from('ft_order_items')
+    .select('id, product_id, barcode, set_seq, item_no').eq('user_id', uid).in('product_id', pids)), 4);
+  const before = (a, b) => (a.set_seq ?? 0) - (b.set_seq ?? 0) || String(a.item_no ?? '').localeCompare(String(b.item_no ?? ''));
+  const rep = new Map();         // product_id → 대표 행
+  items.forEach((r) => {
+    const cur = rep.get(r.product_id);
+    if (!cur || before(r, cur) < 0) rep.set(r.product_id, r);
+  });
+
+  byProduct.forEach((q, pid) => {
+    const bc = String((rep.get(pid) || {}).barcode || '').trim();
+    if (!bc) { unmapped.products += 1; unmapped.qty += q; return; }
+    qty.set(bc, (qty.get(bc) || 0) + q);
+  });
+  return { qty, unmapped };
 }
 
 // ── 장바구니 목록 (NEW 만 — 담을 수 있는 카트) ──
@@ -294,4 +339,5 @@ router.post('/api/shortage/weihai-flag', async (req, res) => {
 
 module.exports = router;
 module.exports.weihaiQtyByBarcode = weihaiQtyByBarcode;
+module.exports.storageQtyByBarcode = storageQtyByBarcode;
 module.exports.isConfigured = () => Boolean(odb && ACCOUNT);

@@ -175,9 +175,9 @@
                     </select>
                 </div>
                 <div class="page-size">
-                    <select id="stockFilter" onchange="changeFilter()">
-                        <option value="all" selected>전체</option>
-                        <option value="qty">재고</option>
+                    <select id="stockFilter" onchange="changeFilter()" autocomplete="off">
+                        <option value="all">전체</option>
+                        <option value="qty" selected>재고</option>
                     </select>
                 </div>
             </div>
@@ -206,7 +206,7 @@
 
         let allRows=[], viewRows=[];
         let pageSize=100, currentPage=1;
-        let stockFilter='all';   // 'all' = 전체 · 'qty' = 재고(수량 많은 순)
+        let stockFilter='qty';   // 'all' = 전체 · 'qty' = 재고(수량 많은 순) — 기본 재고 (select 의 selected 와 같게, autocomplete=off 로 새로고침 때 이전 선택이 되살아나 어긋나지 않게)
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         // 수량 비교: null(빈칸)과 0을 구별
