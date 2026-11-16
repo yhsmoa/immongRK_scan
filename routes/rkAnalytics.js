@@ -4,6 +4,8 @@
  *
  * 집계는 DB 함수 rk_order_stats 가 한 번에 한다 (정의: supabase/rk_order_stats.sql).
  *   확정수량 = 출고스캔(rk_ship_box_items) 합 — rk_order_items.confirmed_qty 는 업로드 시점 값이라 발주수량과 같다.
+ *   운영 DB 이전(2022-07 ~ 2026-07)의 과거 발주는 rk_order_history 에서 같이 집계된다 (2026-11-12 · supabase/rk_order_history.sql).
+ *   그 구간의 확정수량은 쿠팡 발주 SKU 파일의 확정수량이다. 응답 meta.histMax = 과거 자료의 마지막 날짜.
  *
  *   GET /analytics                                  → 화면 (analytics.html)
  *   GET /api/analytics?from=YYYY-MM-DD&to=YYYY-MM-DD&basis=reg|arrival&brand=&center=&fresh=1
@@ -21,7 +23,7 @@ const sb = S.supabase;
 
 const BASES = ['reg', 'arrival'];
 const BRANDS = ['아이엠몽', '이유몽', '기타'];
-const MAX_DAYS = 1100;            // DB 함수와 같은 상한 (3년)
+const MAX_DAYS = 3700;            // DB 함수와 같은 상한 (10년 — 과거 발주 이력이 2022년부터라 3년에서 늘렸다, 2026-11-12)
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX = 60;
 
@@ -46,7 +48,7 @@ router.get('/api/analytics', async (req, res) => {
     if (!from || !to) return res.status(400).json({ error: '기간(from, to)을 YYYY-MM-DD 로 주세요.' });
     if (from > to) return res.status(400).json({ error: '시작일이 종료일보다 늦습니다.' });
     const days = Math.round((Date.parse(to) - Date.parse(from)) / 86400000);
-    if (days > MAX_DAYS) return res.status(400).json({ error: '기간은 3년 이내로 고르세요.' });
+    if (days > MAX_DAYS) return res.status(400).json({ error: '기간은 10년 이내로 고르세요.' });
 
     const basis = req.query.basis === undefined ? 'reg' : String(req.query.basis);
     if (!BASES.includes(basis)) return res.status(400).json({ error: `basis 는 ${BASES.join(', ')} 중 하나여야 합니다.` });

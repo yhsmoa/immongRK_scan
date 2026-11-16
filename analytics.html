@@ -110,6 +110,10 @@
         .mini > i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;}
         .scroll-y{max-height:460px;overflow:auto;}
         .yr-head{text-align:center !important;border-left:1px solid var(--line);}
+        /* 연도 × 월 표: 해가 많아 옆으로 넘겨도 '월' 열은 따라오게 (2026-11-12 — 과거 발주 이력으로 2022년부터 나온다) */
+        #yearTable td:first-child,#yearTable thead tr:first-child th:first-child{position:sticky;left:0;z-index:1;background:#fff;}
+        #yearTable thead tr:first-child th:first-child{z-index:2;background:#FAF9F7;}
+        #yearTable tr.total td:first-child{background:#FAF9F7;}
         .bl{border-left:1px solid var(--line);}
 
         .tag{display:inline-block;padding:1px 6px;border-radius:6px;font-size:11px;font-weight:700;background:#F5F3F1;color:var(--muted);margin-left:6px;}
@@ -278,6 +282,7 @@
                     <li><b>발주수량</b> — 쿠팡 발주서 업로드 파일의 발주수량 합 (박스 분할 행 제외).</li>
                     <li><b>확정수량</b> — 출고스캔(박스에 담은 수량) 합. 쿠팡에 올리는 "발주리스트 확정" 파일의 확정수량과 같은 값입니다.
                         발주서 DB 의 확정수량 칸은 업로드 때 발주수량이 그대로 들어가 있어 쓰지 않습니다.</li>
+                    <li id="histNote" style="display:none"><b>과거 발주</b> — <span id="histNoteText"></span></li>
                     <li><b>진행중</b> — 처리완료 전 발주서. 확정수량은 지금까지 스캔한 만큼이라 더 늘어날 수 있습니다. 확정률·미확정 계산에서는 뺍니다.</li>
                     <li><b>확정률</b> — 처리완료 발주서의 확정수량 ÷ 발주수량. 처리완료인데 스캔이 0 인 발주서는 전량 미납(0%)으로 들어갑니다.</li>
                     <li><b>금액</b> — 수량 × 매입가(부가세 포함 단가).</li>
@@ -315,6 +320,7 @@
         const mondayOf = (s) => { const d = parse(s); const k = (d.getDay() + 6) % 7; d.setDate(d.getDate() - k); return ymd(d); };
         const monthOf = (s) => s.slice(0, 8) + '01';
 
+        const MAX_DAYS = 3700;   // 서버 · DB 함수와 같은 상한 (10년)
         function rangeOfPreset() {
             const t = today();
             switch (state.preset) {
@@ -327,7 +333,7 @@
                     const min = (state.data && state.data.meta && state.data.meta.minDate) || addDays(t, -365);
                     const max = (state.data && state.data.meta && state.data.meta.maxDate) || t;
                     const end = max > t ? max : t;
-                    const start = dayDiff(min, end) > 1100 ? addDays(end, -1100) : min;
+                    const start = dayDiff(min, end) > MAX_DAYS ? addDays(end, -MAX_DAYS) : min;
                     return [start, end];
                 }
                 case 'custom': return [state.from || addDays(t, -89), state.to || t];
@@ -405,7 +411,7 @@
             if (from > to) return [];
             const start = unit === 'day' ? from : unit === 'week' ? mondayOf(from) : monthOf(from);
             const out = [];
-            for (let p = start, guard = 0; p <= to && guard < 2000; guard++) {
+            for (let p = start, guard = 0; p <= to && guard < MAX_DAYS + 40; guard++) {
                 const r = by.get(p) || { p, orders: 0, skus: 0, oq: 0, cq: 0, oqDone: 0, cqDone: 0, oqOpen: 0, cqOpen: 0, amt: 0, camt: 0 };
                 // 기간 경계에 걸쳐 잘린 주·월 표시
                 const pEnd = unit === 'day' ? p : unit === 'week' ? addDays(p, 6) : addDays(ymd(new Date(parse(p).getFullYear(), parse(p).getMonth() + 1, 1)), -1);
@@ -804,6 +810,7 @@
                 state.data = j;
                 fillCenterList(j.centerList || []);
                 fillYearList(j.meta);
+                fillHistNote(j);
                 const at = new Date(j.generatedAt);
                 document.getElementById('asOf').textContent = `집계 ${pad(at.getHours())}:${pad(at.getMinutes())}${j.cached ? ' (저장된 값 · 5분)' : ''}`;
                 renderAll();
@@ -823,6 +830,15 @@
             if (sel.options.length - 1 === list.length) return;
             sel.replaceChildren(el('option', { value: '' }, '전체'), ...list.map((c) => el('option', { value: c }, c)));
             sel.value = state.center;
+        }
+        // 과거 발주 이력(운영 DB 이전)이 있으면 계산 기준에 한 줄 — 그 구간의 확정수량은 출처가 다르다
+        function fillHistNote(j) {
+            const hm = j.meta && j.meta.histMax;
+            document.getElementById('histNote').style.display = hm ? '' : 'none';
+            if (!hm) return;
+            const basisName = (j.filters && j.filters.basis) === 'arrival' ? '입고예정일' : '발주일';
+            document.getElementById('histNoteText').textContent =
+                `${basisName} ${hm.replace(/-/g, '.')} 까지는 운영 DB 이전의 쿠팡 발주 SKU 자료입니다. 출고스캔 기록이 없어 그 자료의 확정수량(쿠팡에 확정해 올린 수량)을 쓰고, 모두 처리완료로 셉니다.`;
         }
         function fillYearList(meta) {
             const sel = document.getElementById('yearSel');
@@ -867,7 +883,7 @@
             const f = document.getElementById('fromIn').value, t = document.getElementById('toIn').value;
             const err = document.getElementById('err');
             if (!f || !t || f > t) { err.textContent = '시작일과 종료일을 바르게 고르세요.'; err.style.display = 'block'; return; }
-            if (dayDiff(f, t) > 1100) { err.textContent = '기간은 3년 이내로 고르세요.'; err.style.display = 'block'; return; }
+            if (dayDiff(f, t) > MAX_DAYS) { err.textContent = '기간은 10년 이내로 고르세요.'; err.style.display = 'block'; return; }
             state.preset = 'custom'; state.from = f; state.to = t;
             const len = dayDiff(f, t);
             state.unit = len <= 45 ? 'day' : len <= 180 ? 'week' : 'month';
