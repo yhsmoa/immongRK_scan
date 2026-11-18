@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인 · 아이엠몽 로켓</title>
+    <style>
+        :root{--bg:#FBFAF9;--ink:#1C1B1A;--accent:#F0492F;--accent-soft:#FDEBE6;--line:#EEECE9;--line2:#EBE8E4;--muted:#6E6A67;}
+        *{box-sizing:border-box;}
+        body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 20px;
+            background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;
+            font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;}
+        body::before{content:"";position:fixed;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#F0492F,#FF7A5C);}
+        .brand{display:flex;align-items:center;gap:9px;margin-bottom:22px;font-weight:800;font-size:17px;letter-spacing:-.02em;}
+        .brand .dot{width:10px;height:10px;border-radius:3px;background:var(--accent);}
+        .box{width:100%;max-width:380px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px;
+            box-shadow:0 18px 40px -24px rgba(28,27,26,.25);}
+        .tabs{display:flex;gap:4px;padding:4px;background:#F5F3F1;border-radius:12px;margin-bottom:22px;}
+        .tabs button{flex:1;height:38px;border:0;border-radius:9px;background:transparent;font:inherit;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;}
+        .tabs button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(28,27,26,.12);}
+        label{display:block;font-size:12.5px;font-weight:700;color:var(--muted);margin:0 0 6px;}
+        input{width:100%;height:48px;padding:0 14px;margin-bottom:14px;border:1.5px solid var(--line2);border-radius:12px;
+            font:inherit;font-size:16px;font-weight:600;color:var(--ink);outline:none;background:#fff;}
+        input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(240,73,47,.12);}
+        .signup-only{display:none;}
+        form.signup .signup-only{display:block;}
+        .err{min-height:20px;margin:-4px 0 10px;font-size:13px;font-weight:600;color:var(--accent);}
+        .go{width:100%;height:50px;border:0;border-radius:12px;background:var(--accent);color:#fff;font:inherit;font-size:16px;font-weight:800;cursor:pointer;}
+        .go:disabled{opacity:.6;cursor:default;}
+    </style>
+</head>
+<body>
+    <div class="brand"><span class="dot"></span>아이엠몽 로켓</div>
+    <div class="box">
+        <div class="tabs">
+            <button type="button" class="on" data-mode="login">로그인</button>
+            <button type="button" data-mode="signup">회원가입</button>
+        </div>
+        <form id="f" novalidate>
+            <label for="name">사원이름</label>
+            <input id="name" autocomplete="username" maxlength="20" required>
+            <label for="password">비밀번호</label>
+            <input id="password" type="password" autocomplete="current-password" required>
+            <div class="signup-only">
+                <label for="phone">연락처</label>
+                <input id="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="010-0000-0000">
+            </div>
+            <div class="err" id="err"></div>
+            <button class="go" id="go">로그인</button>
+        </form>
+    </div>
+    <script>
+        const $ = (id) => document.getElementById(id);
+        let mode = 'login';
+        document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
+            mode = b.dataset.mode;
+            document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+            $('f').classList.toggle('signup', mode === 'signup');
+            $('go').textContent = mode === 'signup' ? '가입하고 시작하기' : '로그인';
+            $('password').autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
+            $('err').textContent = '';
+        });
+        $('f').onsubmit = async (e) => {
+            e.preventDefault();
+            const body = { name: $('name').value, password: $('password').value };
+            if (mode === 'signup') body.phone = $('phone').value;
+            $('go').disabled = true; $('err').textContent = '';
+            try {
+                const res = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const d = await res.json().catch(() => ({}));
+                // 성공하면 /login 을 다시 열어 서버가 검사한 next 로 보내게 한다
+                if (res.ok) return location.replace('/login' + location.search);
+                $('err').textContent = d.error || '잠시 후 다시 시도하세요.';
+            } catch (_) {
+                $('err').textContent = '서버에 연결하지 못했습니다.';
+            }
+            $('go').disabled = false;
+        };
+    </script>
+</body>
+</html>

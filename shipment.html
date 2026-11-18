@@ -65,6 +65,7 @@
         .chip.st-none{background:transparent;color:#3C3489;border:1.5px solid #C7C3F5;padding:1px 6px;} .chip.st-none b{color:#1e293b;}
         .chip.st-prog{background:transparent;color:#3C3489;border:1.5px dashed #7F77DD;padding:1px 6px;} .chip.st-prog b{color:#1e293b;}
         .chip.st-ship{background:#e5e7eb;color:#374151;border:1.5px solid #d1d5db;padding:1px 6px;} .chip.st-ship b{color:#1f2937;}
+        .chip.st-wow{background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5;padding:1px 6px;} .chip.st-wow b{color:#7f1d1d;}
         .chip .wn{color:#c2410c;font-weight:900;margin-left:1px;}   /* ⚠ 부족 n — 초록 배지 안에서도 확실히 보이게 */
         .ist{font-size:12px;font-weight:700;white-space:nowrap;}
         .ist.real{color:#64748b;} .ist.ok{color:#047857;} .ist.short{color:#b45309;} .ist.prog{color:#4338ca;} .ist.none{color:#6d28d9;}
@@ -307,8 +308,8 @@
                     <span class="sep"></span>
                     <!-- 작업 순서대로 (2026-10-22): 박스라벨출력 → CJ 엑셀(접수) → 순서지정(박스 스캔) → 쉽먼트 저장(송장번호) → 쉽먼트 등록(쿠팡 PDF 보관) → [순서대로] 탭에서 출력 -->
                     <button class="btn" id="labelPrintBtn" onclick="openLabelPrint()">박스라벨출력</button>
-                    <button class="btn" onclick="exportCJExcel()">CJ 엑셀</button>
-                    <button class="btn" onclick="openSeqModal()">순서지정</button>
+                    <button class="btn" id="cjBtn" onclick="exportCJExcel()">CJ 엑셀</button>
+                    <button class="btn" id="seqBtn" onclick="openSeqModal()">순서지정</button>
                     <button class="btn primary" onclick="exportSelectedOrders()">쉽먼트 저장</button>
                     <button class="btn" onclick="openDocSort()">쉽먼트 등록</button>
                 </div>
@@ -329,11 +330,12 @@
                         <button type="button" data-tab="완료" onclick="setTab('완료')">완료</button>
                         <button type="button" data-tab="출고" onclick="setTab('출고')">출고</button>
                     </div>
-                    <!-- 박스 단위 필터: 실제 = 가상 없이 실제 스캔한 박스 · 가상 = 가상스캔 분량이 있는 박스 -->
-                    <select id="scanFilter" onchange="applySearch(true)">
+                    <!-- 박스 단위 필터: 실제 = 가상 없이 실제 스캔한 박스 · 가상 = 가상스캔 분량이 있는 박스 · 🇨🇳 = 위해 박스 (중국에서 바로 출고, docs/plan-wow.md) -->
+                    <select id="scanFilter" onchange="syncActions();applySearch(true)">
                         <option value="all" selected>전체</option>
                         <option value="scan">실제</option>
                         <option value="virtual">가상</option>
+                        <option value="wow">🇨🇳 중국만</option>
                     </select>
                     <span class="seq-hint" id="seqHint"></span>
                 </div>
@@ -553,7 +555,7 @@
             for(const p of items){
                 if(!boxMap.has(p.box.no)) boxMap.set(p.box.no,{size:p.box.size, virtualQty:0, qty:0, okQty:0,
                     state:p.박스상태||'실제', input:p.박스입력||'', short:num(p.박스부족), shipped:p.출고시각||null,
-                    seq:p.박스순서==null?null:Number(p.박스순서), docs:{label:p.서류부착===true, manifest:p.서류동봉===true}});
+                    seq:p.박스순서==null?null:Number(p.박스순서), docs:{label:p.서류부착===true, manifest:p.서류동봉===true}, wow:p.위해박스===true});
                 const b=boxMap.get(p.box.no); b.virtualQty+=p.virtualQty; b.qty+=num(p.스캔수량); b.okQty+=p.okQty;
             }
             const boxes=[...boxMap.entries()].map(([no,b])=>({no, ...b})).sort((a,b)=>boxNoCmp(a.no,b.no));
@@ -591,9 +593,10 @@
         let tab='전체', orderMode='all', viewBoxes=[];   // viewBoxes: [순서대로] 의 행 [{o, b}]
         const srcOrders=()=>tab==='출고'?(shippedOrders||[]):allOrders;
         const boxKey=(o,b)=>`${o.발주번호}|${b.no}`;
-        const boxTab=b=>b.shipped?'출고':(b.virtualQty<=0?'완료':b.state);
+        const boxTab=b=>b.shipped?'출고':b.wow?'진행':(b.virtualQty<=0?'완료':b.state);   // 위해 박스는 중국에서 출고할 때까지 진행
         function boxPass(b){
             const f=document.getElementById('scanFilter').value;
+            if(f==='wow') return b.wow;
             if(f==='scan' && b.virtualQty>0) return false;
             if(f==='virtual' && !(b.virtualQty>0)) return false;
             return true;
@@ -661,6 +664,9 @@
             document.getElementById('seqActions').classList.add('show');   // 두 보기 모두 (2026-11-02)
             for(const id of ['printManifestBtn','printLabelBtn','shipBtn','resetSeqBtn']) document.getElementById(id).style.display=shipTab?'none':'';
             document.getElementById('unshipBtn').style.display=shipTab?'':'none';
+            // 🇨🇳 중국만 — 위해 박스는 출고완료·출고 취소·순서·CJ·서류 출력 대상이 아니다 (중국에서 출고하면 자동으로 출고완료)
+            const wowOnly=document.getElementById('scanFilter').value==='wow';
+            for(const id of ['printManifestBtn','printLabelBtn','shipBtn','resetSeqBtn','unshipBtn','cjBtn','seqBtn']) document.getElementById(id).disabled=wowOnly;
         }
         function updateSeqHint(){
             const n=orderMode==='seq'&&tab!=='출고'?viewBoxes.length:0;
@@ -671,6 +677,7 @@
         //   📠 실제 스캔만(찾을 것 없음) · 👾 미진행 · 🔄 진행 n/m(입력된 상품/가상 상품) · ✅ 완료·다 찾음 · ⚠ 완료·부족 n · 🚚 출고완료
         //   🔀 = 실제 + 가상 섞인 박스 (가상 부분의 상태를 따라 붙는다) · 📃 = 서류 등록됨
         function boxBadge(b){
+            if(b.wow) return {cls:' st-wow', emo:b.shipped?'🇨🇳🚚':'🇨🇳', tail:'', label:b.shipped?'위해 박스 · 출고완료':'위해 박스 (중국에서 출고)', mix:''};
             const mix=b.virtualQty>0&&b.virtualQty<b.qty?'🔀':'';
             if(b.shipped) return {cls:' st-ship', emo:'🚚', tail:'', label:'출고완료', mix};
             if(b.virtualQty<=0) return {cls:' st-real', emo:'📠', tail:'', label:'실제 스캔', mix:''};
@@ -682,7 +689,8 @@
         function boxTip(b){
             const g=boxBadge(b);
             const rows=[[`${g.mix}${g.emo}`, g.label]];
-            if(b.virtualQty>0){ rows.push(['스캔', `${b.qty} <small>(실제 ${b.qty-b.virtualQty} + 가상 ${b.virtualQty})</small>`]); rows.push(['확인', `${b.okQty}${b.short?` <small>· 부족 ${b.short}</small>`:''}`]); }
+            if(b.wow) rows.push(['스캔', `${b.qty} <small>(위해 창고 — 와우출고)</small>`]);
+            else if(b.virtualQty>0){ rows.push(['스캔', `${b.qty} <small>(실제 ${b.qty-b.virtualQty} + 가상 ${b.virtualQty})</small>`]); rows.push(['확인', `${b.okQty}${b.short?` <small>· 부족 ${b.short}</small>`:''}`]); }
             else rows.push(['스캔', `${b.qty} <small>(실제 스캔)</small>`]);
             if(b.docs.label||b.docs.manifest) rows.push(['서류', `부착 ${b.docs.label?'✓':'✗'} · 동봉 ${b.docs.manifest?'✓':'✗'}`]);
             if(b.seq!=null) rows.push(['순서', String(b.seq)]);
@@ -845,10 +853,12 @@
         const selectedBoxList=()=>{ if(orderMode!=='seq') return null; const l=[...selectedBoxes].map(keyToBox); return l.length?l:null; };
         // 순서대로 보기의 대상 박스 — 체크한 박스, 없으면 지금 화면에 보이는 박스 전부 (검색·탭·필터 반영, 모순 10)
         const targetBoxes=()=>{
-            if(orderMode==='seq') return selectedBoxList()||viewBoxes.map(({o,b})=>({orderNumber:o.발주번호, boxNo:Number(b.no)}));
+            if(orderMode==='seq') return (selectedBoxList()||viewBoxes.map(({o,b})=>({orderNumber:o.발주번호, boxNo:Number(b.no)}))).filter(notWowBox);
             // 발주서 보기 (2026-11-02): 체크한 발주서의 (지금 목록에 있는) 박스 전부 — 체크가 없으면 대상 없음
-            return srcOrders().filter(o=>selected.has(o.발주번호)).flatMap(o=>o.boxes.filter(boxPass).map(b=>({orderNumber:o.발주번호, boxNo:Number(b.no)})));
+            return srcOrders().filter(o=>selected.has(o.발주번호)).flatMap(o=>o.boxes.filter(b=>boxPass(b)&&!b.wow).map(b=>({orderNumber:o.발주번호, boxNo:Number(b.no)})));
         };
+        // 위해 박스는 출고완료 · 순서 · 서류 출력 대상에서 뺀다 (서버도 거절한다)
+        const notWowBox=x=>{ const b=findBox(x); return !(b&&b.wow); };
         const targetScope=()=>orderMode==='seq'?(selectedBoxList()?'체크한':'화면에 보이는'):'체크한 발주서의';
         const noTargetMsg=what=>orderMode==='seq'?`${what} 박스가 없습니다. (체크하거나 화면에 보이는 박스가 대상)`:`${what} 발주서를 체크해주세요.`;
         const findBox=x=>{ const o=srcOrders().find(o=>o.발주번호===x.orderNumber); return o?o.boxes.find(b=>Number(b.no)===Number(x.boxNo)):null; };
@@ -1037,8 +1047,8 @@
         }
         async function unshipBoxes(){
             const list=orderMode==='seq'
-                ? (selectedBoxList()||[])
-                : (shippedOrders||[]).filter(o=>selected.has(o.발주번호)).flatMap(o=>o.boxes.map(b=>({orderNumber:o.발주번호, boxNo:Number(b.no)})));
+                ? (selectedBoxList()||[]).filter(notWowBox)
+                : (shippedOrders||[]).filter(o=>selected.has(o.발주번호)).flatMap(o=>o.boxes.filter(b=>!b.wow).map(b=>({orderNumber:o.발주번호, boxNo:Number(b.no)})));
             if(!list.length){ toast(orderMode==='seq'?'출고를 취소할 박스를 체크해주세요.':'출고를 취소할 발주서를 체크해주세요.'); return; }
             if(!confirm(`박스 ${list.length}개의 출고완료를 취소합니다.\n처리완료(DONE)였던 발주서는 다시 진행중으로 돌아갑니다. 출고 순서는 되살아나지 않습니다.\n계속할까요?`)) return;
             try{
@@ -1082,7 +1092,7 @@
         });
         function renderSeq(){
             const list=document.getElementById('seqList');
-            const known=new Set(allOrders.flatMap(o=>o.boxes.map(b=>boxKey(o,b))));
+            const known=new Set(allOrders.flatMap(o=>o.boxes.filter(b=>!b.wow).map(b=>boxKey(o,b))));   // 위해 박스는 순서에 넣지 않는다
             const isKnown=p=>known.has(`${p.orderNumber}|${p.boxNo}`);
             if(!seqCodes.length){ list.innerHTML='<span class="seq-empty">스캔한 순서대로 여기에 쌓입니다. 잘못 찍은 건 ✕ 로 뺄 수 있습니다.<br>저장하면 이전 순서는 지워지고 이번에 찍은 것만 남습니다 (등록된 서류는 그대로).</span>'; }
             else list.innerHTML=seqCodes.map((p,i)=>`<span class="seq-chip ${isKnown(p)?'':'bad'}" title="${isKnown(p)?'':'쉽먼트 목록에 없는 박스 (저장 시 검증)'}"><span class="n">${i+1}</span>${esc(p.orderNumber)}<span class="sub">- ${p.boxNo}</span><button type="button" title="빼기" onclick="removeSeq(${i})">✕</button></span>`).join('');
@@ -1388,7 +1398,9 @@
         document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ closeSummary(); closeGuide(); closeInvoiceModal(); closeLabelPrint(); closeSeqModal(); closeDocSort(); } });
 
         syncActions();
-        loadOrders();
+        // 와우출고 — 중국에서 담은 수량·출고를 먼저 가져온다 (위해 박스의 출고완료는 이것으로만 바뀐다). 실패해도 목록은 연다
+        fetch('/api/wow/pull',{method:'POST'}).then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j.error||'HTTP '+r.status); if((j.errors||[]).length) toast('와우출고 확인 실패: '+j.errors.map(e=>e.orderNumber+' '+e.error).join(' · ')); }))
+            .catch(e=>toast('와우출고 확인 실패: '+e.message)).finally(loadOrders);
     </script>
 </body>
 </html>

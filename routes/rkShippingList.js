@@ -352,6 +352,14 @@ router.post('/api/rocket/scan-detail/save', async (req, res) => {
     const stocks = Array.isArray(req.body.stocks) ? req.body.stocks : [];
     const shippingList = Array.isArray(req.body.shippingList) ? req.body.shippingList : [];
 
+    // 위해 창고 배정 · 위해 박스 줄은 구매 DB 와 맞춰 두는 것이라 여기서 고치지 않는다 (배정 취소 · 박스 삭제로만, docs/plan-wow.md)
+    const ids = (list) => list.map((x) => parseInt(x.id, 10)).filter(Number.isFinite);
+    const [whRows, whItems] = await Promise.all([
+      S.chunked(ids(shippingList), 200, async (part) => { const { data, error } = await sb.from('rk_shipping_list').select('id').in('id', part).eq('source', '위해'); if (error) throw error; return data || []; }),
+      S.chunked(ids(boxItems), 200, async (part) => { const { data, error } = await sb.from('rk_ship_box_items').select('id, rk_ship_boxes!inner(origin)').in('id', part).eq('rk_ship_boxes.origin', '위해'); if (error) throw error; return data || []; }),
+    ]);
+    if (whRows.length || whItems.length) return res.status(409).json({ error: '🇨🇳 위해 창고 배정 · 위해 박스 수량은 여기서 고칠 수 없습니다.' });
+
     // 0) 출고예정 내역 수량 (rk_shipping_list) — 수량만 수정 (재고 자동 조정 없음)
     let shippingUpdated = 0;
     for (const s of shippingList) {

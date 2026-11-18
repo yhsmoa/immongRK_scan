@@ -157,6 +157,7 @@
         .vs-tag.src-inb{background:#dbeafe;color:#1d4ed8;}  /* 입고분 = 파랑 */
         .vs-tag.src-stk{background:#dcfce7;color:#15803d;}  /* 재고분 = 초록 */
         .vs-tag.src-mix{background:#f1f5f9;color:#475569;}  /* 기존 박스에 더해 섞임 */
+        .vs-tag.src-wh{background:#fee2e2;color:#b91c1c;}   /* 위해 창고분 = 빨강 (위해 박스) */
         .vs-tag.mixed{background:#fef3c7;color:#b45309;}    /* 한 박스에 입고코드 둘 이상 */
         .vs-code{font-size:10px;font-weight:700;color:#1d4ed8;background:#eff6ff;border-radius:4px;padding:0 4px;margin-left:4px;}   /* 행의 입고코드 */
         .vs-tags{align-items:center;}
@@ -492,7 +493,7 @@
                 // 스캔목록 = 발주서 상품 리스트 (발주수량=확정수량)
                 products=(data.products||[]).map(p=>({barcode:p.barcode, productName:p.productName||'', orderQty:p.confirmedQty||0,
                     preparedQty:(p.preparedQty==null?null:Number(p.preparedQty)), location:p.location||'', scannedQty:0,
-                    allocQty:Number(p.allocQty)||0, allocStock:Number(p.allocStock)||0, allocInbound:Number(p.allocInbound)||0,   // 배정량(재고분/입고분) = 가상스캔 계산용 (준비 열과 별개)
+                    allocQty:Number(p.allocQty)||0, allocStock:Number(p.allocStock)||0, allocInbound:Number(p.allocInbound)||0, allocWeihai:Number(p.allocWeihai)||0,   // 배정량(재고분/입고분/위해 창고분) = 가상스캔 계산용 (준비 열과 별개)
                     allocInboundByCode:(p.allocInboundByCode&&typeof p.allocInboundByCode==='object')?p.allocInboundByCode:{},   // 입고분을 입고코드별로 (모달 입고코드 선택)
                     size:p.size||null}));
                 const nameByBc=new Map(products.map(p=>[p.barcode,p.productName]));
@@ -503,7 +504,7 @@
                     virtualCodes:VirtualPack.trimCodes(i.virtualCodes, Number(i.virtualQty)||0)}));
                 recomputeScanned();
                 // 박스 목록 (저장분)
-                savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt,isVirtual:!!b.isVirtual,
+                savedBoxes=(data.boxes||[]).map(b=>({id:b.id,boxNo:b.boxNo,boxSize:b.boxSize,createdAt:b.createdAt,isVirtual:!!b.isVirtual,origin:b.origin||null,
                     virtualConfirmedQty:Number(b.virtualConfirmedQty)||0}));   // 가상확정 당시 가상 합 (지금 가상 합과 같으면 '확정')
                 boxSizeMap.clear(); savedBoxes.forEach(b=>boxSizeMap.set(b.boxNo,b.boxSize));
                 records=[]; currentBoxNo=null; lastScanBarcode=null; dirty=false; listSelBox=null;
@@ -523,6 +524,9 @@
         function closeBoxModal(){ document.getElementById('boxmBack').classList.remove('show'); }
         document.getElementById('boxmBack').addEventListener('click',e=>{ if(e.target.id==='boxmBack') closeBoxModal(); });
         function boxExists(no){ return savedBoxes.some(b=>b.boxNo===no) || boxItems.some(i=>i.boxNo===no); }
+        // 🇨🇳 위해 박스 — 중국에서 바로 출고(와우출고). 여기서는 스캔·개수·합치기·크기를 못 바꾸고 박스 삭제만 된다 (서버도 거절)
+        function isWowBox(no){ return savedBoxes.some(b=>b.boxNo===no&&b.origin==='위해') || boxItems.some(i=>i.boxNo===no&&i.virtualCodes&&i.virtualCodes[VirtualPack.WH_KEY]>0); }
+        const WOW_LOCK='🇨🇳 위해 박스는 중국에서 담습니다 — 여기서는 박스 삭제만 할 수 있습니다.';
         function renderBoxGrid(){
             let html='';
             for(let n=1;n<=20;n++){
@@ -534,6 +538,7 @@
             document.getElementById('boxGrid').innerHTML=html;
         }
         function selectBox(no){
+            if(isWowBox(no)){ toast(WOW_LOCK); return; }
             currentBoxNo=no;
             const saved=savedBoxes.find(b=>b.boxNo===no);
             if(saved){ currentBoxSize=saved.boxSize; }              // 기존 박스 = 그 크기
@@ -702,7 +707,7 @@
             if(sv && sv.virtualConfirmedQty===v) return 'virtual-ok';
             return v>=boxQty(no)?'virtual-all':'virtual-part';
         }
-        const boxVirtualLabel=no=>({'virtual-ok':'✅ 가상확정','virtual-all':'👾 가상','virtual-part':'🔀 일부 가상'}[boxVirtualCls(no)]||'');
+        const boxVirtualLabel=no=>isWowBox(no)?'🇨🇳 위해':({'virtual-ok':'✅ 가상확정','virtual-all':'👾 가상','virtual-part':'🔀 일부 가상'}[boxVirtualCls(no)]||'');
         const vtagHtml=(vq,qty)=>vq>0?`<span class="vtag" title="가상스캔 ${vq}개">가상${vq<qty?' '+vq:''}</span>`:'';
 
         // 상세 테이블 공용 행 (박스 · 바코드 · 상품명 · 스캔개수[클릭편집])
@@ -716,6 +721,7 @@
             </tr>`;
         }
         function delItem(boxNo, barcode){
+            if(isWowBox(boxNo)){ toast(WOW_LOCK); return; }
             if(!confirm(`삭제하시겠습니까?\n📦${boxNo} · ${barcode}`)) return;
             setItemQty(boxNo, barcode, 0); // 제거
             toast('삭제되었습니다.');
@@ -757,6 +763,7 @@
         }
         function toggleMergePicker(){
             if(listSelBox==null){ toast('합칠 박스를 선택하세요.'); return; }
+            if(isWowBox(listSelBox)){ toast(WOW_LOCK); return; }
             if(mergeOpen){ closeMergePicker(); return; }
             mergeOpen=true;
             document.getElementById('mergePicker').classList.add('show');
@@ -765,7 +772,7 @@
         }
         function renderMergePicker(nos){
             document.getElementById('mpTitle').textContent=`박스 ${listSelBox} 의 상품을 옮길 대상 박스를 선택하세요.`;
-            const targets=nos.filter(n=>n!==listSelBox);   // 본인 박스 제외
+            const targets=nos.filter(n=>n!==listSelBox && !isWowBox(n));   // 본인 박스 · 위해 박스 제외
             const el=document.getElementById('mergeBoxes');
             el.innerHTML=targets.length
                 ? targets.map(no=>`<div class="mp-box" onclick="mergeInto(${no})"><div class="e">📦</div><div class="t">${esc(boxSizeOf(no)||'')}</div><div class="n">${no}</div></div>`).join('')
@@ -841,6 +848,7 @@
 
         // 개수 편집 (공용 숫자패드) — 확정수량 초과 방지
         function editItemQty(boxNo, barcode){
+            if(isWowBox(boxNo)){ toast(WOW_LOCK); return; }
             const it=boxItemFor(boxNo,barcode); const prod=prodByBarcode(barcode);
             NumPad.open({ title:`개수 수정 · <b>📦${boxNo} / ${esc(barcode)}</b>`, value:it?it.qty:0, min:0, onConfirm:(n)=>{
                 const otherSum=boxItems.filter(x=>x.barcode===barcode && x.boxNo!==boxNo).reduce((s,x)=>s+x.qty,0);
@@ -890,6 +898,7 @@
         function closeList(){ document.getElementById('listBack').classList.remove('show'); document.getElementById('listPanel').classList.remove('show'); }
 
         // ── 저장 (현재 박스아이템 전체를 SET) — 성공 true / 실패 false (가상스캔 확정에서 결과를 본다) ──
+        let saveWowWarning='';
         async function saveShip(){
             if(!dirty){ toast('저장할 변경이 없습니다.'); return false; }
             const boxNos=[...new Set([...boxItems.map(i=>i.boxNo), ...savedBoxes.map(b=>b.boxNo)])];
@@ -902,9 +911,10 @@
                 const data=await res.json().catch(()=>({}));
                 if(!res.ok) throw new Error(data.error||'저장 실패');
                 const savedQty=data.savedQty||0;
+                saveWowWarning=data.wowWarning||'';   // 위해 박스를 못 만들었거나 구매 DB 에 못 보냄 — 가상스캔 확정 안내에도 붙인다
                 await loadOrder(currentOrder); // baseline 재로드 (dirty=false)
                 document.getElementById('doneBtn').disabled=false; // 저장 후 [완료] 활성화
-                toast(`저장 완료 (${savedQty}개) · [완료]로 새 발주서`);
+                toast(`저장 완료 (${savedQty}개) · [완료]로 새 발주서${saveWowWarning?'\n'+saveWowWarning:''}`);
                 return true;
             }catch(e){ updateCounts(); toast('저장 실패: '+e.message); return false; }
         }
@@ -915,7 +925,7 @@
         const fmtKg=v=>(Math.round(v*10)/10).toLocaleString();
         // 옵션 두 가지 — 열 때마다 비워 두고 이용자가 직접 고르게 한다 (기본값이 있으면 놓치고 확정할 수 있어서, 2026-10-15). 브라우저에 기억하지 않는다.
         //   vsTopUp : null(미선택) | true(기존 박스 채우기) | false(새 박스만). 기존 박스가 없으면 고를 것이 없어 자동 통과
-        //   vsTarget: null(미선택) | 'all'(전체: 입고분 먼저, 재고분은 새 박스부터) | '입고' | '재고'(그 배정분만)
+        //   vsTarget: null(미선택) | 'all'(전체: 입고분 먼저, 재고분은 새 박스부터, 위해 창고분은 위해 박스로) | '입고' | '재고' | '위해'(그 배정분만)
         //   vsCodes : 입고코드 선택(Set). 대상이 전체/입고이고 이 발주서에 입고 배정이 있으면 하나 이상 골라야 한다 (과도기: 어느 입고건인지 명시, 2026-10-15)
         let vsTopUp=null, vsTarget=null, vsCodes=new Set();
         function setVsTopUp(on){ vsTopUp=!!on; buildVirtualPlan(); }
@@ -969,9 +979,11 @@
                     <button type="button" class="${vsTarget==='all'?'on':''}" onclick="setVsTarget('all')">전체</button>
                     <button type="button" class="${vsTarget==='입고'?'on':''}" onclick="setVsTarget('입고')">입고</button>
                     <button type="button" class="${vsTarget==='재고'?'on':''}" onclick="setVsTarget('재고')">재고</button>
+                    ${products.some(p=>p.allocWeihai>0)?`<button type="button" class="${vsTarget==='위해'?'on':''}" onclick="setVsTarget('위해')">🇨🇳 위해</button>`:''}
                 </div>
                 <span class="hint">${vsTarget==null?'<b class="need">선택하세요</b>'
-                    :vsTarget==='all'?'입고분 먼저, 재고분은 새 박스'
+                    :vsTarget==='all'?'입고분 먼저, 재고분은 새 박스'+(products.some(p=>p.allocWeihai>0)?' · 위해 창고분은 위해 박스':'')
+                    :vsTarget==='위해'?'위해 창고분만 — 언제나 새 위해 박스'
                     :`${vsTarget}분만 (${vsTarget==='입고'?'재고':'입고'} 제외)`}</span>
             </div>`;
             // 입고코드 — 대상이 전체/입고일 때 어느 입고건(입고정리의 입고코드)의 입고분인지 고른다. 여러 개 고를 수 있고 하나 이상 필수
@@ -1029,7 +1041,7 @@
                 html+=`<div class="vs-box${b.isNew?'':' old'}">
                     <div class="vs-box-h">
                         <span class="vs-box-no"><small>박스</small>${b.boxNo}</span>
-                        <div class="vs-tags">${sizeTags}<span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span>${b.source?`<span class="vs-tag ${({'입고':'src-inb','재고':'src-stk','혼합':'src-mix'})[b.source]||''}" title="이 박스에 담는 분량의 출처">${esc(b.source)}${b.isNew?'':' 추가'}</span>`:''}${(b.inboundCodes||[]).map(c=>`<span class="vs-tag src-inb${(b.inboundCodes||[]).length>1?' mixed':''}" title="입고코드 ${esc(c)} 분량">${esc(c)} ×${b.codes[c]}</span>`).join('')}</div>
+                        <div class="vs-tags">${sizeTags}<span class="vs-tag ${b.isNew?'new':''}">${b.isNew?'신규':'기존'}</span>${b.source?`<span class="vs-tag ${({'입고':'src-inb','재고':'src-stk','혼합':'src-mix','위해':'src-wh'})[b.source]||''}" title="이 박스에 담는 분량의 출처">${esc(b.source)}${b.isNew?'':' 추가'}</span>`:''}${(b.inboundCodes||[]).map(c=>`<span class="vs-tag src-inb${(b.inboundCodes||[]).length>1?' mixed':''}" title="입고코드 ${esc(c)} 분량">${esc(c)} ×${b.codes[c]}</span>`).join('')}</div>
                         <div class="vs-prog">
                             <div class="lab"><span>${pctLabel}</span><span>${fmtL(b.usedL)}/${fmtL(b.cap)} L · ${fmtKg(b.usedKg)} kg</span></div>
                             <div class="vs-bar"><i class="after" style="width:${p1}%"></i><i style="width:${p0}%"></i></div>
@@ -1094,7 +1106,7 @@
             const ok=await saveShip();
             if(ok){
                 closeVirtual();
-                toast(`가상스캔 ${addQty}개 → 박스 ${boxCnt}개 반영${upCnt?` · 크기 변경 ${upCnt}박스`:''} · 저장 완료`);
+                toast(`가상스캔 ${addQty}개 → 박스 ${boxCnt}개 반영${upCnt?` · 크기 변경 ${upCnt}박스`:''} · 저장 완료${saveWowWarning?'\n'+saveWowWarning:''}`);
                 openList();
             }else{
                 // 화면에는 반영됐지만 저장 실패 — 다시 확정하면 중복 반영되므로 막고 [저장] 재시도로 안내

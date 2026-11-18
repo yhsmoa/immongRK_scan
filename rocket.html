@@ -1210,6 +1210,7 @@
                     // 입고분은 출고코드(rk_cn_shipments.shipment_code)를 배지 안에 함께 표시 — '입고 0729'
                     const type = r.source==='재고'
                         ? '<span class="type-pill jaego">재고</span>'
+                        : r.source==='위해' ? '<span class="type-pill">🇨🇳 위해</span>'   // 위해 창고 배정 — 수량은 여기서 못 고친다 (서버가 거절)
                         : `<span class="type-pill ipgo">입고${r.shipmentCode?`<span class="ship-code">${esc(r.shipmentCode)}</span>`:''}</span>`;
                     return `<tr>
                     <td class="c">${type}</td>

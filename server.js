@@ -22,7 +22,8 @@ const XlsxPopulate = require('xlsx-populate');
 const fs = require('fs');
 const ChinaImport = require('./models/chinaImport');
 const { createClient } = require('@supabase/supabase-js');
-const { weihaiQtyByBarcode, storageQtyByBarcode } = require('./routes/rkWeihai');
+const { weihaiQtyByBarcode } = require('./routes/rkWeihai');
+const rkWow = require('./routes/rkWow');
 
 const app = express();
 const server = http.createServer(app);
@@ -48,14 +49,11 @@ mongoose.connect(MONGODB_URI, {
 .then(() => console.log('✅ MongoDB Atlas 연결 성공'))
 .catch(err => console.error('❌ MongoDB Atlas 연결 실패:', err));
 
+require('./routes/rkAuth')(app, io); // 로그인 · 등급 gate — static 보다 앞이어야 한다 (docs/plan-auth.md)
 app.use(express.static(__dirname));
 app.use(express.static(__dirname + '/public'));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
 
 // ✅ 이 부분이 꼭 있어야 /rocket 페이지가 열림!
 app.get('/rocket', (req, res) => {
@@ -97,10 +95,6 @@ app.get('/shortage', (req, res) => {
   res.sendFile(path.join(__dirname, 'shortage.html'));
 });
 
-app.get('/header', (req, res) => {
-    res.sendFile(path.join(__dirname, 'header.html'));
-});
-
 // ==================== 전면 전환: Supabase 라우터 (기존 Mongo 라우트보다 먼저 매칭) ====================
 // 문제 발생 시 아래 한 줄만 주석 처리하면 즉시 기존 MongoDB 로직으로 롤백됨.
 app.use(require('./routes/rkOrders')(io));
@@ -114,6 +108,7 @@ app.use(require('./routes/rkInbound'));
 app.use(require('./routes/rkShippingList'));
 app.use(require('./routes/rkShipScan'));
 app.use(require('./routes/rkAllocate')); // 신규 발주서 가상버전 [배정] — 재고+입고 통합 배정 (docs/plan-neworder-virtual.md)
+app.use(rkWow); // 와우출고 — 위해 창고 배정·위해 박스를 구매 DB 와 맞추기 (/api/wow/*, docs/plan-wow.md)
 app.use(require('./routes/rkAdItems'));
 app.use(require('./routes/rkLabel'));   // 라벨 출력 연동 (label-service 임베드)
 app.use(require('./routes/rkShipDocs')); // 쉽먼트 [순서정리] — 쿠팡 부착문서·동봉문서 PDF 재정렬
@@ -3034,8 +3029,8 @@ app.get('/api/shortage', async (req, res) => {
                 console.error('위해 주문·장바구니 조회 실패:', weihaiErr);
                 return { err: weihaiErr.message || String(weihaiErr) };
             }),
-            // 5.65단계: 🇨🇳 위해 창고 재고 (purchase-agent [재고관리 › 재고], immongbr) — routes/rkWeihai.js
-            storageQtyByBarcode().catch((cnStockErr) => {
+            // 5.65단계: 🇨🇳 위해 창고 재고 = 잔여수량(수량 − 출고예정, 와우출고 예약을 뺀 값 — 🇰🇷 rk_stocks 가 배정분을 이미 뺀 것과 같다) — routes/rkWow.js
+            rkWow.available().then((qty) => ({ qty })).catch((cnStockErr) => {
                 console.error('위해 창고 재고 조회 실패:', cnStockErr);
                 return { err: cnStockErr.message || String(cnStockErr) };
             }),
@@ -3129,10 +3124,6 @@ app.get('/api/shortage', async (req, res) => {
         if (!weihaiOk) res.set('X-Weihai-Error', encodeURIComponent(weihai.err));
         const cnStockOk = !cnStock.err;
         if (!cnStockOk) res.set('X-CnStock-Error', encodeURIComponent(cnStock.err));
-        // 🇨🇳 잔량은 있는데 바코드를 정할 수 없어 어디에도 못 더한 분량 — 조용히 빠지지 않게 알린다
-        else if (cnStock.unmapped.products) {
-            res.set('X-CnStock-Warn', encodeURIComponent(`위해 창고 재고 중 바코드를 찾지 못한 상품 ${cnStock.unmapped.products}개(수량 ${cnStock.unmapped.qty})는 재고에 넣지 못했습니다`));
-        }
         if (warnings.length) res.set('X-Shortage-Warn', encodeURIComponent(warnings.join(' · ')));
         shortageList.forEach(item => {
             const bc = item.상품바코드;

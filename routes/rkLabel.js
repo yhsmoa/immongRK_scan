@@ -203,7 +203,7 @@ router.post('/api/label/order-boxes', async (req, res) => {
     const skipPrinted = req.body.skipPrinted !== false;
     // boxes: [{orderNumber, boxNo}] — 쉽먼트 [순서대로] 보기에서 체크한 박스만 (2026-11-02)
     const pick = Array.isArray(req.body.boxes) && req.body.boxes.length ? new Set(req.body.boxes.map((b) => `${b && b.orderNumber}|${parseInt(b && b.boxNo, 10)}`)) : null;
-    const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty' + ((await M.hasShippedCol()) ? ', shipped_at' : '') + ((await M.hasLabelCol()) ? ', label_printed_at' : '');
+    const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty, origin' + ((await M.hasShippedCol()) ? ', shipped_at' : '') + ((await M.hasLabelCol()) ? ', label_printed_at' : '');
     const groupBySource = req.body.groupBySource === true;   // 찾을 곳별로 모아 출력 (신규 발주서 [박스라벨], 2026-10-27)
 
     // 1000행씩 나눠 읽으므로 id 순 정렬 (정렬 없는 range 는 행이 빠지거나 겹칠 수 있다)
@@ -330,8 +330,8 @@ router.post('/api/label/order-boxes', async (req, res) => {
         .filter((b) => sumByBox.has(b.id))
         .sort((a, b) => ((parseInt(a.box_no, 10) || 0) - (parseInt(b.box_no, 10) || 0)) || (a.id - b.id));
       // 이미 뽑힌 박스 제외 — 순번(bx_seq)·박스 수(po_box_count)는 전체 박스 기준으로 유지한다 (3/5 처럼 실제 자리)
-      // 출고완료 박스는 라벨을 다시 뽑지 않는다 · 체크한 박스만(pick) (2026-11-02)
-      const list0 = full.filter((b) => !b.shipped_at && (!pick || pick.has(`${no}|${parseInt(b.box_no, 10)}`)));
+      // 출고완료 박스는 라벨을 다시 뽑지 않는다 · 체크한 박스만(pick) (2026-11-02) · 위해 박스는 한국에서 라벨을 뽑지 않는다(중국에서 바로 출고)
+      const list0 = full.filter((b) => !b.shipped_at && !b.origin && (!pick || pick.has(`${no}|${parseInt(b.box_no, 10)}`)));
       if (!list0.length && full.length) { allPrinted.push(no); continue; }   // 전부 출고됐거나 체크한 박스가 없음
       const list = skipPrinted
         ? list0.filter((b) => { const r = alreadyPrinted(b, sumByBox.get(b.id)); if (r) skipped.push({ orderNo: no, boxNo: b.box_no, reason: r }); return !r; })

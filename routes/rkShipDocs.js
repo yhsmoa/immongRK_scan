@@ -41,6 +41,7 @@ const XLSX = require('xlsx');
 const { PDFDocument, rgb } = require('pdf-lib');
 const fontkit = require('@pdf-lib/fontkit');
 const S = require('./rkShared');
+const Wow = require('./rkWow');
 const { parseCjRef } = require('../cjRef');
 
 const router = express.Router();
@@ -140,7 +141,7 @@ function parsePage(text) {
   const center = head ? head[1] : null;
   const boxIdx = head ? parseInt(head[3], 10) : null;      // 쿠팡 기준 박스 순번 (우리 박스번호 아님)
   const boxTotal = head ? parseInt(head[2], 10) : null;
-  const cj = t.match(/CJ\s*대한통운\s*\n?\s*(\d{10,14})/);
+  const cj = t.match(/CJ\s*대한통운\s*\n?\s*(\d{10,14})/);   // 있으면 CJ 로 보낸 박스 — 수량 추정에서 한국 박스 후보를 먼저 본다
   const invoice = cj ? cj[1] : ((t.match(/\b(\d{12})\b/) || [])[1] || null);
   const order = (t.match(/발주\s*바코드\s*\n?\s*(\d{8,10})/) || [])[1] || null;
   // 상품수량: "운송장번호 수량 날짜" 줄 (부착문서) / "쉽먼트번호 날짜 총수량" 줄 (동봉문서)
@@ -153,7 +154,7 @@ function parsePage(text) {
   // 동봉문서의 상품 바코드 목록 (수량 추정이 애매할 때 우리 박스 아이템 구성과 대조) — 상품명이 여러 줄로 감겨도 바코드만 모은다
   //   (종류와 무관하게 모은다 — 머리말 없는 이어지는 장은 parse 시점에 종류를 모르기 때문)
   const barcodes = [...new Set((t.match(/\bR\d{9,12}\b/g) || []))];
-  return { kind, pbl, center, boxIdx, boxTotal, invoice, order, qty, shipmentNo, barcodes };
+  return { kind, pbl, center, boxIdx, boxTotal, invoice, order, qty, shipmentNo, barcodes, viaCj: !!cj };
 }
 
 async function parseFiles(files, formKind) {
@@ -211,7 +212,7 @@ async function loadOurBoxes(orderNos) {
   if (!orderNos.length) return { boxes: [], qtyByBox: new Map(), orderSeq: new Map(), boxSeq: new Map() };
   const [boxes, items, seqRows] = await Promise.all([
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
-      .select('id, order_number, box_no, box_size, invoice_no, is_virtual').in('order_number', nos).order('id', { ascending: true }))),
+      .select('id, order_number, box_no, box_size, invoice_no, is_virtual, origin').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_box_items')
       .select('box_id, barcode, qty, virtual_qty').in('order_number', nos).order('id', { ascending: true }))),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_seq')
@@ -291,13 +292,16 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
       if (b) p.method = 'cj';
       else { p.box = { orderNo: m.orderNo, boxNo: m.boxNo, size: null, virt: null }; p.method = 'cj-only'; }   // 엑셀엔 있는데 DB 박스가 없음 — 번호는 믿고 쓴다
     }
-    if (b) { used.add(b.id); p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null, virt: boxVirtKind(b, ours) }; }
+    if (b) { used.add(b.id); p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null, virt: boxVirtKind(b, ours), wow: !!b.origin }; }
     else if (!p.box) pending.push(p);
   }
   // 운송장으로 못 찾은 장: 발주번호 + 수량 → 여러 후보면 동봉문서 바코드 구성으로 가린다 → 그래도 여럿이면 첫 후보(ambiguous 표시)
   for (const p of pending) {
     if (!(p.order && p.qty != null)) continue;
     let cands = (boxesByOrder.get(p.order) || []).filter((x) => !used.has(x.id) && (ours.qtyByBox.get(x.id) || 0) === p.qty);
+    // 위해 박스와 한국 박스는 다른 후보군 — 둘 다 있으면 CJ 운송장이 찍힌 장은 한국 박스, 아니면 위해 박스에서 고르고 애매함으로 표시
+    const mixed = cands.some((x) => x.origin) && cands.some((x) => !x.origin);
+    if (mixed) cands = cands.filter((x) => !x.origin === p.viaCj);
     if (cands.length > 1) {
       const ms = p.pbl ? (manifestByPbl.get(p.pbl) || []) : [];
       const bcs = [...new Set(ms.flatMap((m) => m.barcodes || []))];   // 여러 장이면 전부 합쳐서 그 박스의 상품 구성
@@ -310,8 +314,8 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
     if (!cands.length) continue;
     const b = cands[0];
     used.add(b.id);
-    p.method = 'qty'; p.ambiguous = cands.length > 1;
-    p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null, virt: boxVirtKind(b, ours) };
+    p.method = 'qty'; p.ambiguous = cands.length > 1 || mixed;
+    p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null, virt: boxVirtKind(b, ours), wow: !!b.origin };
   }
   for (const p of labelPages) {
     if (p.box) {
@@ -554,23 +558,28 @@ router.post('/api/shipment/docs/register', uploadFields, async (req, res) => {
       const key = `${p.box.orderNo}|${p.box.boxNo}`;
       if (seenBox.has(key)) continue;
       seenBox.add(key);
-      jobs.push({ orderNo: String(p.box.orderNo), boxNo: p.box.boxNo, label: p, manifest: p.pbl ? (plan.manifestByPbl.get(p.pbl) || []) : [] });
+      jobs.push({ orderNo: String(p.box.orderNo), boxNo: p.box.boxNo, wow: !!p.box.wow, label: p, manifest: p.pbl ? (plan.manifestByPbl.get(p.pbl) || []) : [] });
     }
     if (!jobs.length) return res.status(400).json({ error: '우리 박스를 찾은 장이 하나도 없습니다. 운송장번호가 저장되지 않은 지난 쉽먼트면 CJ 운송장 엑셀을 같이 올려주세요.' });
 
     const now = new Date().toISOString();
     const rows = [];
+    const wowFailed = [];   // 구매 DB 에 못 올린 위해 박스 서류 — 등록은 그대로, 다시 등록하면 다시 올린다
     const results = await pool(jobs, 4, async (j) => {
       const labelPath = docPath(j.orderNo, j.boxNo, 'label');
-      await putDoc(labelPath, await extract([j.label]));
+      const labelBytes = await extract([j.label]);
+      await putDoc(labelPath, labelBytes);
       rows.push({ order_number: j.orderNo, box_no: j.boxNo, kind: 'label', path: labelPath, pages: 1, pbl: j.label.pbl || null, invoice_no: j.label.invoice || null, uploaded_at: now });
-      let manifest = false;
+      let manifest = false, manifestBytes = null;
       if (j.manifest.length) {
         const mPath = docPath(j.orderNo, j.boxNo, 'manifest');
-        await putDoc(mPath, await extract(j.manifest));
+        manifestBytes = await extract(j.manifest);
+        await putDoc(mPath, manifestBytes);
         rows.push({ order_number: j.orderNo, box_no: j.boxNo, kind: 'manifest', path: mPath, pages: j.manifest.length, pbl: j.label.pbl || null, invoice_no: j.manifest[0].invoice || j.label.invoice || null, uploaded_at: now });
         manifest = true;
       }
+      // 위해 박스 — 1688-invoice 와우출고가 바로 보도록 구매 DB Storage 에도 (docs/plan-wow.md U12)
+      if (j.wow) await Wow.pushDocs(j.orderNo, j.boxNo, { label: labelBytes, manifest: manifestBytes }).catch((e) => wowFailed.push(`${j.orderNo}-${j.boxNo}: ${e.message}`));
       return { order: j.orderNo, boxNo: j.boxNo, label: true, manifest };
     });
     for (let i = 0; i < rows.length; i += 200) {
@@ -586,6 +595,7 @@ router.post('/api/shipment/docs/register', uploadFields, async (req, res) => {
       dupLabel: plan.dupLabel.map(pageInfo),
       unpairedManifest: plan.unpairedManifest.map(pageInfo),
       labelOnly: results.filter((r) => !r.manifest).map((r) => `${r.order}-${r.boxNo}`),   // 동봉문서가 안 올라온 박스
+      wowFailed,
     });
   } catch (e) {
     console.error('[rk] docs/register:', e);
@@ -629,6 +639,8 @@ router.post('/api/shipment/docs/print', express.json(), async (req, res) => {
     const missing = [];
     const seq = [];   // 출력 순서의 박스
     for (const r of seqRows) {
+      const b = boxByKey.get(`${r.order_number}|${r.box_no}`);
+      if (b && b.origin) continue;   // 위해 박스 서류는 중국에서 쓴다 (1688-invoice 와우출고)
       const d = docByKey.get(`${r.order_number}|${r.box_no}`);
       if (!d) { missing.push(`${r.order_number}-${r.box_no}`); continue; }
       seq.push({ r, d });

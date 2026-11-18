@@ -688,7 +688,7 @@ router.get('/api/inbound/mobile-box-next', async (req, res) => {
     const orderNumber = String(req.query.orderNumber || '').trim();
     if (!orderNumber) return res.status(400).json({ error: '발주번호가 필요합니다.' });
     const hasShipped = await M.hasShippedCol();
-    const { data, error } = await sb.from('rk_ship_boxes').select('id, box_no, box_size' + (hasShipped ? ', shipped_at' : '')).eq('order_number', orderNumber).order('box_no', { ascending: true });
+    const { data, error } = await sb.from('rk_ship_boxes').select('id, box_no, box_size, origin' + (hasShipped ? ', shipped_at' : '')).eq('order_number', orderNumber).order('box_no', { ascending: true });
     if (error) throw error;
     const nextBoxNo = Math.max(0, ...(data || []).map(b => parseInt(b.box_no, 10) || 0)) + 1;
     const sum = new Map();   // box_id → { qty, vq }
@@ -697,7 +697,8 @@ router.get('/api/inbound/mobile-box-next', async (req, res) => {
       const its = await S.pageAll(() => sb.from('rk_ship_box_items').select('id, box_id, qty, virtual_qty').in('box_id', ids).order('id', { ascending: true }));
       for (const it of its) { const s = sum.get(it.box_id) || { qty: 0, vq: 0 }; s.qty += parseInt(it.qty, 10) || 0; s.vq += parseInt(it.virtual_qty, 10) || 0; sum.set(it.box_id, s); }
     }
-    const boxes = (data || []).map(b => { const s = sum.get(b.id) || { qty: 0, vq: 0 }; return { boxNo: b.box_no, boxSize: b.box_size || '', qty: s.qty, virtualQty: s.vq, shipped: !!(hasShipped && b.shipped_at) }; });
+    // 위해 박스는 옮길 대상이 아니다 (번호는 nextBoxNo 에서 비켜 간다)
+    const boxes = (data || []).filter(b => !b.origin).map(b => { const s = sum.get(b.id) || { qty: 0, vq: 0 }; return { boxNo: b.box_no, boxSize: b.box_size || '', qty: s.qty, virtualQty: s.vq, shipped: !!(hasShipped && b.shipped_at) }; });
     res.json({ orderNumber, nextBoxNo, boxes });
   } catch (e) {
     console.error('[rk] inbound/mobile-box-next:', e);
@@ -780,10 +781,11 @@ router.post('/api/inbound/mobile-box-split', async (req, res) => {
     }
     if (!moves.size) return res.status(400).json({ error: '새 박스로 옮길 상품이 없습니다.' });
 
-    const { data: boxes, error: e1 } = await sb.from('rk_ship_boxes').select('id, box_no, box_size').eq('order_number', orderNumber).order('box_no', { ascending: true });
+    const { data: boxes, error: e1 } = await sb.from('rk_ship_boxes').select('id, box_no, box_size, origin').eq('order_number', orderNumber).order('box_no', { ascending: true });
     if (e1) throw e1;
     const from = (boxes || []).find(b => b.box_no === fromBoxNo);
     if (!from) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${fromBoxNo} 박스가 없습니다.` });
+    if (from.origin) return res.status(409).json({ error: `📦${fromBoxNo} 는 🇨🇳 위해 박스입니다.` });
     const { data: items, error: e2 } = await sb.from('rk_ship_box_items').select('id, barcode, product_name, qty, virtual_qty, virtual_codes').eq('box_id', from.id).order('id', { ascending: true });
     if (e2) throw e2;
 
@@ -872,12 +874,13 @@ router.post('/api/inbound/mobile-box-move', async (req, res) => {
     if (!barcode) return res.status(400).json({ error: '바코드가 필요합니다.' });
     if (!Number.isInteger(n) || n < 1) return res.status(400).json({ error: '옮길 개수는 1 이상의 정수여야 합니다.' });
 
-    const { data: boxes, error: e1 } = await sb.from('rk_ship_boxes').select('id, box_no, box_size, is_virtual' + ((await M.hasShippedCol()) ? ', shipped_at' : '')).eq('order_number', orderNumber).order('box_no', { ascending: true });
+    const { data: boxes, error: e1 } = await sb.from('rk_ship_boxes').select('id, box_no, box_size, is_virtual, origin' + ((await M.hasShippedCol()) ? ', shipped_at' : '')).eq('order_number', orderNumber).order('box_no', { ascending: true });
     if (e1) throw e1;
     const from = (boxes || []).find(b => b.box_no === fromBoxNo), to = (boxes || []).find(b => b.box_no === toBoxNo);
     if (!from) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${fromBoxNo} 박스가 없습니다.` });
     if (!to) return res.status(404).json({ error: `발주서 ${orderNumber} 에 📦${toBoxNo} 박스가 없습니다.` });
     if (to.shipped_at) return res.status(409).json({ error: `📦${toBoxNo} 는 출고완료된 박스입니다.` });
+    if (from.origin || to.origin) return res.status(409).json({ error: `🇨🇳 위해 박스와는 상품을 주고받을 수 없습니다.` });
     const [{ data: items, error: e2 }, { data: toItems, error: e3 }] = await Promise.all([
       sb.from('rk_ship_box_items').select('id, barcode, product_name, qty, virtual_qty, virtual_codes').eq('box_id', from.id).order('id', { ascending: true }),
       sb.from('rk_ship_box_items').select('id, barcode, qty, virtual_qty, virtual_codes').eq('box_id', to.id).eq('barcode', barcode).order('id', { ascending: true }).limit(1),
@@ -1039,13 +1042,14 @@ router.post('/api/inbound/prepare', async (req, res) => {
     };
 
     // 스캔수량 = 출고스캔(rk_ship_box_items)의 발주번호+바코드별 합 (scanned_qty 미사용)
-    // 재고건 출고예정 예약 = rk_shipping_list(source='재고', status='출고예정')의 발주번호+바코드별 합.
+    // 재고건·위해 창고 출고예정 예약 = rk_shipping_list(source='재고'|'위해', status='출고예정')의 발주번호+바코드별 합.
     //   입고분(source='입고')은 rk_cn_shipping 의 미러이므로 consumedMap 과 중복되어 여기서는 제외한다.
+    //   위해분을 빼면 그만큼 입고가 또 배정된다 (2026-11-18 와우출고).
     const [scanRows, stockRows] = await Promise.all([
       S.chunked(targetOrderNos, 200, (nos) => S.pageAll(() => sb.from('rk_ship_box_items')
         .select('order_number, barcode, qty').in('order_number', nos).order('id', { ascending: true }))),
       S.chunked(targetOrderNos, 200, (nos) => S.pageAll(() => sb.from('rk_shipping_list')
-        .select('order_number, barcode, qty').eq('source', '재고').eq('status', '출고예정')
+        .select('order_number, barcode, qty').in('source', ['재고', '위해']).eq('status', '출고예정')
         .in('order_number', nos).order('id', { ascending: true }))),
     ]);
     const shipScanByOrderBc = sumByOrderBc(scanRows);

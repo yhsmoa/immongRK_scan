@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>회원관리 · 아이엠몽 로켓</title>
+    <style>
+        :root{--ink:#1C1B1A;--accent:#F0492F;--accent-soft:#FDEBE6;--line:#EEECE9;--muted:#6E6A67;--muted2:#918D89;}
+        *{box-sizing:border-box;}
+        body{margin:0;background:#FBFAF9;color:var(--ink);-webkit-font-smoothing:antialiased;
+            font-family:"Pretendard",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Malgun Gothic",sans-serif;}
+        main{max-width:1200px;margin:0 auto;padding:40px 32px 80px;}
+        h1{margin:0 0 6px;font-size:26px;font-weight:800;letter-spacing:-.03em;}
+        .sub{margin:0 0 24px;font-size:14px;color:var(--muted);font-weight:500;}
+        .wrap{background:#fff;border:1px solid var(--line);border-radius:16px;overflow-x:auto;}
+        table{width:100%;border-collapse:collapse;font-size:14px;}
+        th,td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;}
+        th{font-size:12px;font-weight:700;color:var(--muted2);background:#FAF9F7;}
+        tr:last-child td{border-bottom:0;}
+        input,select{height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13.5px;background:#fff;color:var(--ink);}
+        input:focus,select:focus{outline:none;border-color:var(--accent);}
+        .n{width:130px;font-weight:700;} .p{width:140px;} .pw{width:150px;}
+        button{height:34px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:13px;font-weight:600;cursor:pointer;}
+        .save{background:var(--ink);border-color:var(--ink);color:#fff;}
+        .del{color:var(--accent);margin-left:4px;}
+        .del:hover{background:var(--accent-soft);}
+        .me{font-size:12px;color:var(--muted2);margin-left:6px;}
+        @media (max-width:900px){ main{padding:28px 16px 60px;} }
+    </style>
+</head>
+<body>
+    <div id="header-container"></div>
+    <main>
+        <h1>회원관리</h1>
+        <p class="sub">가입하면 사원입니다. 새 비밀번호는 바꿀 때만 입력하세요(입력하면 그 계정은 다시 로그인해야 합니다).</p>
+        <div class="wrap">
+            <table>
+                <thead><tr><th>이름</th><th>연락처</th><th>등급</th><th>새 비밀번호</th><th>가입일</th><th></th></tr></thead>
+                <tbody id="rows"></tbody>
+            </table>
+        </div>
+    </main>
+    <script>
+        fetch('/header').then(r=>r.text()).then(h=>{document.getElementById('header-container').innerHTML=h;}).catch(()=>{});
+        const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        async function post(url,body){
+            const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+            const d=await res.json().catch(()=>({}));
+            if(!res.ok) alert(d.error||'처리하지 못했습니다.');
+            load();
+        }
+        function save(btn){
+            const tr=btn.closest('tr'), v=c=>tr.querySelector(c).value;
+            post('/api/users/update',{id:Number(tr.dataset.id),name:v('.n'),phone:v('.p'),role:v('select'),password:v('.pw')});
+        }
+        function del(btn){
+            const tr=btn.closest('tr');
+            if(confirm(tr.dataset.name+' 계정을 삭제할까요?')) post('/api/users/delete',{id:Number(tr.dataset.id)});
+        }
+        async function load(){
+            const res=await fetch('/api/users');
+            if(res.status===401) return location.href='/login';   // 본인 비밀번호를 바꾸면 세션이 지워진다
+            const users=await res.json(), me=(await (await fetch('/api/auth/me')).json()).name;
+            document.getElementById('rows').innerHTML=users.map(u=>{
+                const self=u.name===me;
+                return `<tr data-id="${u.id}" data-name="${esc(u.name)}">
+                    <td><input class="n" value="${esc(u.name)}" maxlength="20">${self?'<span class="me">본인</span>':''}</td>
+                    <td><input class="p" value="${esc(u.phone)}" inputmode="numeric"></td>
+                    <td><select${self?' disabled':''}>${['사원','관리자'].map(r=>`<option${r===u.role?' selected':''}>${r}</option>`).join('')}</select></td>
+                    <td><input class="pw" type="password" autocomplete="new-password" placeholder="바꿀 때만"></td>
+                    <td>${esc(new Date(u.created_at).toLocaleDateString('ko-KR'))}</td>
+                    <td><button class="save" onclick="save(this)">저장</button>${self?'':'<button class="del" onclick="del(this)">삭제</button>'}</td></tr>`;
+            }).join('');
+        }
+        load();
+    </script>
+</body>
+</html>

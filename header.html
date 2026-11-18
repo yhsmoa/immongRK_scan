@@ -17,7 +17,7 @@
     .fs-btn:hover{background:#F3F1EE;}
     .fs-btn.on{background:#FDEBE6;}                 /* 전체화면 중 */
     .site-menu{display:flex;gap:2px;align-items:center;flex-wrap:nowrap;}
-    .site-menu a.m-link{font-size:13px;font-weight:600;padding:7px 9px;border-radius:9px;white-space:nowrap;
+    .site-menu a.m-link{font-size:13px;font-weight:600;padding:7px 6px;border-radius:9px;white-space:nowrap;
         text-decoration:none;color:#78736F;transition:background .15s,color .15s;display:inline-block;}
     .site-menu a.m-link:hover{background:#F3F1EE;color:#1C1B1A;}
     .site-menu a.m-link.active{color:#F0492F;background:#FDEBE6;}
@@ -30,6 +30,8 @@
     .m-item:hover .m-dropdown{display:block;}
     .m-dropdown a{display:block;padding:8px 12px;border-radius:7px;font-size:13px;color:#4A4643;text-decoration:none;white-space:nowrap;}
     .m-dropdown a:hover{background:#F5F3F1;}
+    .m-user .m-dropdown{left:auto;right:0;min-width:120px;}  /* 메뉴 맨 끝이라 오른쪽에 맞춰 연다 */
+    .m-user a.m-link{max-width:96px;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;}  /* 긴 이름이 메뉴를 밀어내지 않게 */
     @media (max-width:900px){ .site-nav{padding:0 20px;} }
 </style>
 
@@ -48,8 +50,8 @@
                          else { var e=d.documentElement; (e.requestFullscreen||e.webkitRequestFullscreen).call(e); localStorage.setItem('fsWanted','1'); } }
                     catch(err){ /* 브라우저가 막으면 무시 */ } })()">🌟</button>
             <a href="/" class="m-link" data-path="/">홈</a>
-            <a href="/ranking" class="m-link" data-path="/ranking">랭킹</a>
-            <a href="/summary" class="m-link" data-path="/summary">요약</a>
+            <!--adm--><a href="/ranking" class="m-link" data-path="/ranking">랭킹</a>
+            <a href="/summary" class="m-link" data-path="/summary">요약</a><!--/adm-->
             <div class="m-item" data-path="/rocket,/newOrder,/newOrderV">
                 <a href="/rocket" class="m-link">발주서</a>
                 <div class="m-dropdown">
@@ -82,12 +84,20 @@
                     <a href="/stockScan">재고스캔</a>
                 </div>
             </div>
-            <a href="/warehouse" class="m-link" data-path="/warehouse">쿠팡 물류센터</a>
+            <!--adm--><a href="/warehouse" class="m-link" data-path="/warehouse">쿠팡 물류센터</a>
             <a href="/shortage" class="m-link" data-path="/shortage">상품부족</a>
             <!-- 라벨 양식 편집기는 별도 서비스(label-service) — 새 탭으로 연다 -->
             <a href="/labelSettings" class="m-link" target="_blank" rel="noopener">라벨 설정</a>
             <!-- 발주·확정 수량 분석 (일·주·월·연도) — docs/plan-analytics.md -->
             <a href="/analytics" class="m-link" data-path="/analytics">데이터 분석</a>
+            <a href="/users" class="m-link" data-path="/users">회원관리</a><!--/adm-->
+            <!-- 로그인한 이름 드롭다운 — 메뉴 맨 끝 -->
+            <div class="m-item m-user">
+                <a href="#" class="m-link" onclick="return false">{{name}} 님</a>
+                <div class="m-dropdown">
+                    <a href="#" onclick="fetch('/api/auth/logout',{method:'POST'}).finally(function(){location.href='/login'});return false">로그아웃</a>
+                </div>
+            </div>
         </div>
     </nav>
 </header>

@@ -22,6 +22,9 @@
  *    virtualCodes({코드: 개수})로 남긴다 → DB rk_ship_box_items.virtual_codes. 입고코드를 여럿 골라 '전체' 로 돌리면 한 박스에
  *    여러 입고코드가 섞일 수 있는데(코드가 바뀌어도 박스는 마감하지 않는다), 그래도 박스 안에 어느 코드가 몇 개인지는 남는다.
  *    이미 담긴 가상 분량도 virtualCodes 가 있으면 그 코드에서 정확히 빼고, 코드 기록이 없는 분량만 "오래된 입고코드부터" 가정으로 뺀다.
+ *  · 위해 창고(2026-11-18 와우출고, docs/plan-wow.md): 배정량 중 위해분(allocWeihai)은 세 번째 출처 '위해'(코드 '위해')로 맨 끝에 담는다.
+ *    위해분은 중국에서 바로 나가므로 **항상 새 박스**(기존 박스 채우기 없음), 한국 분의 채우기 대상에서도 위해 박스(savedBoxes.origin 또는 '위해' 코드가 든 박스)는 뺀다.
+ *    실제 스캔·출처 미기록 가상 분량은 위해분에 귀속하지 않는다 (위해 박스에는 '위해' 코드로 기록된 가상 분량만 있다).
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -43,8 +46,8 @@
     topUpExisting: true,                              // true = 기존 박스 남은 용량부터 채움 · false = 기존 박스는 그대로 두고 새 박스만
     upgradeLastBox: true,                             // 마지막 기존 박스(극소/중)에 남은 상품이 다 안 들어가면 크기를 올린다 (극소→중→대2). 확정 시 DB box_size 도 바뀜
     splitBySource: true,                              // true = 입고분/재고분을 다른 박스에 담는다 (products 에 allocInbound/allocStock 이 있을 때만 효과)
-    sourceOrder: ['입고', '재고'],                     // 담는 순서 — 앞 출처가 기존 마지막 박스를 채운다
-    sourceFilter: null,                               // null = 전체 · '입고' | '재고' = 그 출처 배정분만 담는다 (모달의 대상 선택)
+    sourceOrder: ['입고', '재고', '위해'],             // 담는 순서 — 앞 출처가 기존 마지막 박스를 채운다 (위해는 채우지 않는다)
+    sourceFilter: null,                               // null = 전체 · '입고' | '재고' | '위해' = 그 출처 배정분만 담는다 (모달의 대상 선택)
     inboundCodes: null,                               // null = 입고분 전부 · ['1011', …] = 그 입고코드의 입고분만 (다른 코드 분량은 '다른 입고코드' 로 제외)
   };
 
@@ -76,6 +79,7 @@
   }
 
   const STOCK_KEY = '재고';   // virtualCodes 에서 재고분을 가리키는 키 (입고코드와 섞이지 않는 값)
+  const WH_KEY = '위해';      // 위해 창고분 — 출처 이름이자 virtualCodes 키 (rk_shipping_list.source · rk_ship_boxes.origin 과 같은 값)
 
   // virtualCodes 정리 — {코드: 개수} 에서 0 이하·숫자 아님 제거. 빈 객체면 null
   function normCodes(obj) {
@@ -168,8 +172,9 @@
       // 출처별 분리: 배정량을 입고분/재고분으로 나눈다. 확정수량이 배정보다 작으면 재고분부터 줄이고,
       // 이미 스캔한 개수는 입고분부터 뺀다 (입고분을 먼저 담는 순서와 맞춤).
       const inbAll = Math.max(0, parseInt(p.allocInbound, 10) || 0), stk = Math.max(0, parseInt(p.allocStock, 10) || 0);
+      const wh = Math.max(0, parseInt(p.allocWeihai, 10) || 0);
       const filter = cfg.sourceFilter || null;
-      if ((cfg.splitBySource || filter) && (inbAll > 0 || stk > 0)) {
+      if ((cfg.splitBySource || filter || wh > 0) && (inbAll > 0 || stk > 0 || wh > 0)) {   // 위해분은 언제나 따로 담는다
         // 입고분을 입고코드별로 본다. 코드 정보가 없으면 '*' 하나로.
         //   목표(target)는 입고코드 오래된 순 → 재고 순으로 채우고, 이미 스캔(담은) 개수도 같은 순서로 뺀다.
         //   (담긴 개수에는 코드 표시가 없어서 "오래된 입고코드부터 처리했다" 고 보는 것 — 입고코드 순서대로 돌리는 운영 전제)
@@ -183,6 +188,7 @@
         const capQ = {};
         for (const c of codes) { capQ[c] = Math.min(byCode[c], left); left -= capQ[c]; }
         const stkT = Math.min(stk, left);
+        let remWh = Math.min(wh, left - stkT);
         // 이미 담긴 개수를 출처에서 뺀다 (2026-10-15 수정):
         //   · 가상스캔으로 담긴 분량(virtualQty) → 입고 오래된 코드부터, 그다음 재고 (가상스캔은 입고분을 먼저 담으므로)
         //   · 실제 스캔으로 담긴 분량 → 재고부터, 그다음 입고 (출고스캔은 재고 선반에서 먼저 하는 흐름. 재고 8개를 실제로 담은 뒤 입고 1개가
@@ -198,6 +204,7 @@
         let knownUsed = 0;
         for (const c of Object.keys(known)) {
           if (c === STOCK_KEY) { const t = Math.min(remStk, known[c]); remStk -= t; knownUsed += t; }
+          else if (c === WH_KEY) { const t = Math.min(remWh, known[c]); remWh -= t; knownUsed += t; }
           else if (remByCode[c] != null) { const t = Math.min(remByCode[c], known[c]); remByCode[c] -= t; knownUsed += t; }
         }
         sVirt = Math.max(0, sVirt - knownUsed);
@@ -206,6 +213,8 @@
         { const t = Math.min(remStk, sVirt); remStk -= t; sVirt -= t; }
         { const t = Math.min(remStk, sReal); remStk -= t; sReal -= t; }
         for (const c of codes) { const t = Math.min(remByCode[c], sReal); remByCode[c] -= t; sReal -= t; }
+        // 위해분에는 귀속하지 않았으므로, 한국 분보다 많이 담긴 개수가 있으면 남은 목표(remain)를 넘지 않게 위해분을 줄인다
+        remWh = Math.min(remWh, Math.max(0, remain - remStk - codes.reduce((s, c) => s + remByCode[c], 0)));
         if (sv - knownUsed > 0 && codes.length > 1) attributedScan = true;
         // 입고코드 선택: 고른 코드의 남은 입고분만 담고, 다른 코드 분량은 '다른 입고코드' 로 제외 (코드 정보 없는 '*' 도 다른 코드 취급)
         const sel = Array.isArray(cfg.inboundCodes) && cfg.inboundCodes.length ? new Set(cfg.inboundCodes.map(String)) : null;
@@ -219,14 +228,16 @@
         const pushInb = () => { for (const [c, q] of inbByCode) items.push(Object.assign({}, base, { qty: q, source: '입고', code: c })); };
         if (filter) {
           // 대상 선택(입고만/재고만): 그 출처 분량만 담고 나머지는 제외로 기록
-          const q = filter === '입고' ? remInb : filter === '재고' ? remStk : remain;
+          const q = filter === '입고' ? remInb : filter === '재고' ? remStk : filter === WH_KEY ? remWh : remain;
           if (q <= 0) excluded.push({ barcode: bc, productName: p.productName || '', reason: `${filter} 배정 없음` });
           else if (filter === '입고') pushInb();
           else if (filter === '재고') items.push(Object.assign({}, base, { qty: q, source: '재고', code: STOCK_KEY }));
+          else if (filter === WH_KEY) items.push(Object.assign({}, base, { qty: q, source: WH_KEY, code: WH_KEY }));
           else items.push(Object.assign({}, base, { qty: q, source: filter, code: null }));
         } else {
           pushInb();
           if (remStk > 0) items.push(Object.assign({}, base, { qty: remStk, source: '재고', code: STOCK_KEY }));
+          if (remWh > 0) items.push(Object.assign({}, base, { qty: remWh, source: WH_KEY, code: WH_KEY }));
         }
       } else if (filter) {
         excluded.push({ barcode: bc, productName: p.productName || '', reason: '출처 정보 없음' });
@@ -268,9 +279,14 @@
     const boxes = [];
     // 기존 박스 중 채울 수 있는 것은 마지막 박스(가장 큰 번호) 하나뿐 — 앞 박스들은 이미 마감된 것으로 본다.
     // 새 박스만 모드면 기존 박스는 번호만 비켜 가고 채우지 않는다.
-    const lastNo = existingNos.length ? existingNos[existingNos.length - 1] : null;
-    const closedNos = existingNos.filter((n) => n !== lastNo);
-    if (cfg.topUpExisting && lastNo != null) {
+    // 위해 박스는 채우기 대상이 아니고(번호만 비켜 간다) 위해분은 기존 박스를 채우지 않는다 — 한국 분이 없으면 채우기도 없다
+    const whNos = new Set([...savedBoxes.filter((b) => b.origin === WH_KEY).map((b) => Number(b.boxNo)),
+      ...boxItems.filter((i) => i.virtualCodes && i.virtualCodes[WH_KEY] > 0).map((i) => Number(i.boxNo))]);
+    const krNos = existingNos.filter((n) => !whNos.has(n));
+    const lastNo = krNos.length ? krNos[krNos.length - 1] : null;
+    const closedNos = krNos.filter((n) => n !== lastNo);
+    const krL = items.reduce((s, i) => s + (i.source === WH_KEY ? 0 : i.qty * i.unitL), 0);
+    if (cfg.topUpExisting && lastNo != null && krL > 0) {
       const size0 = sizeOfExisting(lastNo, savedBoxes, input.boxSizeMap);
       let size = size0, cap = capL(size0, cfg);
       let usedL = 0, usedKg = 0, usedQty = 0;
@@ -283,7 +299,7 @@
       // 크기 UP: 지금 크기로는 남은 상품이 다 안 들어가면, 다 들어가는 가장 작은 큰 크기로 (없으면 가장 큰 크기로) 바꾼다.
       // 부피 기준으로만 판단한다 — 무게 때문에 안 들어가는 건 박스를 키워도 해결되지 않으므로.
       if (cap != null && cfg.upgradeLastBox) {
-        const needL = usedL + totals.L;
+        const needL = usedL + krL;
         if (needL > cap + EPS) {
           const bigger = cfg.newSizes.slice(cfg.newSizes.indexOf(size0) + 1);
           const pick = bigger.find((s) => capL(s, cfg) >= needL - EPS) || bigger[bigger.length - 1];
@@ -294,7 +310,7 @@
       else boxes.push({ boxNo: lastNo, size, sizeFrom: size !== size0 ? size0 : null, isNew: false, cap,
         usedL0: usedL, usedKg0: usedKg, usedQty0: usedQty, usedL, usedKg, items: [], warnings: [] });
     }
-    if (cfg.topUpExisting && closedNos.length) warnings.push(`앞 박스 ${closedNos.map((n) => `📦${n}`).join(', ')}는 마감된 것으로 보고 채우지 않았습니다 (마지막 박스 📦${lastNo}만 채움).`);
+    if (cfg.topUpExisting && krL > 0 && closedNos.length) warnings.push(`앞 박스 ${closedNos.map((n) => `📦${n}`).join(', ')}는 마감된 것으로 보고 채우지 않았습니다 (마지막 박스 📦${lastNo}만 채움).`);
     if (!cfg.topUpExisting && existingNos.length) warnings.push(`기존 박스 ${existingNos.length}개(${existingNos.map((n) => `📦${n}`).join(', ')})는 그대로 두고 새 박스만 썼습니다.`);
 
     // ── 3. 채우기 ──
@@ -364,7 +380,7 @@
       b.fillPct0 = b.cap ? (b.usedL0 / b.cap) * 100 : 0;
       b.addQty = b.items.reduce((s, i) => s + i.qty, 0);
       b.codes = normCodes(b.codes);
-      b.inboundCodes = b.codes ? Object.keys(b.codes).filter((k) => k !== STOCK_KEY).sort((x, y) => String(x).localeCompare(String(y), 'ko', { numeric: true })) : [];
+      b.inboundCodes = b.codes ? Object.keys(b.codes).filter((k) => k !== STOCK_KEY && k !== WH_KEY).sort((x, y) => String(x).localeCompare(String(y), 'ko', { numeric: true })) : [];
       if (b.inboundCodes.length > 1) b.warnings.push(`입고코드 ${b.inboundCodes.join(', ')} 분량이 한 박스에 섞입니다 — 모바일 입고에서 입고일자 확인 안내가 뜹니다.`);
       if (b.sizeFrom) b.warnings.push(`크기 변경 ${b.sizeFrom} → ${b.size} — 확정하면 박스 크기도 바뀝니다.`);
       if (hasKg && b.usedKg >= cfg.maxKg * 0.9) b.warnings.push(`무게 ${b.usedKg.toFixed(1)} kg — 상한 ${cfg.maxKg} kg 에 근접`);
@@ -436,5 +452,5 @@
     return { boxes, items, addQty, boxCnt, upCnt };
   }
 
-  return { CONFIG, STOCK_KEY, planVirtualScan, applyPlan, capL, unitOf, normCodes, addCode, trimCodes, sumCodes };
+  return { CONFIG, STOCK_KEY, WH_KEY, planVirtualScan, applyPlan, capL, unitOf, normCodes, addCode, trimCodes, sumCodes };
 }));

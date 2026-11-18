@@ -1142,7 +1142,6 @@
         let weihaiErrMsg = '';   // 마지막 [불러오기] 때 위해 주문 데이터를 못 읽은 이유 (서버 X-Weihai-Error 헤더) — 비면 정상
         let loadWarnMsg = '';    // 마지막 [불러오기] 때 비어 있는 보조 열(C예상·주간) (서버 X-Shortage-Warn 헤더) — 비면 정상
         let cnStockErrMsg = '';  // 마지막 [불러오기] 때 🇨🇳 위해 창고 재고를 못 읽은 이유 (서버 X-CnStock-Error 헤더) — 비면 정상
-        let cnStockWarnMsg = ''; // 🇨🇳 잔량이 있는데 바코드를 못 찾아 재고에 못 넣은 분량 (서버 X-CnStock-Warn 헤더) — 비면 정상
         let filteredData = [];
         let loadToken = 0;   // 로드 경쟁 방지: 최신 로드만 화면에 반영
         let currentSort = { key: '부족수량', order: 'desc' };
@@ -1397,7 +1396,6 @@
                 weihaiErrMsg = readWeihaiError(response);
                 loadWarnMsg = readHeaderMsg(response, 'X-Shortage-Warn');
                 cnStockErrMsg = readHeaderMsg(response, 'X-CnStock-Error');
-                cnStockWarnMsg = readHeaderMsg(response, 'X-CnStock-Warn');
                 allData = json;
                 applyFilter();
             } catch (error) {
@@ -2063,7 +2061,6 @@
             // 🇨🇳 위해 창고 재고 — 못 읽었으면(null) '재고' 열에 🇰🇷 만 들어 있다
             const cnFailed = cnStockErrMsg || (allData.some(it => it && it.stockCnQty === null) ? '불러올 때 위해 창고 재고를 읽지 못했습니다' : '');
             if (cnFailed) lines.push(`위해 창고 재고(🇨🇳)를 불러오지 못했습니다 — '재고' 열에 한국 재고(🇰🇷)만 반영됐습니다. (${cnFailed})`);
-            if (cnStockWarnMsg) lines.push(cnStockWarnMsg);
             el.hidden = !lines.length;
             el.textContent = lines.join('\n');
         }
@@ -2083,7 +2080,7 @@
             tip.classList.add('show');
             placeOrderTip(e);
         }
-        // '재고' 셀 hover — 🇰🇷 재고관리(rk_stocks) · 🇨🇳 위해 창고(purchase-agent 재고) 나눠 보기 (2026-11-15)
+        // '재고' 셀 hover — 🇰🇷 재고관리(rk_stocks) · 🇨🇳 위해 창고 잔여수량(와우출고 출고예정을 뺀 값, 2026-11-18) 나눠 보기 (2026-11-15)
         //   stockKrQty 가 없는 행(이 기능 전에 저장한 스냅샷·캐시)은 재고 = 🇰🇷 만이었다 → 🇨🇳 는 '정보 없음'
         function showStockTip(item, e) {
             const tip = document.getElementById('orderTip');
@@ -2872,7 +2869,6 @@
                 weihaiErrMsg = '';
                 loadWarnMsg = '';
                 cnStockErrMsg = '';
-                cnStockWarnMsg = '';
                 allData = rows.map(r => r.row);
                 savedInputs.clear();
                 savedMarks.clear();

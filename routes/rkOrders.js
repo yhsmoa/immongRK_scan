@@ -7,6 +7,7 @@ const express = require('express');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const S = require('./rkShared');
+const Wow = require('./rkWow');   // 처리완료 · 센터 변경 → 위해 창고 예약 맞추기 (docs/plan-wow.md)
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -474,14 +475,15 @@ module.exports = (io) => {
       const { data, error } = await S.supabase.from('rk_orders')
         .update({ logistics_center: newCenter }).in('order_number', orderNumbers).select('id');
       if (error) throw error;
-      res.json({ success: true, message: '물류센터가 성공적으로 변경되었습니다.', updatedCount: data.length });
+      const wowErrors = await Wow.syncOrders(orderNumbers);   // 위해 박스의 센터도 바뀐다 (위해 배정이 없는 발주서는 건너뛴다)
+      res.json({ success: true, message: '물류센터가 성공적으로 변경되었습니다.', updatedCount: data.length, wowErrors });
     } catch (e) {
       console.error('[rk] update-center:', e);
       res.status(500).json({ success: false, message: '물류센터 변경 중 오류가 발생했습니다.' });
     }
   });
 
-  // 처리완료 (벌크) — status = 'DONE'
+  // 처리완료 (벌크) — status = 'DONE'. 박스 미정 위해 창고 배정의 구매 DB 예약은 풀린다 (실패는 wowErrors — 다음 끌어오기가 맞춘다)
   router.post('/api/orders/complete', async (req, res) => {
     try {
       const { orderNumbers } = req.body;
@@ -490,7 +492,8 @@ module.exports = (io) => {
       const { data, error } = await S.supabase.from('rk_orders')
         .update({ status: 'DONE' }).in('order_number', orderNumbers).select('id');
       if (error) throw error;
-      res.json({ success: true, message: '처리완료되었습니다.', updatedCount: data.length });
+      const wowErrors = await Wow.syncOrders(orderNumbers);
+      res.json({ success: true, message: '처리완료되었습니다.', updatedCount: data.length, wowErrors });
     } catch (e) {
       console.error('[rk] orders/complete:', e);
       res.status(500).json({ success: false, message: '처리완료 중 오류가 발생했습니다.' });

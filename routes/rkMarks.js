@@ -92,13 +92,14 @@ async function loadVirtualBoxes(orderNumbers, opts) {
   const out = {};
   const nos = [...new Set(orderNumbers.map(String).filter(Boolean))];
   if (!nos.length) return out;
-  const boxCols = 'id, order_number, box_no, box_size' + ((await hasShippedCol()) ? ', shipped_at' : '');   // shipped_at: 출고완료 박스 (목록에서 뺀다)
+  const boxCols = 'id, order_number, box_no, box_size, origin' + ((await hasShippedCol()) ? ', shipped_at' : '');   // shipped_at: 출고완료 박스 (목록에서 뺀다)
   const [boxes, bItems] = await Promise.all([
     S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_boxes').select(boxCols).in('order_number', part).order('id', { ascending: true }))),
     S.chunked(nos, 200, (part) => S.pageAll(() => sb.from('rk_ship_box_items').select('order_number, box_id, barcode, qty, virtual_qty, virtual_codes').in('order_number', part).order('id', { ascending: true }))),
   ]);
   const boxById = new Map();
   for (const b of boxes) {
+    if (b.origin) continue;   // 위해 박스는 한국에서 찾는 대상이 아니다 (그 줄도 boxById 에 없어 아래에서 빠진다)
     boxById.set(b.id, b);
     const o = (out[String(b.order_number)] ||= { boxes: [], virtualByBc: {}, codesByBox: {}, shipped: new Set() });
     o.boxes.push(b);
@@ -150,7 +151,7 @@ async function loadAllModeRows(orderNumbers, extra, opts) {
   if (!nos.length) return [];
   const list = await S.chunkedPool(nos, 200, (part) => S.pageAll(() => sb.from('rk_shipping_list')
     .select('id, source, order_number, barcode, product_name, center, shipping_date, qty, location, shipment_id, shipment_item_id, cn_shipping_id, batch_no, mobile_status, mobile_at, mobile_by, mobile_boxes, mobile_memo, mobile_memo_at, mobile_memo_by')
-    .eq('status', '출고예정').in('order_number', part).order('id', { ascending: true })));
+    .eq('status', '출고예정').in('source', ['재고', '입고']).in('order_number', part).order('id', { ascending: true })));   // 위해 창고 배정은 한국에서 찾는 카드가 아니다
   const itemIds = [...new Set(list.filter((r) => r.source === '입고' && r.shipment_item_id).map((r) => r.shipment_item_id))];
   const shipIds = [...new Set(list.filter((r) => r.source === '입고' && r.shipment_id).map((r) => r.shipment_id))];
   const cnIds = [...new Set(list.filter((r) => r.source === '입고' && r.cn_shipping_id).map((r) => r.cn_shipping_id))];
@@ -232,7 +233,7 @@ async function boxFoundMap(orderNumbers) {
 //   items: rk_ship_box_items 행 [{ box_id, order_number, barcode, qty, virtual_qty }]
 //   fm: boxFoundMap() 결과
 //   → Map(box.id → { state, vsum, found, short, done, total, labelOk, allFound, shipped, items: Map(barcode → { qty, virtual, marked, found, state, confirmed }) })
-//     state: '실제'(가상 없음) | '미진행' | '진행' | '완료'  · item.state: 'real' | 'none' | 'part' | 'found' | 'short'
+//     state: '실제'(가상 없음) | '미진행' | '진행' | '완료' | '위해'(위해 박스)  · item.state: 'real' | 'none' | 'part' | 'found' | 'short' | 'wow'
 //     found = 가상확인(찾은 수량, 가상 분량 안에서) · short = 입력이 끝난 상품의 (가상 − 찾음) 합
 //     confirmed(납품수량) = (qty − virtual) + found
 function boxReadiness(boxes, items, fm) {
@@ -250,6 +251,12 @@ function boxReadiness(boxes, items, fm) {
   for (const b of boxes || []) {
     const its = byBox.get(b.id) || new Map();
     const res = { state: '실제', vsum: 0, found: 0, short: 0, done: 0, total: 0, labelOk: false, allFound: false, shipped: !!b.shipped_at, items: new Map() };
+    if (b.origin) {   // 위해 박스 — 한국에서 찾지 않는다(중국이 담는다). 찾음·부족 판정 없이 상태 '위해'
+      res.state = b.origin;
+      for (const [bc, v] of its) { res.vsum += Math.min(v.virtual, v.qty); res.items.set(bc, { qty: v.qty, virtual: Math.min(v.virtual, v.qty), marked: 0, found: 0, state: 'wow', confirmed: v.qty }); }
+      out.set(b.id, res);
+      continue;
+    }
     let anyMark = false;
     for (const [bc, v] of its) {
       const it = { qty: v.qty, virtual: Math.min(v.virtual, v.qty), marked: 0, found: 0, state: 'real' };
@@ -286,15 +293,44 @@ function boxReadiness(boxes, items, fm) {
 function orderStateOf(boxStates) {
   const live = boxStates.filter((s) => !s.shipped);
   if (!live.length) return boxStates.length ? '출고' : '미진행';
-  const st = live.map((s) => (s.state === '실제' ? '완료' : s.state));
+  const st = live.map((s) => (s.state === '실제' ? '완료' : s.state === '위해' ? '진행' : s.state));   // 위해 박스는 중국 출고 전까지 진행 중
   if (st.every((s) => s === '완료')) return '완료';
   if (st.every((s) => s === '미진행')) return '미진행';
   return '진행';
 }
 
+// ── 출고완료 — boxes:[{orderNumber, boxNo}] (쉽먼트 [출고완료] · 와우출고 끌어오기가 같이 쓴다) ──
+//   1) rk_ship_boxes.shipped_at = 지금 (이미 출고된 박스는 그대로)  2) 그 박스의 출고 순서(rk_ship_seq) 삭제
+//   3) 발주서의 모든 박스가 출고되면 rk_orders.status = 'DONE'. 재고·배정은 건드리지 않는다.
+async function markShipped(boxes) {
+  const now = new Date().toISOString();
+  let shipped = 0;
+  for (const b of boxes) {
+    const { data, error } = await sb.from('rk_ship_boxes').update({ shipped_at: now })
+      .eq('order_number', b.orderNumber).eq('box_no', b.boxNo).is('shipped_at', null).select('id');
+    if (error) throw error;
+    shipped += (data || []).length;
+    const { error: eS } = await sb.from('rk_ship_seq').delete().eq('order_number', b.orderNumber).eq('box_no', b.boxNo);
+    if (eS) throw eS;
+  }
+  const nos = [...new Set(boxes.map((b) => b.orderNumber))];
+  // 발주서의 "모든 박스" = 상품이 담긴 박스 (출고스캔 재저장은 아이템만 지우고 박스 행은 남기므로 빈 박스 행은 세지 않는다)
+  const [all, filledRows] = await Promise.all([
+    S.chunked(nos, 200, (p) => S.pageAll(() => sb.from('rk_ship_boxes').select('id, order_number, shipped_at').in('order_number', p).order('id', { ascending: true }))),
+    S.chunked(nos, 200, (p) => S.pageAll(() => sb.from('rk_ship_box_items').select('box_id').gt('qty', 0).in('order_number', p).order('id', { ascending: true }))),
+  ]);
+  const filled = new Set(filledRows.map((r) => r.box_id));
+  const doneOrders = nos.filter((no) => { const l = all.filter((b) => String(b.order_number) === no && filled.has(b.id)); return l.length && l.every((b) => b.shipped_at); });
+  if (doneOrders.length) {
+    const { error } = await sb.from('rk_orders').update({ status: 'DONE' }).in('order_number', doneOrders);
+    if (error) throw error;
+  }
+  return { shipped, doneOrders };
+}
+
 module.exports = {
   boxEntries, entryFound, summarizeMarks, markPatch, marksError,
   loadVirtualBoxes, assignVirtualBoxes, loadAllModeRows,
-  boxFoundMap, boxReadiness, orderStateOf,
+  boxFoundMap, boxReadiness, orderStateOf, markShipped,
   hasShippedCol, SHIPPED_SQL_MSG, hasLabelCol, LABEL_SQL_MSG, hasBoxCol,
 };

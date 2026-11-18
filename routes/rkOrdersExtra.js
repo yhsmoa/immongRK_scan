@@ -6,6 +6,7 @@ const express = require('express');
 const XlsxPopulate = require('xlsx-populate');
 const S = require('./rkShared');
 const M = require('./rkMarks');
+const Wow = require('./rkWow');
 const { formatCjRef } = require('../cjRef');
 
 const router = express.Router();
@@ -28,7 +29,7 @@ const router = express.Router();
 async function shipScanOrders(orderNumbers, opts) {
   const o = opts || {};
   const hasShip = await M.hasShippedCol();
-  const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty' + (hasShip ? ', shipped_at' : '');
+  const boxCols = 'id, order_number, box_no, box_size, virtual_confirmed_qty, origin' + (hasShip ? ', shipped_at' : '');
   const since = new Date(Date.now() - 30 * 86400000).toISOString();   // [출고] 탭: 최근 30일에 출고된 박스만 (발주서가 아니라 박스 단위)
   // 발주번호를 먼저 정하고(1왕복) 발주서 본문·박스·판정을 동시에 읽는다 (2026-11-02: 순차 3.5초 → 동시)
   const has = Array.isArray(orderNumbers) && orderNumbers.length > 0;
@@ -128,6 +129,7 @@ async function shipScanOrders(orderNumbers, opts) {
         입력상태: vq > 0 ? (ri ? ri.state : 'none') : 'real',
         가상확정: !!(rd && rd.allFound),                     // (예전 이름) 박스가 완료·부족 없음
         박스정보: `${box.box_no}-${box.box_size}`,
+        위해박스: box.origin === Wow.WH,                     // 🇨🇳 중국에서 바로 출고하는 박스 (CJ 접수·순서지정·출고완료 대상 아님)
         박스상태: rd ? rd.state : '실제',
         박스입력: rd ? `${rd.done}/${rd.total}` : '0/0',
         박스부족: rd ? rd.short : 0,
@@ -252,12 +254,12 @@ router.post('/api/shipment/sequence', async (req, res) => {
       ? await Promise.all([
         S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_orders')
           .select('order_number, status').in('order_number', nos).order('id', { ascending: true }))),
-        S.chunked(orderNos, 200, async (nos) => { const cols = 'order_number, box_no' + ((await M.hasShippedCol()) ? ', shipped_at' : '');
+        S.chunked(orderNos, 200, async (nos) => { const cols = 'order_number, box_no, origin' + ((await M.hasShippedCol()) ? ', shipped_at' : '');
           return S.pageAll(() => S.supabase.from('rk_ship_boxes').select(cols).in('order_number', nos).order('id', { ascending: true })); }),
       ])
       : [[], []];
     const validNos = new Set(headers.filter((h) => !S.isDoneOrder({ 상태: h.status })).map((h) => String(h.order_number)));
-    const validBoxes = new Set(boxes.filter((b) => !b.shipped_at).map((b) => `${b.order_number}|${b.box_no}`));   // 출고완료 박스는 순서에 못 넣는다 (2026-11-02)
+    const validBoxes = new Set(boxes.filter((b) => !b.shipped_at && !b.origin).map((b) => `${b.order_number}|${b.box_no}`));   // 출고완료 박스 (2026-11-02) · 위해 박스는 순서에 못 넣는다
 
     // 같은 (발주번호, 박스번호)를 두 번 찍으면 처음 순서를 쓴다
     const rows = [];
@@ -320,38 +322,28 @@ router.get('/api/shipment/orders', async (req, res) => {
   }
 });
 
-// ── 출고완료 — body: { boxes:[{orderNumber, boxNo}] } ([순서대로] 보기 [출고완료]) ──
-//   1) rk_ship_boxes.shipped_at = 지금 (이미 출고된 박스는 그대로)  2) 그 박스의 출고 순서(rk_ship_seq) 삭제
-//   3) 발주서의 모든 박스가 출고되면 rk_orders.status = 'DONE'. 재고·배정은 건드리지 않는다.
+// 위해 박스가 섞였으면 그 박스 표시 목록 — 위해 박스의 출고는 중국 출고를 끌어오기(/api/wow/pull)로만 바꾼다
+async function weihaiBoxesIn(boxes) {
+  const nos = [...new Set(boxes.map((b) => b.orderNumber))];
+  const wh = await S.chunked(nos, 200, (p) => S.pageAll(() => S.supabase.from('rk_ship_boxes').select('order_number, box_no')
+    .eq('origin', Wow.WH).in('order_number', p).order('id', { ascending: true })));
+  const set = new Set(wh.map((b) => `${b.order_number}|${b.box_no}`));
+  return boxes.filter((b) => set.has(`${b.orderNumber}|${b.boxNo}`)).map((b) => `${b.orderNumber}-${b.boxNo}`);
+}
+
+// ── 출고완료 — body: { boxes:[{orderNumber, boxNo}] } ([순서대로] 보기 [출고완료]) — M.markShipped ──
+//   처리완료가 된 발주서는 박스 미정 위해 배정의 구매 DB 예약을 푼다 (실패해도 출고는 끝난 것 — 끌어오기가 다시 맞춘다)
 router.post('/api/shipment/ship', async (req, res) => {
   try {
     if (!(await M.hasShippedCol())) return res.status(400).json({ error: M.SHIPPED_SQL_MSG });
     const boxes = bodyBoxes(req.body.boxes);
     if (!boxes) return res.status(400).json({ error: '출고할 박스가 없습니다.' });
-    const now = new Date().toISOString();
-    let shipped = 0;
-    for (const b of boxes) {
-      const { data, error } = await S.supabase.from('rk_ship_boxes').update({ shipped_at: now })
-        .eq('order_number', b.orderNumber).eq('box_no', b.boxNo).is('shipped_at', null).select('id');
-      if (error) throw error;
-      shipped += (data || []).length;
-      const { error: eS } = await S.supabase.from('rk_ship_seq').delete().eq('order_number', b.orderNumber).eq('box_no', b.boxNo);
-      if (eS) throw eS;
-    }
-    const nos = [...new Set(boxes.map((b) => b.orderNumber))];
-    // 발주서의 "모든 박스" = 상품이 담긴 박스 (출고스캔 재저장은 아이템만 지우고 박스 행은 남기므로 빈 박스 행은 세지 않는다)
-    const [all, filledRows] = await Promise.all([
-      S.chunked(nos, 200, (p) => S.pageAll(() => S.supabase.from('rk_ship_boxes').select('id, order_number, shipped_at').in('order_number', p).order('id', { ascending: true }))),
-      S.chunked(nos, 200, (p) => S.pageAll(() => S.supabase.from('rk_ship_box_items').select('box_id').gt('qty', 0).in('order_number', p).order('id', { ascending: true }))),
-    ]);
-    const filled = new Set(filledRows.map((r) => r.box_id));
-    const doneOrders = nos.filter((no) => { const l = all.filter((b) => String(b.order_number) === no && filled.has(b.id)); return l.length && l.every((b) => b.shipped_at); });
-    if (doneOrders.length) {
-      const { error } = await S.supabase.from('rk_orders').update({ status: 'DONE' }).in('order_number', doneOrders);
-      if (error) throw error;
-    }
+    const wh = await weihaiBoxesIn(boxes);
+    if (wh.length) return res.status(409).json({ error: `🇨🇳 위해 박스는 중국에서 출고하면 자동으로 출고완료됩니다: ${wh.join(', ')}` });
+    const { shipped, doneOrders } = await M.markShipped(boxes);
+    const wowErrors = await Wow.syncOrders(doneOrders);
     console.log(`[rk] shipment/ship: 박스 ${shipped}/${boxes.length} · 처리완료 ${doneOrders.length}건`);
-    res.json({ ok: true, shipped, doneOrders });
+    res.json({ ok: true, shipped, doneOrders, wowErrors });
   } catch (e) {
     console.error('[rk] shipment/ship:', e);
     res.status(500).json({ error: '출고완료 실패: ' + e.message });
@@ -364,6 +356,8 @@ router.post('/api/shipment/unship', async (req, res) => {
     if (!(await M.hasShippedCol())) return res.status(400).json({ error: M.SHIPPED_SQL_MSG });
     const boxes = bodyBoxes(req.body.boxes);
     if (!boxes) return res.status(400).json({ error: '취소할 박스가 없습니다.' });
+    const wh = await weihaiBoxesIn(boxes);
+    if (wh.length) return res.status(409).json({ error: `🇨🇳 위해 박스의 출고는 중국 출고 기록을 따릅니다: ${wh.join(', ')}` });
     let restored = 0;
     for (const b of boxes) {
       const { data, error } = await S.supabase.from('rk_ship_boxes').update({ shipped_at: null })
@@ -505,8 +499,9 @@ router.post('/api/shipment/export-cj', async (req, res) => {
     const cjData = [];
     const processedBoxes = new Set();
     orders.forEach((order) => {
-      // 수량 = 박스의 스캔수량 합 (실제 + 가상, 2026-11-03). 총 M박스 = 발주서의 상품 담긴 박스 전체(출고된 것 포함)
-      const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-');
+      // 수량 = 박스의 스캔수량 합 (실제 + 가상, 2026-11-03). 총 M박스 = 발주서의 상품 담긴 박스 전체(출고된 것 · 위해 박스 포함)
+      //   위해 박스는 한국에서 CJ 로 보내지 않는다 — 행에서만 뺀다
+      const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-' && !p.위해박스);
       const qtyByBox = new Map();   // 박스번호 → 그 박스에 담긴 수량
       for (const p of scannedProducts) {
         const no = p.박스정보.split('-')[0];

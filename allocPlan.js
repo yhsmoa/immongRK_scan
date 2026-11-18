@@ -14,6 +14,7 @@
  *  · 재고 풀(동선): 혼자 다 채울 수 있는 위치 우선 → 이 발주서가 이미 쓴 구역 우선 → 위치 오름차순.
  *      한 곳에서 못 채우면 많이 있는 위치부터 (분할 최소, 같으면 구역 우선 → 위치순)
  *      구역 = 위치에서 끝 숫자를 뗀 앞부분 ("305B34" → "305B", "26여름15" → "26여름")
+ *  · 위해 창고(weihaiPool, 2026-11-18 와우출고 docs/plan-wow.md): 고른 출처를 다 쓴 뒤 **남은 필요만** 바코드별 잔여수량에서 (순서 선택과 무관하게 맨 끝)
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -22,6 +23,7 @@
   'use strict';
 
   const SOURCES = ['입고', '재고'];
+  const WEIHAI = '위해';
   const cmpKo = (a, b) => String(a == null ? '' : a).localeCompare(String(b == null ? '' : b), 'ko', { numeric: true });
   const toInt = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : 0; };
   const key = (orderNumber, barcode) => `${orderNumber}|${barcode}`;
@@ -37,6 +39,7 @@
   // 표시용: 배정 1건 → "305B34" / "1018-BR5" (수량 없이)
   function allocPlace(a) {
     if (!a) return '';
+    if (a.source === WEIHAI) return '🇨🇳 위해 창고';
     if (a.source === '입고') return `${a.code || '?'}-${a.boxName || '?'}`;
     return String(a.location || '');
   }
@@ -59,11 +62,12 @@
    *   inboundPool  : [{ shipmentId, shipmentItemId, code, codeRank, barcode, pallet, boxName, remain }]
    *   sourceOrder  : ['입고','재고'] | ['재고','입고'] | ['입고'] | ['재고']
    *   zonesByOrder : (선택) Map|object 발주번호 → [이미 저장된 재고 배정의 위치…] — 동선 구역 우선에 같이 쓴다
+   *   weihaiPool   : (선택) Map|object 바코드 → 위해 창고 잔여수량 — 있으면 위해 창고를 마지막 출처로 쓴다
    */
   function planAllocation(input) {
     const orders = Array.isArray(input.orders) ? input.orders : [];
     const sourceOrder = (Array.isArray(input.sourceOrder) ? input.sourceOrder : []).filter((s, i, a) => SOURCES.includes(s) && a.indexOf(s) === i);
-    if (!sourceOrder.length) return { ok: false, reason: '출처(재고/입고)를 하나 이상 고르세요.', rows: [], summary: emptySummary(), excluded: [] };
+    if (!sourceOrder.length && !input.weihaiPool) return { ok: false, reason: '출처(재고/입고/위해 창고)를 하나 이상 고르세요.', rows: [], summary: emptySummary(), excluded: [] };
 
     // 풀 복사 (입력을 바꾸지 않는다)
     const stockByBc = new Map();
@@ -87,6 +91,12 @@
     }
     const inbBoxCmp = (a, b) => cmpKo(a.pallet, b.pallet) || cmpKo(a.boxName, b.boxName) || (toInt(a.shipmentItemId) - toInt(b.shipmentItemId));
     for (const list of inbByBc.values()) list.sort((a, b) => (a.codeRank - b.codeRank) || cmpKo(a.code, b.code) || inbBoxCmp(a, b));
+
+    const whByBc = new Map();
+    if (input.weihaiPool) {
+      const entries = typeof input.weihaiPool.entries === 'function' ? [...input.weihaiPool.entries()] : Object.entries(input.weihaiPool);
+      for (const [bc, q] of entries) if (toInt(q) > 0) whByBc.set(String(bc).trim(), toInt(q));
+    }
 
     const zonesFor = (no) => {
       const z = input.zonesByOrder;
@@ -160,7 +170,7 @@
         const scanned = Math.max(0, getK(input.scannedByKey, k));
         const needed = Math.max(0, confirmedQty - Math.max(reserved, scanned));
         const row = { orderNumber: no, center: o.center || '', shippingDate: o.shippingDate || '', barcode: bc, productName: r.productName || '',
-          confirmedQty, reserved, scanned, needed, allocs: [], stockQty: 0, inboundQty: 0, shortage: 0, reason: null };
+          confirmedQty, reserved, scanned, needed, allocs: [], stockQty: 0, inboundQty: 0, weihaiQty: 0, shortage: 0, reason: null };
         if (needed <= 0) {
           row.reason = confirmedQty <= 0 ? '확정 0' : (reserved >= scanned ? '이미 배정' : '이미 스캔');
           rows.push(row);
@@ -172,6 +182,8 @@
           const got = src === '재고' ? takeStock(bc, left, zones) : takeInbound(bc, left);
           for (const a of got) { row.allocs.push(a); left -= a.qty; if (a.source === '재고') row.stockQty += a.qty; else row.inboundQty += a.qty; }
         }
+        const wh = Math.min(left, whByBc.get(bc) || 0);   // 위해 창고 — 남은 필요만, 발주서들이 같은 풀을 나눠 쓴다
+        if (wh > 0) { whByBc.set(bc, whByBc.get(bc) - wh); row.allocs.push({ source: WEIHAI, qty: wh }); row.weihaiQty = wh; left -= wh; }
         row.shortage = left;
         if (left > 0) row.reason = row.allocs.length ? '일부 부족' : '재고·입고 없음';
         rows.push(row);
@@ -185,17 +197,18 @@
       summary.needed += r.needed;
       summary.stock += r.stockQty;
       summary.inbound += r.inboundQty;
+      summary.weihai += r.weihaiQty;
       summary.shortage += r.shortage;
       if (r.allocs.length) summary.allocRows++;
     }
     return { ok: true, reason: null, sourceOrder, rows, summary };
   }
-  function emptySummary() { return { orders: 0, rows: 0, allocRows: 0, needed: 0, stock: 0, inbound: 0, shortage: 0 }; }
+  function emptySummary() { return { orders: 0, rows: 0, allocRows: 0, needed: 0, stock: 0, inbound: 0, weihai: 0, shortage: 0 }; }
 
   // 입고 아이템 남은 수량 = 원본 − 출고배정 − 재고확정 (재고정리 화면 /api/inbound/stock-arranges 와 같은 공식)
   function inboundRemain(quantity, shipped, arranged) {
     return toInt(quantity) - toInt(shipped) - toInt(arranged);
   }
 
-  return { SOURCES, planAllocation, zoneOf, allocPlace, allocSummary, inboundRemain };
+  return { SOURCES, WEIHAI, planAllocation, zoneOf, allocPlace, allocSummary, inboundRemain };
 }));

@@ -9,6 +9,7 @@
 const express = require('express');
 const S = require('./rkShared');
 const M = require('./rkMarks');   // 모바일 입고 찾은 수량 → 박스 상태 (2026-11-02)
+const Wow = require('./rkWow');   // 위해 박스 — 구매 DB 와 맞추기 (docs/plan-wow.md)
 
 const router = express.Router();
 const sb = S.supabase;
@@ -98,9 +99,10 @@ async function allocByBarcode(orderNumber) {
     for (const r of (data || [])) {
       if (!r.barcode) continue;
       const q = parseInt(r.qty, 10) || 0;
-      const a = out.get(r.barcode) || { total: 0, stock: 0, inbound: 0, inboundByCode: {} };
+      const a = out.get(r.barcode) || { total: 0, stock: 0, inbound: 0, weihai: 0, inboundByCode: {} };
       a.total += q;
       if (r.source === '재고') a.stock += q;
+      else if (r.source === Wow.WH) a.weihai += q;
       else if (r.source === '입고') {
         a.inbound += q;
         const code = codeById.get(r.shipment_id) || '(코드 없음)';
@@ -158,6 +160,7 @@ async function loadOrderScanState(orderNumberIn) {
     allocQty: (allocMap.get(bc) || {}).total || 0,        // 출고예정 배정량 (가상스캔 목표)
     allocStock: (allocMap.get(bc) || {}).stock || 0,      //   그중 재고분 — 가상스캔 출처별 박스 분리용
     allocInbound: (allocMap.get(bc) || {}).inbound || 0,  //   그중 입고분
+    allocWeihai: (allocMap.get(bc) || {}).weihai || 0,    //   그중 위해 창고분 — 언제나 위해 박스로 따로 (docs/plan-wow.md)
     allocInboundByCode: (allocMap.get(bc) || {}).inboundByCode || {},   //   입고분을 입고코드별로 — 가상스캔 모달의 입고코드 선택용
     size: sizeMap.get(bc) || null,                        // {w,l,h,g} mm·g (가상스캔 부피/무게)
   }));
@@ -184,7 +187,8 @@ async function loadOrderScanState(orderNumberIn) {
     products,
     // isVirtual / virtualQty: [가상스캔]으로 들어온 분량 표시 (화면 '가상' 태그)
     // virtualConfirmedQty: 가상확정 당시 가상 합 — 화면이 현재 가상 합과 비교해 "확정" 여부를 판단한다
-    boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at, isVirtual: !!b.is_virtual,
+    // origin: '위해' = 위해 박스 (중국에서 바로 출고 — 화면은 잠그고, 가상스캔 계산기는 채우기 대상에서 뺀다)
+    boxes: (boxes || []).map(b => ({ id: b.id, boxNo: b.box_no, boxSize: b.box_size, createdAt: b.created_at, isVirtual: !!b.is_virtual, origin: b.origin || null,
       virtualConfirmedQty: parseInt(b.virtual_confirmed_qty, 10) || 0 })),
     // virtualCodes: 가상 분량의 출처별 개수 {입고코드|'재고': n} (rk_ship_box_items.virtual_codes). 없으면 null = 출처 미기록(예전 저장분)
     items: items.map(i => ({ boxId: i.box_id, boxNo: boxNoById.get(i.box_id), barcode: i.barcode, productName: i.product_name, qty: i.qty, virtualQty: i.virtual_qty || 0,
@@ -213,13 +217,16 @@ const VirtualPack = require('../virtualPack');   // 가상스캔 계산 + virtua
 //   virtualQty = qty 중 [가상스캔]으로 들어온 개수 (0~qty). rk_ship_box_items.virtual_qty 로 저장하고,
 //   박스에 가상 수량이 하나라도 있으면 rk_ship_boxes.is_virtual=true (없으면 false 로 되돌린다 — SET 이므로 매번 다시 계산).
 //   virtualCodes = 가상 분량의 출처별 개수 {입고코드|'재고': n} → rk_ship_box_items.virtual_codes (합이 virtualQty 를 넘으면 재고→최신 코드 순으로 깎는다, 2026-10-15)
-// POST /api/ship-scan/save 와 일괄 가상스캔(virtual-batch)이 같이 쓴다. 검증 실패는 httpErr(400/404) 로 throw.
+// POST /api/ship-scan/save 와 일괄 가상스캔(virtual-batch)이 같이 쓴다. 검증 실패는 httpErr(400/404/409) 로 throw.
+// 위해 박스(docs/plan-wow.md §4-2): 이미 있는 위해 박스의 줄·크기는 바꿀 수 없고, '위해' 코드는 새 위해 박스(위해분만 든 박스)에만 들어간다.
+//   새 위해 박스는 지금 상태를 구매 DB 에 먼저 밀어 성공해야 만든다(아니면 위해분만 빼고 저장 → wowWarning) → 저장 → 다시 밀어준다.
+//   그래서 저장 전체를 발주서별로 줄 세운다 (Wow.wowOrder).
 async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
   const orderNumber = String(orderNumberIn || '').trim();
-  const boxesIn = Array.isArray(boxesRaw) ? boxesRaw : [];
-  const itemsIn = Array.isArray(itemsRaw) ? itemsRaw : [];
   if (!orderNumber) throw httpErr(400, '발주번호가 없습니다.');
-
+  return Wow.wowOrder(orderNumber, (push) => saveShipStateLocked(orderNumber, Array.isArray(boxesRaw) ? boxesRaw : [], Array.isArray(itemsRaw) ? itemsRaw : [], push));
+}
+async function saveShipStateLocked(orderNumber, boxesIn, itemsIn, push) {
   const orderId = await S.getOrderId('rk_orders', orderNumber);
   if (!orderId) throw httpErr(404, '존재하지 않는 발주서입니다.');
 
@@ -239,7 +246,7 @@ async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
     const codes = VirtualPack.trimCodes(it.virtualCodes, vq);
     if (codes) for (const c of Object.keys(codes)) m.virtualCodes = VirtualPack.addCode(m.virtualCodes, c, codes[c]);
   }
-  const list = [...merged.values()];
+  let list = [...merged.values()];
   for (const it of list) it.virtualCodes = VirtualPack.trimCodes(it.virtualCodes, it.virtualQty);
 
   // 초과/미존재 검증 (바코드 단위, SET이므로 전체 = list 합)
@@ -255,8 +262,59 @@ async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
 
   // 박스 upsert (없으면 생성) — 크기는 boxes 입력 우선
   const sizeByNo = new Map(boxesIn.map(b => [parseInt(b.boxNo, 10), String(b.boxSize || '극소').trim() || '극소']));
-  const { data: existBoxes } = await sb.from('rk_ship_boxes').select('id, box_no').eq('order_number', orderNumber);
+  const { data: existBoxes, error: eX } = await sb.from('rk_ship_boxes').select('id, box_no, box_size, origin').eq('order_number', orderNumber);
+  if (eX) throw eX;
   const boxIdByNo = new Map((existBoxes || []).map(b => [b.box_no, b.id]));
+
+  // ── 위해 박스 지킴 ──
+  const WH = Wow.WH;
+  const whBox = new Map((existBoxes || []).filter(b => b.origin === WH).map(b => [b.box_no, b]));
+  if (whBox.size) {
+    const dbItems = await S.pageAll(() => sb.from('rk_ship_box_items').select('box_id, barcode, qty')
+      .in('box_id', [...whBox.values()].map(b => b.id)).order('id', { ascending: true }));
+    const sig = (rows) => rows.map(r => `${r.barcode}:${r.qty}`).sort().join(',');
+    for (const [no, b] of whBox) {
+      if (sig(dbItems.filter(r => r.box_id === b.id)) !== sig(list.filter(i => i.boxNo === no)) || (sizeByNo.has(no) && sizeByNo.get(no) !== b.box_size)) {
+        throw httpErr(409, `🇨🇳 위해 박스 📦${no} 는 바꿀 수 없습니다 (박스 삭제만 가능). 새로고침 후 다시 하세요.`);
+      }
+    }
+    for (const it of list) if (whBox.has(it.boxNo)) { it.virtualQty = it.qty; it.virtualCodes = { [WH]: it.qty }; }
+  }
+  const newWh = new Set();
+  for (const it of list) {
+    if (whBox.has(it.boxNo) || !(it.virtualCodes && it.virtualCodes[WH] > 0)) continue;
+    if (boxIdByNo.has(it.boxNo)) throw httpErr(409, `📦${it.boxNo} 는 한국 박스라 위해 창고분을 담을 수 없습니다.`);
+    newWh.add(it.boxNo);
+  }
+  for (const it of list) {
+    const codes = it.virtualCodes || {};
+    if (newWh.has(it.boxNo) && !(it.virtualQty === it.qty && Object.keys(codes).length === 1 && codes[WH] === it.qty)) {
+      throw httpErr(409, `🇨🇳 위해 박스 📦${it.boxNo} 에 한국 분이 섞였습니다.`);
+    }
+  }
+  let wowWarning = null;
+  if (newWh.size) {
+    let why = null;
+    try {
+      const pre = await push();
+      if (pre.trimmed.length) why = `위해 창고 잔여수량이 모자라 배정을 줄였습니다: ${pre.trimmed.join(', ')}`;
+    } catch (e) { why = e.message; }
+    if (!why) {   // 위해 박스 합 ≤ 위해 배정 (그사이 배정이 줄었으면 다시 계산해야 한다)
+      const { data: rows, error } = await sb.from('rk_shipping_list').select('barcode, qty').eq('order_number', orderNumber).eq('source', WH).eq('status', '출고예정');
+      if (error) throw error;
+      const alloc = new Map((rows || []).map(r => [r.barcode, parseInt(r.qty, 10) || 0]));
+      const boxed = new Map();
+      for (const it of list) if (whBox.has(it.boxNo) || newWh.has(it.boxNo)) boxed.set(it.barcode, (boxed.get(it.barcode) || 0) + it.qty);
+      const over = [...boxed].filter(([bc, q]) => q > (alloc.get(bc) || 0)).map(([bc]) => bc);
+      if (over.length) why = `위해 창고 배정보다 많습니다: ${over.join(', ')}`;
+    }
+    if (why) {
+      list = list.filter(it => !newWh.has(it.boxNo));
+      for (const no of newWh) sizeByNo.delete(no);
+      newWh.clear();
+      wowWarning = `🇨🇳 위해 박스를 만들지 않았습니다 — ${why}`;
+    }
+  }
   const allBoxNos = new Set([...list.map(i => i.boxNo), ...sizeByNo.keys()].filter(n => Number.isFinite(n) && n >= 1));
   for (const no of allBoxNos) {
     const size = sizeByNo.get(no) || '극소';
@@ -269,7 +327,7 @@ async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
       continue;
     }
     const { data, error } = await sb.from('rk_ship_boxes')
-      .insert({ order_number: orderNumber, box_no: no, box_size: size }).select('id').single();
+      .insert({ order_number: orderNumber, box_no: no, box_size: size, origin: newWh.has(no) ? WH : null }).select('id').single();
     if (error) throw error;
     boxIdByNo.set(no, data.id);
   }
@@ -301,7 +359,10 @@ async function saveShipState(orderNumberIn, boxesRaw, itemsRaw) {
   if (vTrue.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: true }).in('id', vTrue); if (error) throw error; }
   if (vFalse.length) { const { error } = await sb.from('rk_ship_boxes').update({ is_virtual: false, virtual_confirmed_qty: 0, virtual_confirmed_at: null }).in('id', vFalse); if (error) throw error; }
 
-  return { ok: true, savedQty: list.reduce((s, i) => s + i.qty, 0), rows: list.length, virtualQty: list.reduce((s, i) => s + i.virtualQty, 0) };
+  // 새 위해 박스 → 구매 DB 에 박스를 알린다 (실패해도 박스는 저장됨 — 쉽먼트·발주서 화면을 다시 열 때 다시 보낸다)
+  if (newWh.size) await push().catch((e) => { wowWarning = `🇨🇳 위해 박스를 구매 DB 에 전달하지 못했습니다 — ${e.message}`; });
+
+  return { ok: true, savedQty: list.reduce((s, i) => s + i.qty, 0), rows: list.length, virtualQty: list.reduce((s, i) => s + i.virtualQty, 0), wowWarning };
 }
 
 router.post('/api/ship-scan/save', async (req, res) => {
@@ -325,7 +386,8 @@ router.post('/api/ship-scan/save', async (req, res) => {
 //          qty, skus, L, kg, bySource, existingBoxes, newBoxes, topUpBoxes, upgradedBoxes, assumedCount,
 //          boxes:[{boxNo,size,sizeFrom,isNew,addQty,source,warnings}], warnings, excluded:{done,none,other:{사유:종수}}, saved?:{addQty,boxCnt,upCnt,savedQty,virtualQty} }],
 //        summary:{ orders, ready, saved, skipped, errors, qty, boxes, newBoxes } }
-const VB_TARGETS = new Set(['all', '입고', '재고']);
+const VB_TARGETS = new Set(['all', '입고', '재고', '위해']);
+const noCodeTarget = (t) => t === '재고' || t === '위해';   // 입고코드를 쓰지 않는 대상
 async function virtualBatchOne(orderNumber, opt, confirm) {
   const st = await loadOrderScanState(orderNumber);
   if (!st.ok) return { orderNumber, status: 'skip', reason: st.error, qty: 0, boxes: [], warnings: [], excluded: { done: 0, none: 0, other: {} } };
@@ -340,7 +402,7 @@ async function virtualBatchOne(orderNumber, opt, confirm) {
     topUpExisting: !!opt.topUp,
     splitBySource: opt.target === 'all',
     sourceFilter: opt.target === 'all' ? null : opt.target,
-    inboundCodes: opt.target === '재고' ? null : opt.inboundCodes,
+    inboundCodes: noCodeTarget(opt.target) ? null : opt.inboundCodes,
   });
   const boxes = plan.boxes.filter((b) => b.items.length).map((b) => ({
     boxNo: b.boxNo, size: b.size, sizeFrom: b.sizeFrom || null, isNew: !!b.isNew, addQty: b.addQty, source: b.source || null, warnings: b.warnings }));
@@ -361,6 +423,7 @@ async function virtualBatchOne(orderNumber, opt, confirm) {
     const r = await saveShipState(d.orderNumber, body.boxes, body.items);
     row.status = 'saved';
     row.saved = { addQty: body.addQty, boxCnt: body.boxCnt, upCnt: body.upCnt, savedQty: r.savedQty, virtualQty: r.virtualQty };
+    if (r.wowWarning) row.warnings = [...row.warnings, r.wowWarning];
   }
   return row;
 }
@@ -371,15 +434,15 @@ router.post('/api/ship-scan/virtual-batch', async (req, res) => {
     if (!orderNumbers.length) return res.status(400).json({ error: '발주번호가 없습니다.' });
     if (orderNumbers.length > 300) return res.status(400).json({ error: '한 번에 300건까지 처리할 수 있습니다.' });
     const target = String(req.body.target || '');
-    if (!VB_TARGETS.has(target)) return res.status(400).json({ error: '대상(전체/입고/재고)을 선택하세요.' });
+    if (!VB_TARGETS.has(target)) return res.status(400).json({ error: '대상(전체/입고/재고/위해)을 선택하세요.' });
     if (typeof req.body.topUp !== 'boolean') return res.status(400).json({ error: '기존 박스(채우기/새 박스만)를 선택하세요.' });
     // 입고코드: inboundCode(하나, 입고정리) 또는 inboundCodes(여럿, 신규 발주서 가상버전 2026-10-20). 계산기는 원래 배열을 받는다
     const inboundCode = String(req.body.inboundCode || '').trim();
     const codeList = Array.isArray(req.body.inboundCodes) ? req.body.inboundCodes : [];
     const inboundCodes = [...new Set([inboundCode, ...codeList.map((c) => String(c == null ? '' : c).trim())].filter(Boolean))];
-    if (target !== '재고' && !inboundCodes.length) return res.status(400).json({ error: '입고코드가 없습니다.' });
+    if (!noCodeTarget(target) && !inboundCodes.length) return res.status(400).json({ error: '입고코드가 없습니다.' });
     const confirm = req.body.confirm === true;
-    const opt = { topUp: req.body.topUp, target, inboundCode: target === '재고' ? null : inboundCodes[0], inboundCodes: target === '재고' ? null : inboundCodes };
+    const opt = { topUp: req.body.topUp, target, inboundCode: noCodeTarget(target) ? null : inboundCodes[0], inboundCodes: noCodeTarget(target) ? null : inboundCodes };
 
     // 발주서마다 조회 6~7회 왕복 → 3개씩 동시에. 한 건이 실패해도 나머지는 계속 (그 행만 error)
     const results = await S.chunkedPool(orderNumbers, 1, async ([no]) => {
@@ -410,8 +473,18 @@ router.post('/api/ship-scan/delete-box', async (req, res) => {
     const orderNumber = String(req.body.orderNumber || '').trim();
     const boxNo = parseInt(req.body.boxNo, 10);
     if (!orderNumber || !Number.isFinite(boxNo)) return res.status(400).json({ error: '파라미터가 올바르지 않습니다.' });
-    const { error } = await sb.from('rk_ship_boxes').delete().eq('order_number', orderNumber).eq('box_no', boxNo);
-    if (error) throw error; // rk_ship_box_items 는 on delete cascade 로 함께 삭제
+    const { data: bx, error: eB } = await sb.from('rk_ship_boxes').select('id, origin, shipped_at').eq('order_number', orderNumber).eq('box_no', boxNo).limit(1);
+    if (eB) throw eB;
+    const del = async () => {
+      const { error } = await sb.from('rk_ship_boxes').delete().eq('order_number', orderNumber).eq('box_no', boxNo);
+      if (error) throw error; // rk_ship_box_items 는 on delete cascade 로 함께 삭제
+    };
+    if (bx && bx[0] && bx[0].origin === Wow.WH) {
+      // 위해 박스 — 구매 DB 에서 먼저 뺀다 (중국에서 이미 담았으면 거절). 그 위해 배정은 박스 미정으로 돌아간다
+      if (bx[0].shipped_at) return res.status(409).json({ error: '출고완료된 위해 박스는 삭제할 수 없습니다.' });
+      try { await Wow.shrink(orderNumber, { dropBoxes: new Set([boxNo]) }, del); }
+      catch (e) { if (e.wow || e.conn) return res.status(409).json({ error: '위해 박스 삭제 실패: ' + e.message }); throw e; }
+    } else await del();
     res.json({ ok: true });
   } catch (e) {
     console.error('[rk] ship-scan/delete-box:', e);
@@ -437,7 +510,7 @@ async function activeBoxesAndItems(orderNumbers) {
   const active = Array.isArray(orderNumbers) ? [...new Set(orderNumbers.map((x) => String(x || '').trim()).filter(Boolean))] : await S.listActiveOrderNumbers('rk_orders');
   const empty = { boxes: [], items: [], ready: new Map(), virtualSumByBox: new Map(), boxOk: () => false };
   if (!active.length) return empty;
-  const boxCols = 'id, order_number, box_no, box_size, is_virtual, virtual_confirmed_qty, virtual_confirmed_at, created_at' + ((await M.hasShippedCol()) ? ', shipped_at' : '');
+  const boxCols = 'id, order_number, box_no, box_size, is_virtual, virtual_confirmed_qty, virtual_confirmed_at, created_at, origin' + ((await M.hasShippedCol()) ? ', shipped_at' : '');
   const [boxes, items, fm] = await Promise.all([
     S.chunked(active, 200, (nos) => S.pageAll(() => sb.from('rk_ship_boxes')
       .select(boxCols).in('order_number', nos).order('id', { ascending: true }))),
@@ -482,6 +555,7 @@ router.get('/api/ship-scan/box-map', async (req, res) => {
         state: rd.state || '실제', input: `${rd.done || 0}/${rd.total || 0}`, short: rd.short || 0,   // 박스 상태 (2026-11-02): 실제·미진행·진행·완료
         found: ri ? ri.found : 0, itemState: ri ? ri.state : 'real',   // 이 상품의 찾은 수량 · 입력 상태
         shipped: !!box.shipped_at,   // 출고완료
+        wow: box.origin === Wow.WH,   // 🇨🇳 위해 박스
         done: doneSet.has(String(it.order_number)) });   // 발주서 처리완료
     }
     for (const list of Object.values(map)) list.sort((a, b) => a.boxNo - b.boxNo);
@@ -497,7 +571,7 @@ router.get('/api/ship-scan/box-map', async (req, res) => {
 router.get('/api/ship-scan/virtual-boxes', async (req, res) => {
   try {
     const { boxes, items, virtualSumByBox, boxOk, ready } = await activeBoxesAndItems();
-    const vBoxes = boxes.filter((b) => (virtualSumByBox.get(b.id) || 0) > 0 && !b.shipped_at);
+    const vBoxes = boxes.filter((b) => (virtualSumByBox.get(b.id) || 0) > 0 && !b.shipped_at && !b.origin);   // 위해 박스는 중국이 담는다 — 가상확정 대상 아님
     const orderNos = [...new Set(vBoxes.map((b) => String(b.order_number)))];
     const headers = orderNos.length ? await S.chunked(orderNos, 200, (nos) => S.pageAll(() => sb.from('rk_orders')
       .select('order_number, logistics_center, arrival_date').in('order_number', nos).order('id', { ascending: true }))) : [];

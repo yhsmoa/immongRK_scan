@@ -99,6 +99,9 @@
         .q-inb{color:#2563eb;font-weight:600;}
         .src-stock{color:#111827;}
         .src-inb{color:#2563eb;}
+        .q-wh,.src-wh{color:#b91c1c;font-weight:600;}
+        .wow-st{display:inline-block;margin-left:4px;padding:0 5px;border-radius:5px;font-size:11px;font-weight:600;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;}
+        .wow-st.na{background:#f3f4f6;color:#6b7280;border-color:#e5e7eb;}
         td.loc{cursor:default;}
         td.loc .lc{font-weight:600;}
         td.loc .more{color:#94a3b8;font-weight:500;}
@@ -292,7 +295,7 @@
                         <option value="500" selected>500개씩</option>
                     </select>
                 </div>
-                <div class="legend"><span><span class="src-stock">검정</span> 재고 위치</span><span><span class="src-inb">파랑</span> 입고코드-박스명</span><span>위치에 마우스를 올리면 위치별 개수 · 배정 취소</span></div>
+                <div class="legend"><span><span class="src-stock">검정</span> 재고 위치</span><span><span class="src-inb">파랑</span> 입고코드-박스명</span><span><span class="src-wh">🇨🇳</span> 위해 창고</span><span>위치에 마우스를 올리면 위치별 개수 · 배정 취소</span></div>
             </div>
 
             <div class="table-scroll">
@@ -304,10 +307,10 @@
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
                             <th>발주번호</th><th>물류센터</th><th>상품바코드</th><th>상품명</th>
-                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고</th><th>위치</th><th>박스</th><th>입고예정일</th>
+                            <th class="num">발주</th><th class="num">확정</th><th class="num">스캔</th><th class="ctr">재고</th><th class="ctr">입고</th><th class="ctr">🇨🇳</th><th>위치</th><th>박스</th><th>입고예정일</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="13">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="14">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
@@ -397,7 +400,7 @@
         let allRows=[], viewRows=[];
         let pageSize=500, currentPage=1;
         // 저장된 배정·등록 상태·스캔 (/api/allocate/status) + 출고스캔 박스 (/api/ship-scan/box-map)
-        let st={ orders:{}, allocs:{}, scanned:{}, virtual:{} }, boxMap={};
+        let st={ orders:{}, allocs:{}, scanned:{}, virtual:{} }, boxMap={}, wowSt={ orders:{} };
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const cmpKo=(a,b)=>String(a==null?'':a).localeCompare(String(b==null?'':b),'ko',{numeric:true});
         const keyOf=r=>`${r.발주번호}|${r.상품바코드}`;
@@ -432,10 +435,11 @@
                             발주수량:p.발주수량,확정수량:p.확정수량,created_at:o.created_at});
                     }
                 }
+                await pullWow();
                 await loadStatus();
                 applySearch(true);
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="13">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="14">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
         // 저장된 배정·등록 상태 — 발주번호 100건씩 나눠 조회 (URL 길이)
@@ -456,11 +460,35 @@
                     if(r.ok) Object.assign(boxMap, await r.json());
                 }
             }catch(e){ /* 박스 열만 빈다 */ }
+            // 구매 DB 와 어긋난 발주서 (위해 창고 배정·위해 박스) — 못 읽으면 '확인 불가'
+            try{
+                const w={ orders:{} };
+                for(let i=0;i<nos.length;i+=100){
+                    const r=await fetch('/api/wow/status?orderNumbers='+encodeURIComponent(nos.slice(i,i+100).join(',')));
+                    const j=await r.json(); if(!r.ok) throw new Error(j.error||'HTTP '+r.status);
+                    Object.assign(w.orders, j.orders||{});
+                }
+                wowSt=w;
+            }catch(e){ wowSt={ orders:{}, error:e.message }; }
+        }
+        // 와우출고 — 중국에서 담은 수량·출고를 가져오고 어긋난 발주서를 다시 보낸다 (페이지를 열 때마다)
+        async function pullWow(){
+            try{
+                const j=await postJson('/api/wow/pull',{});
+                if((j.errors||[]).length) toast('와우출고 확인 실패: '+j.errors.map(e=>e.orderNumber+' '+e.error).join(' · '), 6000);
+            }catch(e){ toast('와우출고 확인 실패: '+e.message, 5000); }
+        }
+        const srcCls=s=>s==='입고'?'src-inb':s==='위해'?'src-wh':'src-stock';
+        function wowBadge(no){
+            if(wowSt.orders[no]==='diff') return '<span class="wow-st" title="위해 창고 배정·위해 박스가 구매 DB 와 다릅니다 — 페이지를 다시 열면 다시 보냅니다">🇨🇳 구매 DB 와 어긋남</span>';
+            if(wowSt.error&&Object.entries(st.allocs).some(([k,l])=>k.startsWith(no+'|')&&l.some(a=>a.source==='위해'))) return `<span class="wow-st na" title="${esc(wowSt.error)}">🇨🇳 확인 불가</span>`;
+            return '';
         }
         // 행의 저장된 배정 — 입고 먼저(가상스캔이 담는 순서) › 입고코드-박스명 / 재고 위치 순
         function rowAllocs(r){
             const list=(st.allocs[keyOf(r)]||[]).slice();
-            list.sort((a,b)=>((a.source==='입고'?0:1)-(b.source==='입고'?0:1))||cmpKo(a.source==='입고'?a.code+'-'+a.boxName:a.location, b.source==='입고'?b.code+'-'+b.boxName:b.location)||(a.listId-b.listId));
+            const rank=s=>s==='입고'?0:s==='위해'?2:1;
+            list.sort((a,b)=>(rank(a.source)-rank(b.source))||cmpKo(a.source==='입고'?a.code+'-'+a.boxName:a.location, b.source==='입고'?b.code+'-'+b.boxName:b.location)||(a.listId-b.listId));
             return list;
         }
         const sumSrc=(list,src)=>list.filter(a=>a.source===src).reduce((s,a)=>s+(Number(a.qty)||0),0);
@@ -468,7 +496,7 @@
             const list=rowAllocs(r);
             if(!list.length) return '<span class="dash">-</span>';
             const s=AllocPlan.allocSummary(list);
-            const cls=list[0].source==='입고'?'src-inb':'src-stock';
+            const cls=srcCls(list[0].source);
             const m=s.short.match(/^(.*?)( 외 \d+건)$/);
             return m?`<span class="lc ${cls}">${esc(m[1])}</span><span class="more">${esc(m[2])}</span>`:`<span class="lc ${cls}">${esc(s.short)}</span>`;
         }
@@ -482,6 +510,7 @@
         function boxCell(r){
             const list=boxMap[keyOf(r)]||[];
             return list.map(b=>{
+                if(b.wow) return `<span class="vbox real" title="🇨🇳 위해 박스 ${b.boxNo} ${esc(b.boxSize||'')} · ${b.qty}개${b.shipped?' · 출고완료':''}">📦${b.boxNo} 🇨🇳${b.shipped?'🚚':''}</span>`;
                 if(!(b.virtualQty>0)) return `<span class="vbox real" title="박스 ${b.boxNo} ${esc(b.boxSize||'')} · 실제 스캔 ${b.qty}${b.shipped?' · 출고완료':''}">📦${b.boxNo} ${b.shipped?'🚚':'📠'}</span>`;
                 return vboxHtml(b);
             }).join('');
@@ -496,7 +525,7 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(!pageRows.length){
-                tb.innerHTML=`<tr class="state-row"><td colspan="13">표시할 발주 상품이 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="14">표시할 발주 상품이 없습니다. Excel 파일을 업로드하세요.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map((r,li)=>{
                     const i=start+li;
@@ -504,16 +533,17 @@
                     const scanHtml=(scanN>0&&conf===scanN)?`<span class="scan-badge scan-green">${scanN}</span>`
                         :(scanN>0&&conf>scanN)?`<span class="scan-badge scan-orange">${scanN}</span>`:`<span class="scan-zero">${scanN}</span>`;
                     const list=st.allocs[keyOf(r)]||[];
-                    const sq=sumSrc(list,'재고'), iq=sumSrc(list,'입고');
+                    const sq=sumSrc(list,'재고'), iq=sumSrc(list,'입고'), wq=sumSrc(list,'위해');
                     const ge=(viewRows[i+1]&&viewRows[i+1].발주번호!==r.발주번호)?'group-end':'';
                     return `<tr data-i="${i}" class="${ge}">
                         <td class="chk"><input type="checkbox" class="rowchk" onchange="updateSel()"></td>
-                        <td class="order-no">${esc(r.발주번호)}${regBadge(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
+                        <td class="order-no">${esc(r.발주번호)}${regBadge(r.발주번호)}${wowBadge(r.발주번호)}</td><td>${esc(r.물류센터)}</td>
                         <td>${esc(r.상품바코드)}</td><td class="pname">${modelBadge(r.상품명)}</td>
                         <td class="num">${esc(r.발주수량)}</td><td class="num">${esc(r.확정수량)}</td>
                         <td class="num">${scanHtml}</td>
                         <td class="ctr">${sq?`<span class="q-stock">${sq}</span>`:'<span class="dash">-</span>'}</td>
                         <td class="ctr">${iq?`<span class="q-inb">${iq}</span>`:'<span class="dash">-</span>'}</td>
+                        <td class="ctr">${wq?`<span class="q-wh">${wq}</span>`:'<span class="dash">-</span>'}</td>
                         <td class="loc" data-i="${i}" onmouseenter="popShow(this)" onmouseleave="popHideSoon()">${locHtml(r)}</td>
                         <td>${boxCell(r)}</td><td>${esc(r.입고예정일)}</td>
                     </tr>`;
@@ -672,14 +702,14 @@
             popRow=r;
             const v=Number(st.virtual[keyOf(r)])||0;
             const pop=document.getElementById('pop');
-            const ln=a=>`<div class="ln"><span class="src ${a.source==='입고'?'src-inb':'src-stock'}">${a.source}</span>
+            const ln=a=>`<div class="ln"><span class="src ${srcCls(a.source)}">${a.source}</span>
                 <span class="place">${esc(AllocPlan.allocPlace(a))}</span><span class="q">×${a.qty}</span>
                 <span class="b">${a.batchNo?a.batchNo+'회차':''}${a.mobileMarked>0?(a.mobileFound<a.mobileMarked?` 부족 ${a.mobileMarked-a.mobileFound}`:' ✓찾음'):''}</span>
                 <button onclick="cancelAlloc([${a.listId}])" title="이 배정만 취소">취소</button></div>`;
             pop.innerHTML=`<h4>${esc(r.발주번호)} · ${esc(r.상품바코드)}<small>배정 ${list.reduce((s,a)=>s+a.qty,0)}개 · ${list.length}곳</small></h4>
                 ${list.map(ln).join('')}
                 ${v?`<div class="virt">👾 가상스캔으로 박스에 담긴 ${v}개 — 그보다 적게 남게는 취소할 수 없습니다</div>`:''}
-                <div class="foot"><span class="hint">재고 취소 = 재고 복원 · 입고 취소 = 남은상품으로</span><button onclick="cancelAlloc(null)">전체 취소</button></div>`;
+                <div class="foot"><span class="hint">재고 취소 = 재고 복원 · 입고 취소 = 남은상품으로 · 위해 취소 = 위해 창고 잔여수량으로</span><button onclick="cancelAlloc(null)">전체 취소</button></div>`;
             const rc=td.getBoundingClientRect();
             pop.classList.add('show');
             const pw=pop.offsetWidth, ph=pop.offsetHeight;
@@ -691,11 +721,11 @@
             const r=popRow; if(!r) return;
             const list=rowAllocs(r).filter(a=>!listIds||listIds.includes(a.listId));
             const qty=list.reduce((s,a)=>s+a.qty,0);
-            if(!confirm(`${r.발주번호} · ${r.상품바코드}\n배정 ${list.length}건 (${qty}개)을 취소할까요?\n재고는 위치로 복원되고, 입고는 남은상품으로 돌아갑니다.`)) return;
+            if(!confirm(`${r.발주번호} · ${r.상품바코드}\n배정 ${list.length}건 (${qty}개)을 취소할까요?\n재고는 위치로 복원되고, 입고는 남은상품으로, 위해는 위해 창고 잔여수량으로 돌아갑니다.`)) return;
             try{
                 const j=await postJson('/api/allocate/cancel',{orderNumber:r.발주번호, barcode:r.상품바코드, listIds:listIds||undefined});
                 document.getElementById('pop').classList.remove('show');
-                toast(`배정 취소 ${j.canceledQty}개 · 재고 복원 ${j.stock.restored||0} · 입고 ${j.inbound.deleted||0}건`);
+                toast(`배정 취소 ${j.canceledQty}개 · 재고 복원 ${j.stock.restored||0} · 입고 ${j.inbound.deleted||0}건${j.weihai.deleted?' · 위해 창고 '+j.weihai.deleted+'건':''}`);
                 await loadStatus(); render();
             }catch(e){ toast('배정 취소 실패: '+e.message, 5000); }
         }
@@ -704,13 +734,13 @@
         // 배정 — 발주서 선택 · 출처(재고 체크 / 입고코드 여러 개) · 순서(입고 → 재고 / 재고 → 입고, 기본값 없음)
         //   [계산] = 서버 미리보기(저장 안 함) · [확정 — 저장] = 서버가 그 시점 DB 로 다시 계산해 한 트랜잭션으로 저장
         // ============================================================
-        let al={ orders:[], picked:new Set(), useStock:false, codes:new Set(), order:null, sources:null, preview:null, busy:false, req:0, filter:'alloc' };
+        let al={ orders:[], picked:new Set(), useStock:false, useWh:false, codes:new Set(), order:null, sources:null, preview:null, busy:false, req:0, filter:'alloc' };
         function openAlloc(){
             const nos=targetOrderNumbers();
             if(!nos.length){ toast('배정할 발주서가 없습니다.'); return; }
             const info=new Map(uniqueOrders().map(o=>[o.발주번호,o]));
             al={ orders:nos.map(no=>info.get(no)||{발주번호:no,물류센터:'',입고예정일:'',count:0}), picked:new Set(nos.filter(no=>st.orders[no]==='registered')),
-                useStock:false, codes:new Set(), order:null, sources:null, preview:null, busy:false, req:0, filter:'alloc' };
+                useStock:false, useWh:false, codes:new Set(), order:null, sources:null, preview:null, busy:false, req:0, filter:'alloc' };
             document.getElementById('alSub').textContent=`발주서 ${nos.length}건`;
             document.getElementById('alCancelBtn').textContent='취소';
             renderAlOrders(); renderAlSrc(); renderAlBody();
@@ -771,15 +801,16 @@
             }catch(e){ if(my===al.srcReq){ al.sources={error:e.message}; renderAlSrc(); } }
         }
         function alBoth(){ return al.useStock && al.codes.size>0; }
-        function alReady(){ return al.picked.size>0 && (al.useStock||al.codes.size>0) && (!alBoth()||!!al.order); }
+        function alReady(){ return al.picked.size>0 && (al.useStock||al.codes.size>0||al.useWh) && (!alBoth()||!!al.order); }
         function renderAlSrc(){
             const s=al.sources, dis=al.busy?'disabled':'';
-            let stockMeta='', codes='';
+            let stockMeta='', codes='', whMeta='';
             if(!al.picked.size){ stockMeta='발주서를 고르세요'; }
             else if(!s){ stockMeta='불러오는 중…'; }
             else if(s.error){ stockMeta='조회 실패: '+esc(s.error); }
             else {
                 stockMeta=`가용 ${s.stock.skus}종 ${s.stock.qty}개 (발주서 바코드 ${s.barcodes}종 중)`;
+                whMeta=s.weihai.error?'<span class="need">조회 실패: '+esc(s.weihai.error)+'</span>':`잔여수량 ${s.weihai.skus}종 ${s.weihai.qty}개`;
                 codes=s.inboundCodes.map(c=>`<button type="button" class="chip ${al.codes.has(c.code)?'on':''} ${c.qty?'':'zero'}" ${dis} onclick="alToggleCode('${esc(c.code)}')">${esc(c.code)}<small>남은 ${c.skus}종 ${c.qty}개</small></button>`).join('');
             }
             const both=alBoth();
@@ -793,6 +824,10 @@
                     <div class="chips">${codes||'<span class="hint">-</span>'}</div>
                 </div>
                 <div class="al-box">
+                    <div class="ttl"><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" ${al.useWh?'checked':''} ${dis} onchange="alSetWh(this.checked)"> 🇨🇳 위해 창고</label><span class="meta">${whMeta}</span></div>
+                    <div class="hint" style="margin-top:4px">재고 · 입고를 다 쓴 뒤 모자란 것만 잔여수량에서 (순서와 무관하게 마지막) — 가상스캔하면 위해 박스를 따로 만듭니다</div>
+                </div>
+                <div class="al-box">
                     <div class="row"><span class="ttl">순서</span>
                         <div class="seg">
                             <button type="button" class="${al.order&&al.order[0]==='입고'?'on':''}" ${both&&!al.busy?'':'disabled'} onclick="alSetOrder(['입고','재고'])">입고 → 재고</button>
@@ -803,11 +838,12 @@
                 </div>`;
             document.getElementById('alCalcBtn').disabled=!alReady()||al.busy;
         }
+        function alSetWh(on){ if(al.busy) return; al.useWh=!!on; renderAlSrc(); alInvalidate(); }
         function alSetStock(on){ if(al.busy) return; al.useStock=!!on; if(!alBoth()) al.order=null; renderAlSrc(); alInvalidate(); }
         function alToggleCode(c){ if(al.busy) return; if(al.codes.has(c)) al.codes.delete(c); else al.codes.add(c); if(!alBoth()) al.order=null; renderAlSrc(); alInvalidate(); }
         function alSetOrder(o){ if(al.busy) return; al.order=o; renderAlSrc(); alInvalidate(); }
         function alBodyReq(save){
-            const body={ orderNumbers:[...al.picked], sources:{ stock:al.useStock, inboundCodes:[...al.codes] }, save };
+            const body={ orderNumbers:[...al.picked], sources:{ stock:al.useStock, inboundCodes:[...al.codes], weihai:al.useWh }, save };
             if(alBoth()) body.sourceOrder=al.order;
             if(save&&al.preview){ const e={}; for(const r of al.preview.rows) e[`${r.orderNumber}|${r.barcode}`]=`${r.stockQty}|${r.inboundQty}`; body.expect=e; }
             return body;
@@ -817,8 +853,8 @@
             if(save){
                 if(!al.preview){ toast('먼저 [계산]으로 확인하세요.'); return; }
                 const s=al.preview.summary;
-                if(!(s.stock+s.inbound)){ toast('저장할 배정이 없습니다.'); return; }
-                if(!confirm(`배정을 저장합니다.\n재고 ${s.stock}개 (재고에서 바로 차감) · 입고 ${s.inbound}개 (입고정리 출고리스트에 새 회차)\n\n저장 시점의 DB 로 다시 계산해 저장합니다.`)) return;
+                if(!(s.stock+s.inbound+s.weihai)){ toast('저장할 배정이 없습니다.'); return; }
+                if(!confirm(`배정을 저장합니다.\n재고 ${s.stock}개 (재고에서 바로 차감) · 입고 ${s.inbound}개 (입고정리 출고리스트에 새 회차)${s.weihai?` · 🇨🇳 위해 창고 ${s.weihai}개 (위해 창고 출고예정)`:''}\n\n저장 시점의 DB 로 다시 계산해 저장합니다.`)) return;
             }
             const my=++al.req;
             al.busy=save; if(save){ renderAlOrders(); renderAlSrc(); }
@@ -833,7 +869,11 @@
                     al.busy=false;
                     const sv=j.saved||{};
                     const codes=Object.entries(sv.batchByCode||{}).map(([c,b])=>`${c} ${b}회차`).join(', ');
-                    toast(`배정 저장 · 재고 ${sv.savedStock||0}건${sv.batchStock?` (재고 ${sv.batchStock}회차)`:''} · 입고 ${sv.savedInbound||0}건${codes?` (${codes})`:''}${j.changed?`\n미리보기와 ${j.changed}행 달라져 지금 기준으로 저장했습니다.`:''}`, 5000);
+                    const w=j.wow, whN=(sv.weihai||[]).reduce((a,x)=>a+x.qty,0);
+                    const whTxt=!whN?'':` · 🇨🇳 위해 창고 ${whN}개`
+                        +((w&&w.trimmed.length)?`\n위해 창고 잔여수량이 모자라 줄였습니다: ${w.trimmed.map(x=>x.orderNumber+' '+x.barcodes.join(',')).join(' · ')}`:'')
+                        +((w&&w.failed.length)?`\n위해 창고 배정 실패: ${w.failed.map(x=>x.orderNumber+' '+x.error+(x.reverted?' (되돌림)':'')).join(' · ')}`:'');
+                    toast(`배정 저장 · 재고 ${sv.savedStock||0}건${sv.batchStock?` (재고 ${sv.batchStock}회차)`:''} · 입고 ${sv.savedInbound||0}건${codes?` (${codes})`:''}${whTxt}${j.changed?`\n미리보기와 ${j.changed}행 달라져 지금 기준으로 저장했습니다.`:''}`, (w&&(w.trimmed.length||w.failed.length))?9000:5000);
                     await loadStatus(); applySearch(true);
                     document.getElementById('alBack').classList.remove('show');
                     return;
@@ -851,40 +891,42 @@
             const body=document.getElementById('alBody'), note=document.getElementById('alNote'), saveBtn=document.getElementById('alSaveBtn');
             document.getElementById('alCalcBtn').disabled=!alReady()||al.busy;
             if(!al.preview){
-                body.innerHTML=`<div class="msg">${!al.picked.size?'배정할 발주서를 고르세요.':!(al.useStock||al.codes.size)?'출처(재고 / 입고코드)를 고르세요.':(alBoth()&&!al.order)?'순서(입고 → 재고 / 재고 → 입고)를 고르세요.':'[계산]을 누르면 발주서별 배정을 미리 봅니다. (저장 안 함)'}</div>`;
+                body.innerHTML=`<div class="msg">${!al.picked.size?'배정할 발주서를 고르세요.':!(al.useStock||al.codes.size||al.useWh)?'출처(재고 / 입고코드 / 위해 창고)를 고르세요.':(alBoth()&&!al.order)?'순서(입고 → 재고 / 재고 → 입고)를 고르세요.':'[계산]을 누르면 발주서별 배정을 미리 봅니다. (저장 안 함)'}</div>`;
                 if(!keepNote){ note.className='note'; note.textContent=''; }
                 saveBtn.disabled=true; return;
             }
             const p=al.preview, s=p.summary;
             const rows=p.rows.filter(r=>al.filter==='all'?true:al.filter==='short'?r.shortage>0:(r.allocs.length>0||r.shortage>0));
-            const chip=a=>`<span class="al-chip ${a.source==='입고'?'inb':'stock'}">${esc(AllocPlan.allocPlace(a))} ×${a.qty}</span>`;
+            const chip=a=>`<span class="al-chip ${a.source==='입고'?'inb':'stock'} ${a.source==='위해'?'src-wh':''}">${esc(AllocPlan.allocPlace(a))} ×${a.qty}</span>`;
             const ex=(p.excluded||[]).length?`<span>제외 ${p.excluded.map(e=>`${esc(e.orderNumber)}(${esc(e.reason)})`).join(', ')}</span>`:'';
             body.innerHTML=`<div class="sum"><span>발주서 <b>${s.orders}</b>건</span><span>상품 ${s.rows}행 · 배정 <b>${s.allocRows}</b>행</span><span>필요 <b>${s.needed}</b></span>
-                    <span>재고 <b>${s.stock}</b></span><span>입고 <b>${s.inbound}</b></span><span class="${s.shortage?'bad':''}">부족 ${s.shortage}</span>${ex}</div>
+                    <span>재고 <b>${s.stock}</b></span><span>입고 <b>${s.inbound}</b></span>${s.weihai?`<span class="src-wh">🇨🇳 위해 <b>${s.weihai}</b></span>`:''}<span class="${s.shortage?'bad':''}">부족 ${s.shortage}</span>${ex}</div>
                 <div class="filters">보기
                     <div class="seg"><button class="${al.filter==='alloc'?'on':''}" onclick="alSetFilter('alloc')">배정·부족</button><button class="${al.filter==='short'?'on':''}" onclick="alSetFilter('short')">부족만</button><button class="${al.filter==='all'?'on':''}" onclick="alSetFilter('all')">전체</button></div></div>
-                <table class="rtbl"><thead><tr><th>발주번호</th><th>바코드</th><th>상품명</th><th>확정</th><th>기배정</th><th>스캔</th><th>필요</th><th>배정 (위치 / 입고코드-박스)</th><th>부족</th><th>비고</th></tr></thead><tbody>
+                <table class="rtbl"><thead><tr><th>발주번호</th><th>바코드</th><th>상품명</th><th>확정</th><th>기배정</th><th>스캔</th><th>필요</th><th>배정 (위치 / 입고코드-박스 / 🇨🇳)</th><th>부족</th><th>비고</th></tr></thead><tbody>
                 ${rows.map(r=>`<tr class="${r.shortage>0?'short':''} ${!r.allocs.length&&!r.shortage?'none':''}"><td class="o">${esc(r.orderNumber)}</td><td>${esc(r.barcode)}</td><td class="pn" title="${esc(r.productName)}">${esc(r.productName)}</td>
                     <td class="n">${r.confirmedQty}</td><td class="n">${r.reserved||''}</td><td class="n">${r.scanned||''}</td><td class="n"><b>${r.needed}</b></td>
                     <td>${r.allocs.map(chip).join('')||'<span class="dash">-</span>'}</td><td class="n">${r.shortage||''}</td><td class="hint">${esc(r.reason||'')}</td></tr>`).join('')||'<tr><td colspan="10" class="hint">표시할 행이 없습니다.</td></tr>'}
                 </tbody></table>`;
-            const n=s.stock+s.inbound;
-            if(!keepNote){ note.className='note'; note.textContent=n?'확정하면 저장 시점의 DB 로 다시 계산해 한 번에 저장합니다 (재고 차감 · 입고 새 회차).':'저장할 배정이 없습니다.'; }
+            const n=s.stock+s.inbound+s.weihai;
+            if(!keepNote){ note.className='note'; note.textContent=n?'확정하면 저장 시점의 DB 로 다시 계산해 한 번에 저장합니다 (재고 차감 · 입고 새 회차 · 위해 창고 출고예정).':'저장할 배정이 없습니다.'; }
             saveBtn.disabled=!n||al.busy;
         }
 
         // ============================================================
         // 가상스캔 · 일괄 — 대상 발주서(등록·진행중)마다 출고스캔의 [가상스캔]을 같은 옵션으로 (입고정리 일괄 가상스캔과 같은 서버 API)
-        //   옵션은 매번 고른다 (기본값 없음): 기존 박스 · 대상(전체/입고/재고) · 입고코드(여럿 — 이 발주서들의 입고 배정에 있는 코드)
+        //   옵션은 매번 고른다 (기본값 없음): 기존 박스 · 대상(전체/입고/재고/위해) · 입고코드(여럿 — 이 발주서들의 입고 배정에 있는 코드)
+        //   위해 창고분은 대상이 전체·위해일 때 언제나 위해 박스로 따로 담긴다 (기존 박스 채우기 없음)
         // ============================================================
-        let vbOrders=[], vbCodesAll=[], vbCodes=new Set(), vbTopUp=null, vbTarget=null, vbPreview=null, vbReq=0, vbBusy=false, vbDone=false, vbOff=new Set();
+        let vbHasWh=false, vbOrders=[], vbCodesAll=[], vbCodes=new Set(), vbTopUp=null, vbTarget=null, vbPreview=null, vbReq=0, vbBusy=false, vbDone=false, vbOff=new Set();
         function openVirtualBatch(){
             const nos=targetOrderNumbers();
             const ok=nos.filter(no=>st.orders[no]==='registered');
             if(!ok.length){ toast(nos.length?'등록된 진행중 발주서가 없습니다. 먼저 [발주서등록] → [배정]을 하세요.':'가상스캔할 발주서가 없습니다.'); return; }
             if(ok.length<nos.length) toast(`미등록·처리완료 ${nos.length-ok.length}건은 빼고 진행합니다.`);
             const codes=new Set();
-            for(const [k,list] of Object.entries(st.allocs)){ const no=k.split('|')[0]; if(!ok.includes(no)) continue; for(const a of list) if(a.source==='입고'&&a.code) codes.add(a.code); }
+            vbHasWh=false;
+            for(const [k,list] of Object.entries(st.allocs)){ const no=k.split('|')[0]; if(!ok.includes(no)) continue; for(const a of list){ if(a.source==='입고'&&a.code) codes.add(a.code); if(a.source==='위해') vbHasWh=true; } }
             vbOrders=ok; vbCodesAll=[...codes].sort(cmpKo); vbCodes=new Set(); vbTopUp=null; vbTarget=null; vbPreview=null; vbBusy=false; vbDone=false; vbOff=new Set(); vbReq++;
             document.getElementById('vbSub').textContent=`발주서 ${ok.length}건`;
             const cancel=document.getElementById('vbCancelBtn'); cancel.textContent='취소'; cancel.disabled=false;
@@ -895,11 +937,12 @@
         function setVbTopUp(on){ if(vbBusy||vbDone) return; vbTopUp=!!on; renderVbOpts(); runVbPreview(); }
         function setVbTarget(t){ if(vbBusy||vbDone) return; vbTarget=t; renderVbOpts(); runVbPreview(); }
         function toggleVbCode(c){ if(vbBusy||vbDone) return; if(vbCodes.has(c)) vbCodes.delete(c); else vbCodes.add(c); renderVbOpts(); runVbPreview(); }
-        function vbReady(){ return vbTopUp!=null && !!vbTarget && (vbTarget==='재고'||vbCodes.size>0); }
+        const vbNoCode=t=>t==='재고'||t==='위해';   // 입고코드를 쓰지 않는 대상
+        function vbReady(){ return vbTopUp!=null && !!vbTarget && (vbNoCode(vbTarget)||vbCodes.size>0); }
         function renderVbOpts(){
             const dis=(vbBusy||vbDone)?'disabled':'';
             const noInb=!vbCodesAll.length;
-            const codeHint=vbTarget==='재고'?'재고만 담으므로 입고코드는 쓰지 않음'
+            const codeHint=vbNoCode(vbTarget)?`${vbTarget}만 담으므로 입고코드는 쓰지 않음`
                 :noInb?'이 발주서들에는 입고 배정이 없습니다 — 대상 <b>재고</b>를 고르세요'
                 :vbCodes.size?'고른 코드의 입고분만 (다른 코드 분량은 제외)':'<span class="need">하나 이상 고르세요</span>';
             document.getElementById('vbOpts').innerHTML=`
@@ -907,17 +950,17 @@
                     <div class="seg"><button type="button" class="${vbTopUp===true?'on':''}" ${dis} onclick="setVbTopUp(true)">기존 박스 채우기</button><button type="button" class="${vbTopUp===false?'on':''}" ${dis} onclick="setVbTopUp(false)">새 박스만</button></div>
                     <span class="hint">${vbTopUp==null?'<span class="need">선택하세요</span> · 박스가 없는 발주서는 어느 쪽이든 새 박스':vbTopUp?'발주서마다 마지막 박스부터 채움 · 앞 박스는 마감':'기존 박스는 그대로 두고 새 박스에만 담음'}</span></div>
                 <div class="vb-opt"><span class="lbl">대상</span>
-                    <div class="seg"><button type="button" class="${vbTarget==='all'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('all')">전체</button><button type="button" class="${vbTarget==='입고'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('입고')">입고</button><button type="button" class="${vbTarget==='재고'?'on':''}" ${dis} onclick="setVbTarget('재고')">재고</button></div>
-                    <span class="hint">${!vbTarget?'<span class="need">선택하세요</span>':vbTarget==='all'?'입고분 먼저, 재고분은 새 박스부터 (한 박스는 한 작업대)':vbTarget==='입고'?'고른 입고코드의 입고분만':'재고분만'}</span></div>
+                    <div class="seg"><button type="button" class="${vbTarget==='all'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('all')">전체</button><button type="button" class="${vbTarget==='입고'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('입고')">입고</button><button type="button" class="${vbTarget==='재고'?'on':''}" ${dis} onclick="setVbTarget('재고')">재고</button><button type="button" class="${vbTarget==='위해'?'on':''}" ${dis||(vbHasWh?'':'disabled')} onclick="setVbTarget('위해')">🇨🇳 위해</button></div>
+                    <span class="hint">${!vbTarget?'<span class="need">선택하세요</span>':vbTarget==='all'?'입고분 먼저, 재고분은 새 박스부터 (한 박스는 한 작업대)':vbTarget==='입고'?'고른 입고코드의 입고분만':vbTarget==='위해'?'위해 창고분만 — 위해 박스로':'재고분만'}</span></div>
                 <div class="vb-opt"><span class="lbl">입고코드</span>
-                    <div class="chips" style="margin:0">${vbCodesAll.map(c=>`<button type="button" class="chip ${vbCodes.has(c)?'on':''}" ${dis||(vbTarget==='재고'?'disabled':'')} onclick="toggleVbCode('${esc(c)}')">${esc(c)}</button>`).join('')||'<span class="hint">-</span>'}</div>
+                    <div class="chips" style="margin:0">${vbCodesAll.map(c=>`<button type="button" class="chip ${vbCodes.has(c)?'on':''}" ${dis||(vbNoCode(vbTarget)?'disabled':'')} onclick="toggleVbCode('${esc(c)}')">${esc(c)}</button>`).join('')||'<span class="hint">-</span>'}</div>
                     <span class="hint">${codeHint}</span></div>`;
         }
         async function runVbPreview(){
             if(!vbReady()){ vbPreview=null; renderVbBody(); return; }
             const my=++vbReq; vbPreview=null; renderVbBody('loading');
             try{
-                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:vbOrders, topUp:vbTopUp, target:vbTarget, inboundCodes:vbTarget==='재고'?[]:[...vbCodes], confirm:false});
+                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:vbOrders, topUp:vbTopUp, target:vbTarget, inboundCodes:vbNoCode(vbTarget)?[]:[...vbCodes], confirm:false});
                 if(my!==vbReq) return; vbPreview=j; renderVbBody();
             }catch(e){ if(my===vbReq){ vbPreview=null; renderVbBody('error', e.message); } }
         }
@@ -968,7 +1011,7 @@
             vbBusy=true; btn.disabled=true; cancel.disabled=true; btn.textContent='반영 중…'; note.className='note'; note.textContent=`발주서 ${picked.length}건 저장 중… 창을 닫지 마세요.`;
             renderVbOpts();
             try{
-                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:picked.map(r=>r.orderNumber), topUp:vbTopUp, target:vbTarget, inboundCodes:vbTarget==='재고'?[]:[...vbCodes], confirm:true});
+                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:picked.map(r=>r.orderNumber), topUp:vbTopUp, target:vbTarget, inboundCodes:vbNoCode(vbTarget)?[]:[...vbCodes], confirm:true});
                 vbPreview=j; vbDone=true; vbBusy=false; cancel.disabled=false; cancel.textContent='닫기';
                 renderVbOpts(); renderVbBody();
                 const s=j.summary||{};
@@ -1062,12 +1105,12 @@
             const body=rows.map((r,idx)=>{
                 const ge=(idx===rows.length-1)||(rows[idx+1].발주번호!==r.발주번호);
                 const list=rowAllocs(r);
-                const locs=list.map(a=>`<span class="${a.source==='입고'?'src-inb':'src-stock'}">${esc(AllocPlan.allocPlace(a))} ×${a.qty}</span>`).join('<br>')||'-';
+                const locs=list.map(a=>`<span class="${srcCls(a.source)}">${esc(AllocPlan.allocPlace(a))} ×${a.qty}</span>`).join('<br>')||'-';
                 const cells=[esc(r.발주번호),esc(r.물류센터),esc(r.상품바코드),modelBadge(r.상품명),esc(r.확정수량),esc(st.scanned[keyOf(r)]||0),sumSrc(list,'재고')||'-',sumSrc(list,'입고')||'-',locs,esc(r.입고예정일)];
                 return `<tr class="${ge?'ge':''}">${cells.map(v=>`<td>${v}</td>`).join('')}</tr>`;
             }).join('');
             const w=window.open('','_blank');
-            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}td:nth-child(9){white-space:nowrap;font-weight:600;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;}.src-inb{color:#2563eb;}.src-stock{color:#111827;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h2>신규 발주서 가상버전 (${rows.length}행)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
+            w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>발주서 인쇄</title><style>body{font-family:sans-serif;font-size:11px;padding:16px;}h2{font-size:16px;}table{border-collapse:collapse;width:100%;}th,td{border:1px solid #ccc;padding:5px 7px;text-align:left;vertical-align:top;}th{background:#f1f5f9;}tr.ge td{border-bottom:2px solid #111827;}td:nth-child(9){white-space:nowrap;font-weight:600;}.name-badge{display:inline-block;background:#dbeafe;color:#2563eb;border:1px solid #bfdbfe;border-radius:5px;padding:0 5px;white-space:nowrap;}.src-inb{color:#2563eb;}.src-stock{color:#111827;}.src-wh{color:#b91c1c;}*{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body><h2>신규 발주서 가상버전 (${rows.length}행)</h2><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table><script>window.onload=function(){window.print();}<\/script></body></html>`);
             w.document.close();
         }
 

@@ -378,15 +378,16 @@
             <a href="/" class="ico" title="홈" aria-label="홈" style="width:36px;height:36px"><svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-home"/></svg></a>
             <div class="ttl"><b style="font-size:17px;letter-spacing:-.02em">모바일 입고</b></div>
             <span class="pill">아이엠몽 로켓</span>
+            <button class="back" onclick="logout()">로그아웃</button>
         </div>
         <div class="setup">
             <div class="hero">
-                <h1>이름을 입력하고<br>작업을 고르세요</h1>
-                <p>이름은 이 폰에 기억됩니다.</p>
+                <h1>작업을 고르세요</h1>
+                <p>로그인한 이름으로 기록됩니다.</p>
             </div>
             <div class="field">
                 <label for="worker">본인 이름</label>
-                <input id="worker" type="text" autocomplete="off" placeholder="예) 영희" maxlength="20" enterkeyhint="done">
+                <input id="worker" type="text" readonly>
             </div>
             <div class="modes">
                 <button class="mode all" onclick="goAll()">
@@ -608,7 +609,7 @@
         const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         const $=id=>document.getElementById(id);
         const ICON=(id,size,sw)=>`<svg width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="${sw||2}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#${id}"/></svg>`;
-        const LS={worker:'mobileInbound.worker', sel:'mobileInbound.sel'};
+        const LS={sel:'mobileInbound.sel'};
         const IS_KAKAO=/KAKAOTALK/i.test(navigator.userAgent), IS_IOS=/iPhone|iPad|iPod/.test(navigator.userAgent);   // 인앱 브라우저 판별 (카메라 대체 경로용, 2026-11-02)
         let shipments=[], sel={y:'',m:'',code:''};   // 1화면 휠 선택값 (휠이 보일 때만 바뀐다)
         let active={code:''};                          // [다음] 을 누른 시점의 출고코드 — 2·3화면은 이것만 쓴다
@@ -689,17 +690,18 @@
 
         if(IS_KAKAO){ document.addEventListener('DOMContentLoaded',()=>{ const t=$('kakaoTip'); if(t) t.classList.add('show'); }); if(document.readyState!=='loading'){ const t=$('kakaoTip'); if(t) t.classList.add('show'); } }
         async function init(){
-            try{ $('worker').value=localStorage.getItem(LS.worker)||''; const s=JSON.parse(localStorage.getItem(LS.sel)||'{}'); if(s&&typeof s==='object') sel={...sel,...s}; }catch(_){}
+            try{ const s=JSON.parse(localStorage.getItem(LS.sel)||'{}'); if(s&&typeof s==='object') sel={...sel,...s}; }catch(_){}
+            try{ $('worker').value=(await (await fetch('/api/auth/me')).json()).name||''; }catch(_){}
             try{
                 const res=await fetch('/api/inbound/shipments'); shipments=await res.json();
                 if(!Array.isArray(shipments)) throw new Error('목록 형식 오류');
                 setupWheels();
             }catch(e){ toast('입고코드 목록을 불러오지 못했습니다: '+e.message); }
         }
+        function logout(){ fetch('/api/auth/logout',{method:'POST'}).finally(()=>{ location.href='/login'; }); }
         // 0화면 — 이름 확인 후 모드 선택
         function needWorker(){
             if(!worker()){ toast('본인 이름을 입력하세요.'); $('worker').focus(); return false; }
-            try{ localStorage.setItem(LS.worker,worker()); }catch(_){}
             return true;
         }
         function goInbound(){
@@ -801,7 +803,7 @@
         function goPick(){
             if(!worker()){ toast('본인 이름을 입력하세요.'); show('s0'); return; }
             if(!sel.code){ toast('입고코드를 선택하세요.'); return; }
-            try{ localStorage.setItem(LS.worker,worker()); localStorage.setItem(LS.sel,JSON.stringify(sel)); }catch(_){}
+            try{ localStorage.setItem(LS.sel,JSON.stringify(sel)); }catch(_){}
             mode='inbound'; active.code=sel.code;
             $('pickTitle').innerHTML=`<b style="font-size:17px;letter-spacing:-.02em">입고코드 ${esc(active.code)}</b><small>${esc(worker())}</small>`;
             show('s2'); loadOrders();

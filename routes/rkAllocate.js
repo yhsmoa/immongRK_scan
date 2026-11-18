@@ -10,12 +10,14 @@
  * 저장 결과는 기존 화면과 같은 테이블·같은 형식이다:
  *   재고 → rk_shipping_list(source='재고') + rk_stocks 차감 + 이력  → 재고준비 [예정] 탭에 그 회차로 보인다
  *   입고 → rk_cn_shipping + rk_shipping_list 미러                   → 입고정리 [출고리스트] 에 그 회차로 보이고 남은상품·재고정리에서 빠진다
+ *   위해 → rk_shipping_list(source='위해', 발주번호+바코드당 1행) → 구매 DB 예약은 저장 뒤 rkWow 가 맞춘다 (docs/plan-wow.md)
  */
 const express = require('express');
 const S = require('./rkShared');
 const AllocPlan = require('../allocPlan');
 const shippingListRouter = require('./rkShippingList');   // cancelStockReservations
 const inboundRouter = require('./rkInbound');             // deleteInboundAllocs
+const Wow = require('./rkWow');                           // 위해 창고 잔여수량 · 구매 DB 맞추기
 
 const router = express.Router();
 const sb = S.supabase;
@@ -135,7 +137,10 @@ router.get('/api/allocate/sources', async (req, res) => {
     const orderRows = await loadOrderRows(active);
     const barcodes = [...new Set(orderRows.flatMap((o) => o.rows.map((r) => r.barcode)))];
     const shipments = await loadShipments();
-    const [stockPool, inboundPool] = await Promise.all([loadStockPool(barcodes), loadInboundPool(shipments, barcodes)]);
+    const [stockPool, inboundPool, weihai] = await Promise.all([loadStockPool(barcodes), loadInboundPool(shipments, barcodes),
+      // 위해 창고 — 못 읽어도 모달은 열고 그 줄에 오류를 보인다 (배정 계산은 run 에서 오류로 멈춘다)
+      Wow.available().then((m) => { const l = barcodes.filter((bc) => (m.get(bc) || 0) > 0); return { skus: l.length, qty: l.reduce((s, bc) => s + m.get(bc), 0) }; },
+        (e) => ({ error: e.message }))]);
     const byCode = new Map();
     for (const p of inboundPool) {
       const c = byCode.get(p.code) || { skus: new Set(), qty: 0 };
@@ -152,6 +157,7 @@ router.get('/api/allocate/sources', async (req, res) => {
       barcodes: barcodes.length,
       stock: { skus: new Set(stockPool.map((p) => p.barcode)).size, qty: stockPool.reduce((s, p) => s + p.qty, 0) },
       inboundCodes: codes,
+      weihai,
     });
   } catch (e) {
     console.error('[rk] allocate/sources:', e);
@@ -177,18 +183,20 @@ async function computePlan(orderNumbers, sources, sourceOrder) {
   const useStock = sourceOrder.includes('재고');
   const codes = sourceOrder.includes('입고') ? sources.inboundCodes : [];
   const shipments = codes.length ? (await loadShipments()).filter((s) => codes.includes(s.code)) : [];
-  const [rs, stockPool, inboundPool] = await Promise.all([
+  const [rs, stockPool, inboundPool, weihaiPool] = await Promise.all([
     activeNos.length ? loadReservedScanned(activeNos) : Promise.resolve({ reservedByKey: new Map(), scannedByKey: new Map(), virtualByKey: new Map(), zonesByOrder: {} }),
     useStock ? loadStockPool(barcodes) : Promise.resolve([]),
     loadInboundPool(shipments, barcodes),
+    sources.weihai ? Wow.available().catch((e) => { throw new Error('위해 창고 잔여수량을 읽지 못했습니다: ' + e.message); }) : null,
   ]);
   const plan = AllocPlan.planAllocation({ orders, reservedByKey: rs.reservedByKey, scannedByKey: rs.scannedByKey,
-    stockPool, inboundPool, sourceOrder, zonesByOrder: rs.zonesByOrder });
+    stockPool, inboundPool, sourceOrder, zonesByOrder: rs.zonesByOrder, weihaiPool });
   plan.excluded = excluded;
   return plan;
 }
 
-// body: { orderNumbers:[…], sources:{ stock:bool, inboundCodes:[…] }, sourceOrder:['입고','재고'], save:bool, expect?:{rows:'발주|바코드|재고|입고'…} }
+// body: { orderNumbers:[…], sources:{ stock:bool, inboundCodes:[…], weihai:bool }, sourceOrder:['입고','재고'], save:bool, expect?:{rows:'발주|바코드|재고|입고'…} }
+//   weihai: 위해 창고를 마지막 출처로 (순서 선택과 무관 — 남은 필요만)
 router.post('/api/allocate/run', async (req, res) => {
   try {
     const orderNumbers = parseNos(req.body.orderNumbers);
@@ -199,35 +207,41 @@ router.post('/api/allocate/run', async (req, res) => {
     const enabled = [];
     if (src.stock) enabled.push('재고');
     if (inboundCodes.length) enabled.push('입고');
-    if (!enabled.length) return res.status(400).json({ error: '출처(재고 또는 입고코드)를 하나 이상 고르세요.' });
+    const weihai = src.weihai === true;
+    if (!enabled.length && !weihai) return res.status(400).json({ error: '출처(재고 · 입고코드 · 위해 창고)를 하나 이상 고르세요.' });
     const order = Array.isArray(req.body.sourceOrder) ? req.body.sourceOrder.filter((s) => AllocPlan.SOURCES.includes(s)) : [];
     let sourceOrder;
-    if (enabled.length === 1) sourceOrder = enabled;
+    if (enabled.length <= 1) sourceOrder = enabled;
     else {
       if (order.length !== 2 || new Set(order).size !== 2) return res.status(400).json({ error: '순서(입고 → 재고 / 재고 → 입고)를 고르세요.' });
       sourceOrder = order;
     }
     const save = req.body.save === true;
-    const plan = await computePlan(orderNumbers, { inboundCodes }, sourceOrder);
+    // 위해 창고를 쓰면 먼저 끌어온다 — 중국에서 적게 담은 박스가 반영돼 있어야 밀어주기가 거절(WOW_BOX_PICKED)되지 않는다
+    if (weihai) await Wow.pull().catch((e) => { throw new Error('위해 창고 상태를 읽지 못했습니다: ' + e.message); });
+    const plan = await computePlan(orderNumbers, { inboundCodes, weihai }, sourceOrder);
     if (!plan.ok) return res.status(400).json({ error: plan.reason });
     if (!save) return res.json({ save: false, ...plan });
 
     // 저장 — 지금 DB 로 다시 계산한 plan 을 RPC 로 (한 트랜잭션, 모자라면 전체 롤백)
-    const stock = [], inbound = [];
+    const stock = [], inbound = [], weihaiRows = [];
     for (const r of plan.rows) {
       for (const a of r.allocs) {
         const base = { orderNumber: r.orderNumber, center: r.center, shippingDate: r.shippingDate, barcode: r.barcode, productName: r.productName, qty: a.qty };
         if (a.source === '재고') stock.push({ ...base, stockId: a.stockId, location: a.location });
+        else if (a.source === Wow.WH) weihaiRows.push(base);
         else inbound.push({ ...base, shipmentId: a.shipmentId, shipmentItemId: a.shipmentItemId });
       }
     }
-    if (!stock.length && !inbound.length) return res.json({ save: true, saved: { savedStock: 0, savedInbound: 0 }, ...plan });
-    const { data, error } = await sb.rpc('rk_allocate_save', { p: { stock, inbound, note: '가상버전 배정' } });
+    if (!stock.length && !inbound.length && !weihaiRows.length) return res.json({ save: true, saved: { savedStock: 0, savedInbound: 0 }, ...plan });
+    const { data, error } = await sb.rpc('rk_allocate_save', { p: { stock, inbound, weihai: weihaiRows, note: '가상버전 배정' } });
     if (error) {
       const msg = String(error.message || '');
       if (msg.startsWith('ALLOC:')) return res.status(409).json({ error: msg.slice(6) });
       throw error;
     }
+    // 위해 창고분 → 발주서별로 구매 DB 에 밀어준다 (모자라면 그 바코드의 위해 배정이 줄고, 연결 오류면 이번에 늘린 만큼 되돌린다)
+    const wow = (data.weihai || []).length ? await Wow.commitAllocated(data.weihai) : null;
     // 미리보기와 달라졌는지 (다른 PC 가 먼저 배정했거나 재고가 바뀜) — 화면이 안내만 한다
     let changed = null;
     if (req.body.expect && typeof req.body.expect === 'object') {
@@ -235,7 +249,7 @@ router.post('/api/allocate/run', async (req, res) => {
       for (const r of plan.rows) now[`${r.orderNumber}|${r.barcode}`] = `${r.stockQty}|${r.inboundQty}`;
       changed = Object.keys(Object.assign({}, now, req.body.expect)).filter((k) => (now[k] || '0|0') !== (req.body.expect[k] || '0|0')).length;
     }
-    res.json({ save: true, saved: data, changed, ...plan });
+    res.json({ save: true, saved: data, changed, wow, ...plan });
   } catch (e) {
     console.error('[rk] allocate/run:', e);
     res.status(500).json({ error: '배정 실패: ' + e.message });
@@ -301,6 +315,7 @@ router.get('/api/allocate/status', async (req, res) => {
 //   가상스캔으로 박스에 담긴 분량이 남은 배정보다 많아지면 거부 (가상 분량의 근거가 사라진다 → 출고스캔에서 박스를 먼저 비울 것)
 //   재고 행 → cancelStockReservations (재고준비 [취소] 와 같은 함수: 예약 삭제 + rk_stocks 복원 + 이력)
 //   입고 행 → deleteInboundAllocs (입고정리 배정 삭제와 같은 함수: rk_cn_shipping + 미러 삭제 → 남은상품으로 돌아간다)
+//   위해 행 → 위해 박스에 담긴 분량이 없을 때만. 구매 DB 에서 먼저 푼 뒤(Wow.shrink) 행 삭제 — 다른 출처보다 먼저 한다(거절되면 아무것도 안 바뀐다)
 router.post('/api/allocate/cancel', async (req, res) => {
   try {
     const orderNumber = String(req.body.orderNumber || '').trim();
@@ -312,7 +327,7 @@ router.post('/api/allocate/cancel', async (req, res) => {
     if (error) throw error;
     const targets = (rows || []).filter((r) => !want || want.has(r.id));
     if (!targets.length) return res.status(404).json({ error: '취소할 배정이 없습니다.' });
-    const { data: box, error: eB } = await sb.from('rk_ship_box_items').select('qty, virtual_qty').eq('order_number', orderNumber).eq('barcode', barcode);
+    const { data: box, error: eB } = await sb.from('rk_ship_box_items').select('qty, virtual_qty, virtual_codes').eq('order_number', orderNumber).eq('barcode', barcode);
     if (eB) throw eB;
     const virtualQty = (box || []).reduce((s, b) => s + toInt(b.virtual_qty), 0);
     const total = (rows || []).reduce((s, r) => s + toInt(r.qty), 0);
@@ -320,10 +335,23 @@ router.post('/api/allocate/cancel', async (req, res) => {
     if (virtualQty > 0 && total - cancelQty < virtualQty) {
       return res.status(409).json({ error: `가상스캔으로 박스에 담긴 ${virtualQty}개가 있어 취소할 수 없습니다 (취소 후 배정 ${total - cancelQty}개). 출고스캔에서 박스를 먼저 비우세요.` });
     }
+    const whTargets = targets.filter((r) => r.source === Wow.WH);   // 발주번호+바코드당 1행
+    const out = { stock: { canceled: 0, restored: 0 }, inbound: { deleted: 0 }, weihai: { deleted: 0 } };
+    if (whTargets.length) {
+      const whBoxed = (box || []).reduce((s, b) => s + toInt((b.virtual_codes || {})[Wow.WH]), 0);
+      if (whBoxed > 0) return res.status(409).json({ error: `🇨🇳 위해 박스에 담긴 ${whBoxed}개가 있어 위해 창고 배정을 취소할 수 없습니다. 출고스캔에서 위해 박스를 먼저 삭제하세요.` });
+      const ids = whTargets.map((r) => r.id);
+      try {
+        await Wow.shrink(orderNumber, { rowQty: new Map([[barcode, 0]]) }, async () => {
+          const { error: eW } = await sb.from('rk_shipping_list').delete().in('id', ids);
+          if (eW) throw eW;
+        });
+      } catch (e) { if (e.wow || e.conn) return res.status(409).json({ error: '위해 창고 배정 취소 실패: ' + e.message }); throw e; }
+      out.weihai.deleted = ids.length;
+    }
     const stockIds = targets.filter((r) => r.source === '재고').map((r) => r.id);
     const cnIds = targets.filter((r) => r.source === '입고' && r.cn_shipping_id != null).map((r) => r.cn_shipping_id);
     const orphanInbound = targets.filter((r) => r.source === '입고' && r.cn_shipping_id == null).map((r) => r.id);
-    const out = { stock: { canceled: 0, restored: 0 }, inbound: { deleted: 0 } };
     if (stockIds.length) out.stock = await shippingListRouter.cancelStockReservations(stockIds, '가상버전 배정 취소 복원');
     if (cnIds.length) out.inbound = await inboundRouter.deleteInboundAllocs(cnIds);
     if (orphanInbound.length) {   // 원본(rk_cn_shipping) 없는 입고 미러 — 정상 경로에선 없다. 미러만 지운다
