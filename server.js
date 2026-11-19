@@ -85,10 +85,7 @@ app.get('/scan', (req, res) => {
   res.sendFile(path.join(__dirname, 'scan.html'));
 });
 
-// ✅ 쉽먼트 페이지 라우트 추가
-app.get('/shipment', (req, res) => {
-  res.sendFile(path.join(__dirname, 'shipment.html'));
-});
+// 쉽먼트 페이지(/shipment)는 routes/rkAuth.js 가 등급별로 렌더한다
 
 // ✅ 상품부족 페이지 라우트 추가
 app.get('/shortage', (req, res) => {

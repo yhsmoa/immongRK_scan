@@ -289,6 +289,7 @@
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅</span><span>완료 · 다 찾음 — 모든 상품을 몫만큼 찾음</span></span>
                             <span class="r"><span class="chip st-short"><b>1</b>중 <span class="wn">⚠ 6</span></span><span>완료 · 부족 — 입력은 끝났고 6개를 못 찾음 (파일엔 찾은 수만 나감)</span></span>
                             <span class="r"><span class="chip st-ship"><b>1</b>중 🚚</span><span>출고완료 — [출고완료] 로 나간 박스 ([출고] 탭)</span></span>
+                            <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 🇨🇳 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 출고완료</span></span><!--/adm-->
                             <span class="r"><span class="chip st-none"><b>1</b>중 🔀👾</span><span>🔀 = 실제 스캔 + 가상이 섞인 박스 (가상 부분의 상태가 뒤에 붙음)</span></span>
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅<span class="doc">📃</span></span><span>📃 = 쿠팡 부착·동봉문서가 등록된 박스</span></span>
                             <span class="t">상품 상태</span>
@@ -335,7 +336,7 @@
                         <option value="all" selected>전체</option>
                         <option value="scan">실제</option>
                         <option value="virtual">가상</option>
-                        <option value="wow">🇨🇳 중국만</option>
+                        <!--adm--><option value="wow">🇨🇳 중국만</option><!--/adm-->
                     </select>
                     <span class="seq-hint" id="seqHint"></span>
                 </div>
@@ -555,7 +556,7 @@
             for(const p of items){
                 if(!boxMap.has(p.box.no)) boxMap.set(p.box.no,{size:p.box.size, virtualQty:0, qty:0, okQty:0,
                     state:p.박스상태||'실제', input:p.박스입력||'', short:num(p.박스부족), shipped:p.출고시각||null,
-                    seq:p.박스순서==null?null:Number(p.박스순서), docs:{label:p.서류부착===true, manifest:p.서류동봉===true}, wow:p.위해박스===true});
+                    seq:p.박스순서==null?null:Number(p.박스순서), docs:{label:p.서류부착===true, manifest:p.서류동봉===true}, wow:p.위해박스===true, stage:p.위해단계||''});
                 const b=boxMap.get(p.box.no); b.virtualQty+=p.virtualQty; b.qty+=num(p.스캔수량); b.okQty+=p.okQty;
             }
             const boxes=[...boxMap.entries()].map(([no,b])=>({no, ...b})).sort((a,b)=>boxNoCmp(a.no,b.no));
@@ -676,8 +677,12 @@
         // ── 박스 배지 (2026-11-02) ──
         //   📠 실제 스캔만(찾을 것 없음) · 👾 미진행 · 🔄 진행 n/m(입력된 상품/가상 상품) · ✅ 완료·다 찾음 · ⚠ 완료·부족 n · 🚚 출고완료
         //   🔀 = 실제 + 가상 섞인 박스 (가상 부분의 상태를 따라 붙는다) · 📃 = 서류 등록됨
+        //   🇨🇳 위해 박스 = 1688-invoice 와우출고 단계를 글자로 (2026-11-19): 신규 › 작업중 › 작업완료 › 서류준비 › 출고완료.
+        //     출고 전 단계는 구매 DB 에서 읽는다(p.위해단계) — 못 읽었으면 배지에 '확인 안 됨'
+        const WOW_STAGES=['신규','작업중','작업완료','서류준비','출고완료'];
+        const wowStage=b=>b.shipped?'출고완료':b.stage;
         function boxBadge(b){
-            if(b.wow) return {cls:' st-wow', emo:b.shipped?'🇨🇳🚚':'🇨🇳', tail:'', label:b.shipped?'위해 박스 · 출고완료':'위해 박스 (중국에서 출고)', mix:''};
+            if(b.wow){ const s=wowStage(b); return {cls:' st-wow', emo:b.shipped?'🇨🇳🚚':'🇨🇳', tail:` ${s||'확인 안 됨'}`, label:`위해 박스 · ${s||'단계 확인 안 됨'}`, mix:''}; }
             const mix=b.virtualQty>0&&b.virtualQty<b.qty?'🔀':'';
             if(b.shipped) return {cls:' st-ship', emo:'🚚', tail:'', label:'출고완료', mix};
             if(b.virtualQty<=0) return {cls:' st-real', emo:'📠', tail:'', label:'실제 스캔', mix:''};
@@ -689,7 +694,11 @@
         function boxTip(b){
             const g=boxBadge(b);
             const rows=[[`${g.mix}${g.emo}`, g.label]];
-            if(b.wow) rows.push(['스캔', `${b.qty} <small>(위해 창고 — 와우출고)</small>`]);
+            if(b.wow){
+                const s=wowStage(b);
+                if(s) rows.push(['단계', WOW_STAGES.map(x=>x===s?`<strong>${x}</strong>`:`<small>${x}</small>`).join(' <small>›</small> ')]);
+                rows.push(['스캔', `${b.qty} <small>(위해 창고 — 와우출고)</small>`]);
+            }
             else if(b.virtualQty>0){ rows.push(['스캔', `${b.qty} <small>(실제 ${b.qty-b.virtualQty} + 가상 ${b.virtualQty})</small>`]); rows.push(['확인', `${b.okQty}${b.short?` <small>· 부족 ${b.short}</small>`:''}`]); }
             else rows.push(['스캔', `${b.qty} <small>(실제 스캔)</small>`]);
             if(b.docs.label||b.docs.manifest) rows.push(['서류', `부착 ${b.docs.label?'✓':'✗'} · 동봉 ${b.docs.manifest?'✓':'✗'}`]);

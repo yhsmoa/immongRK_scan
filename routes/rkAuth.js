@@ -189,6 +189,7 @@ module.exports = function (app, io) {
   // ── 로그인 뒤 ──
   app.get('/', page('index.html'));
   app.get('/header', page('header.html'));
+  app.get('/shipment', page('shipment.html'));   // 사원에게는 🇨🇳 위해 박스 필터 · 설명을 뺀다 (목록은 rkOrdersExtra 가 뺀다)
   app.get('/api/auth/me', (req, res) => res.json({ name: req.user.name }));
 
   app.get('/users', (req, res) => res.sendFile(path.join(ROOT, 'users.html')));
@@ -235,3 +236,5 @@ module.exports = function (app, io) {
       .then((u) => next(u ? undefined : new Error('로그인이 필요합니다.')), next);
   });
 };
+// gate 를 지난 요청의 등급 — 관리자 전용 경로가 아닌 API 가 응답 내용을 등급별로 가를 때 쓴다
+module.exports.isAdmin = (req) => !!req.user && req.user.role === ADMIN;

@@ -42,6 +42,17 @@ async function orderState(nos) {
   return out;
 }
 
+// 위해 박스의 와우출고 단계 — `${발주번호}|${박스번호}` → 신규 · 작업중 · 작업완료 · 서류준비
+//   구매 DB ft_wow_boxes 의 기록에서 읽어 낸다 (판정 규칙 = 1688-invoice app/storage/utils/wowStage.ts).
+//   출고는 로켓 rk_ship_boxes.shipped_at 이 기준이라 여기서 보지 않는다 (끌어오기가 맞춘다)
+async function boxStages(nos) {
+  const uid = await W.accountId();
+  const rows = await S.chunked(nos, 200, (p) => W.pageAll(() => W.odb.from('ft_wow_boxes')
+    .select('id, order_number, box_no, box_info_id, work_started_at, label_path, manifest_path').eq('user_id', uid).in('order_number', p)));
+  return new Map(rows.map((b) => [`${b.order_number}|${b.box_no}`,
+    b.box_info_id ? (b.label_path && b.manifest_path ? '서류준비' : '작업완료') : (b.work_started_at ? '작업중' : '신규')]));
+}
+
 // ── 로켓 DB — 발주서들의 위해 배정 · 위해 박스 ──
 //   no → { center, done, rows: Map(바코드 → {id, qty}), boxes:[{id, box_no, box_size, shipped_at}], items:[{id, box_id, barcode, qty}] }
 async function loadRocket(nos) {
@@ -324,4 +335,4 @@ router.post('/api/wow/pull', async (req, res) => {
 });
 
 module.exports = router;
-Object.assign(router, { WH, available, pull, wowOrder, syncOrder, syncOrders, shrink, commitAllocated, pushDocs });
+Object.assign(router, { WH, available, boxStages, pull, wowOrder, syncOrder, syncOrders, shrink, commitAllocated, pushDocs });

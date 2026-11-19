@@ -7,6 +7,7 @@ const XlsxPopulate = require('xlsx-populate');
 const S = require('./rkShared');
 const M = require('./rkMarks');
 const Wow = require('./rkWow');
+const Auth = require('./rkAuth');
 const { formatCjRef } = require('../cjRef');
 
 const router = express.Router();
@@ -26,6 +27,9 @@ const router = express.Router();
 // opts.shipped: true → [출고] 탭 — 최근 30일 안에 출고완료된 박스만 (처리완료 발주서 포함)
 //               false(기본) → 처리완료 아닌 발주서의 출고 안 된 박스만
 // opts.boxes: [{orderNumber, boxNo}] → 그 박스만 (순서대로 보기에서 체크한 박스)
+// opts.wowStage: true → 출고 안 된 🇨🇳 위해 박스 줄에 위해단계(신규 · 작업중 · 작업완료 · 서류준비)를 붙인다 — 화면 목록용.
+//               구매 DB 를 못 읽거나 그쪽에 박스가 없으면 비워 둔다 (목록은 그대로 연다)
+// opts.hideWow: true → 🇨🇳 위해 박스를 없는 것으로 친다 (사원 화면 목록용) — 줄 · 진행상태 · 박스전체/박스출고 모두에서 빠진다
 async function shipScanOrders(orderNumbers, opts) {
   const o = opts || {};
   const hasShip = await M.hasShippedCol();
@@ -44,7 +48,7 @@ async function shipScanOrders(orderNumbers, opts) {
   const pickBoxes = Array.isArray(o.boxes) && o.boxes.length ? new Set(o.boxes.map((b) => `${b.orderNumber}|${parseInt(b.boxNo, 10)}`)) : null;
 
   // 1000행씩 나눠 읽으므로 반드시 id 순 정렬 — 정렬 없이 range 를 넘기면 행이 빠지거나 중복될 수 있다
-  const [all, boxes, boxItems, seqRows, fm, docRows] = await Promise.all([
+  const [all, boxRows, boxItems, seqRows, fm, docRows] = await Promise.all([
     // 발주서 본문 — [출고] 탭은 처리완료 발주서도, 그 밖은 처리완료 제외
     S.listOrdersFull('rk_orders', 'rk_order_items', o.shipped ? { orderNumbers: orderNos } : { excludeDone: true, orderNumbers: orderNos }),
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_boxes')
@@ -59,6 +63,7 @@ async function shipScanOrders(orderNumbers, opts) {
     S.chunked(orderNos, 200, (nos) => S.pageAll(() => S.supabase.from('rk_ship_docs')
       .select('order_number, box_no, kind').in('order_number', nos).order('id', { ascending: true }))),
   ]);
+  const boxes = o.hideWow ? boxRows.filter((b) => b.origin !== Wow.WH) : boxRows;
   const orders = all.filter((x) => !has || orderNumbers.includes(x.발주번호));
   const orderSeq = new Map();   // order_number → min seq
   const boxSeq = new Map();     // `${order_number}|${box_no}` → seq
@@ -77,6 +82,10 @@ async function shipScanOrders(orderNumbers, opts) {
   // 박스 헤더: box_id → { order_number, box_no, box_size }
   const boxById = new Map(boxes.map((b) => [b.id, b]));
   const ready = M.boxReadiness(boxes, boxItems, fm);   // box.id → 상태·찾은 수량
+  const wowNos = o.wowStage ? [...new Set(boxes.filter((b) => b.origin === Wow.WH && !b.shipped_at).map((b) => String(b.order_number)))] : [];
+  const wowStages = wowNos.length
+    ? await Wow.boxStages(wowNos).catch((e) => { console.error('[rk] 와우출고 단계 읽기 실패(무시):', e.message || e); return null; })
+    : null;
 
   // 박스 아이템: order_number → [{ box_id, barcode, qty, product_name }]
   const itemsByOrder = new Map();
@@ -130,6 +139,7 @@ async function shipScanOrders(orderNumbers, opts) {
         가상확정: !!(rd && rd.allFound),                     // (예전 이름) 박스가 완료·부족 없음
         박스정보: `${box.box_no}-${box.box_size}`,
         위해박스: box.origin === Wow.WH,                     // 🇨🇳 중국에서 바로 출고하는 박스 (CJ 접수·순서지정·출고완료 대상 아님)
+        위해단계: (wowStages && box.origin === Wow.WH && wowStages.get(`${order.발주번호}|${box.box_no}`)) || undefined,   // 와우출고 단계 (opts.wowStage)
         박스상태: rd ? rd.state : '실제',
         박스입력: rd ? `${rd.done}/${rd.total}` : '0/0',
         박스부족: rd ? rd.short : 0,
@@ -314,7 +324,8 @@ router.delete('/api/shipment/sequence', async (req, res) => {
 router.get('/api/shipment/orders', async (req, res) => {
   try {
     const shipped = String(req.query.shipped || '') === '1';
-    const orders = await shipScanOrders(null, { shipped });
+    const admin = Auth.isAdmin(req);   // 사원에게는 🇨🇳 위해 박스를 응답에서 뺀다
+    const orders = await shipScanOrders(null, { shipped, wowStage: admin && !shipped, hideWow: !admin });
     res.json(orders);
   } catch (e) {
     console.error('[rk] shipment/orders:', e);
