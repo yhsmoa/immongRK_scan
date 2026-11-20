@@ -54,13 +54,13 @@ async function boxStages(nos) {
 }
 
 // ── 로켓 DB — 발주서들의 위해 배정 · 위해 박스 ──
-//   no → { center, done, rows: Map(바코드 → {id, qty}), boxes:[{id, box_no, box_size, shipped_at}], items:[{id, box_id, barcode, qty}] }
+//   no → { center, arrival(입고예정일 'YYYY-MM-DD'|null), done, rows: Map(바코드 → {id, qty}), boxes:[{id, box_no, box_size, shipped_at}], items:[{id, box_id, barcode, qty}] }
 async function loadRocket(nos) {
-  const out = new Map(nos.map((no) => [no, { center: '', done: false, rows: new Map(), boxes: [], items: [] }]));
+  const out = new Map(nos.map((no) => [no, { center: '', arrival: null, done: false, rows: new Map(), boxes: [], items: [] }]));
   if (!nos.length) return out;
   const q = (table, cols, f) => S.chunked(nos, 200, (part) => S.pageAll(() => f(sb.from(table).select(cols).in('order_number', part)).order('id', { ascending: true })));
   const [hs, rows, boxes] = await Promise.all([
-    q('rk_orders', 'order_number, logistics_center, status', (x) => x),
+    q('rk_orders', 'order_number, logistics_center, arrival_date, status', (x) => x),
     q('rk_shipping_list', 'id, order_number, barcode, qty', (x) => x.eq('source', WH).eq('status', '출고예정')),
     q('rk_ship_boxes', 'id, order_number, box_no, box_size, shipped_at', (x) => x.eq('origin', WH)),
   ]);
@@ -71,7 +71,7 @@ async function loadRocket(nos) {
     const no = String(h.order_number);
     if (seen.has(no)) continue;   // 같은 발주번호 헤더가 둘이면 첫 행 (rkAllocate loadHeaders 와 같다)
     seen.add(no);
-    Object.assign(out.get(no), { center: S.str(h.logistics_center), done: S.isDoneOrder({ 상태: h.status }) });
+    Object.assign(out.get(no), { center: S.str(h.logistics_center), arrival: h.arrival_date || null, done: S.isDoneOrder({ 상태: h.status }) });
   }
   for (const r of rows) out.get(String(r.order_number)).rows.set(r.barcode, { id: r.id, qty: toInt(r.qty) });
   for (const b of boxes) out.get(String(b.order_number)).boxes.push(b);
@@ -88,6 +88,7 @@ function boxedBy(o, drop) {
 }
 
 // 원하는 상태 — 위해 박스 줄 + (처리완료가 아니면) 배정 − 박스에 담긴 수량 = 박스 미정 줄
+//   박스마다 박스 크기 · 입고예정일을 같이 보낸다 (1688-invoice 와우출고 화면 표시용)
 //   adj.dropBoxes: Set(박스번호) — 지울 박스(그 수량은 박스 미정으로 돌아간다) · adj.rowQty: Map(바코드 → 줄인 뒤 배정)
 function desiredOf(o, adj) {
   const a = adj || {};
@@ -107,7 +108,7 @@ function desiredOf(o, adj) {
       if (q > 0) lines.push({ barcode: bc, box_no: null, qty: q });
     }
   }
-  return { lines, boxes: [...used].map(([box_no, box_size]) => ({ box_no, box_size })) };
+  return { lines, boxes: [...used].map(([box_no, box_size]) => ({ box_no, box_size, arrival_date: o.arrival })) };
 }
 // 원하는 상태 == 구매 DB 상태 (담은 줄은 담은 수량, 0 은 없는 것으로)
 const lineKey = (bc, n) => `${bc}|${n == null ? '' : n}`;

@@ -939,7 +939,7 @@
                 <div class="inv-order">
                     <h4>${esc(o.발주번호)}<span>${esc(o.물류센터)} · ${esc(o.입고예정일)}</span></h4>
                     ${o.boxes.map(b=>`<div class="inv-box">
-                        <label>📦 ${esc(b.no)} <span class="sz">${esc(b.size)}</span></label>
+                        <label title="${b.wow?'중국에서 출고 (위해 박스)':'한국에서 출고'}">${b.wow?'🇨🇳':'🇰🇷'} ${esc(b.no)} <span class="sz">${esc(b.size)}</span></label>
                         <input type="text" placeholder="송장번호 입력" data-order="${esc(o.발주번호)}" data-box="${esc(b.no)}" data-center="${esc(o.물류센터)}"
                             value="${esc((invoiceNumbers[o.발주번호]||{})[b.no]||'')}" oninput="if(this.value.trim())this.classList.remove('error')">
                     </div>`).join('')}

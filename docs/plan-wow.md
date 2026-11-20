@@ -46,7 +46,7 @@
 
 - `ft_wow_available(p_user_id)` → `(barcode, qty, reserved, available)` 바코드별(대상 상품 합).
 - `ft_wow_sync_order(p_user_id, p_order_number, p_center, p_lines jsonb, p_boxes jsonb)` → 적용 뒤 상태
-  - `p_lines = [{barcode, box_no|null, qty}]` (같은 barcode+box_no 는 한 줄) · `p_boxes = [{box_no, box_size}]`
+  - `p_lines = [{barcode, box_no|null, qty}]` (같은 barcode+box_no 는 한 줄) · `p_boxes = [{box_no, box_size, arrival_date}]` (arrival_date = 입고예정일, 1688-invoice 와우출고 화면 표시용 · null 이면 저장된 값 유지)
   - 잠금: `ft_wow:user:order` → 관련 상품의 `ft_storage:product_id` 를 product_id 오름차순으로.
   - 담은 박스(`box_info_id` 있음)는 **얼어 있다**: 원하는 줄이 담은 수량과 같아야 하고 박스가 사라질 수 없다 → 아니면 `WOW_BOX_PICKED:<box_no>`. 같으면 줄의 `qty := picked_qty`.
   - 안 담은 박스 · 줄은 원하는 상태로 통째로 바꾼다. 바코드의 상품이 여럿이면 잔여수량 순서대로 나눈다(담은 줄의 상품은 고정).

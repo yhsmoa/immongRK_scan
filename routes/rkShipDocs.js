@@ -16,6 +16,7 @@
  *   1) 부착문서 ↔ 동봉문서 : 쉽먼트 바코드(PBL…). 두 문서 모두 장마다 찍혀 있고 박스마다 하나뿐이다.
  *   2) 부착문서 ↔ 우리 박스 : CJ 운송장번호. 우리가 CJ 에 "발주번호 - 박스번호" 로 접수해 받은 번호라 확정값이다.
  *        a. rk_ship_boxes.invoice_no ([송장번호 입력] 때 저장) → 없으면
+ *           (번호는 숫자만 비교한다 — 박스에는 '6015-8762-2153', PDF 에는 '601587622153' 으로 적혀 있다. 🇨🇳 위해 박스도 CJ 운송장이라 같은 열쇠)
  *        b. 같이 올린 CJ 운송장 엑셀 (H열 운송장번호 · Z열 "발주번호 - 박스번호") → 없으면
  *        c. 부착문서의 발주번호 + 상품수량 으로 추정 (같은 발주서에 수량이 같은 박스가 있으면 바뀔 수 있음 → ambiguous 표시)
  *   동봉문서에는 발주번호가 없다. PBL 로 부착문서와 짝지은 뒤 부착문서의 결과를 따른다.
@@ -141,7 +142,7 @@ function parsePage(text) {
   const center = head ? head[1] : null;
   const boxIdx = head ? parseInt(head[3], 10) : null;      // 쿠팡 기준 박스 순번 (우리 박스번호 아님)
   const boxTotal = head ? parseInt(head[2], 10) : null;
-  const cj = t.match(/CJ\s*대한통운\s*\n?\s*(\d{10,14})/);   // 있으면 CJ 로 보낸 박스 — 수량 추정에서 한국 박스 후보를 먼저 본다
+  const cj = t.match(/CJ\s*대한통운\s*\n?\s*(\d{10,14})/);
   const invoice = cj ? cj[1] : ((t.match(/\b(\d{12})\b/) || [])[1] || null);
   const order = (t.match(/발주\s*바코드\s*\n?\s*(\d{8,10})/) || [])[1] || null;
   // 상품수량: "운송장번호 수량 날짜" 줄 (부착문서) / "쉽먼트번호 날짜 총수량" 줄 (동봉문서)
@@ -154,7 +155,7 @@ function parsePage(text) {
   // 동봉문서의 상품 바코드 목록 (수량 추정이 애매할 때 우리 박스 아이템 구성과 대조) — 상품명이 여러 줄로 감겨도 바코드만 모은다
   //   (종류와 무관하게 모은다 — 머리말 없는 이어지는 장은 parse 시점에 종류를 모르기 때문)
   const barcodes = [...new Set((t.match(/\bR\d{9,12}\b/g) || []))];
-  return { kind, pbl, center, boxIdx, boxTotal, invoice, order, qty, shipmentNo, barcodes, viaCj: !!cj };
+  return { kind, pbl, center, boxIdx, boxTotal, invoice, order, qty, shipmentNo, barcodes };
 }
 
 async function parseFiles(files, formKind) {
@@ -186,6 +187,7 @@ async function parseFiles(files, formKind) {
 // ── CJ 운송장 엑셀 → 운송장번호 → { orderNo, boxNo } (송장번호 입력 모달과 같은 열: H=7 운송장, Z=25 발주번호 열) ──
 //   Z열은 우리가 CJ 접수 엑셀에 넣은 값이 그대로 돌아온 것 — 새 형식 "[대2] 경기광주3 - 144300338 - 1번 (총 4박스) - 23개" 와
 //   예전 "144300338 - 1" 둘 다 cjRef.js 의 parseCjRef 가 읽는다.
+const invKey = (v) => String(v == null ? '' : v).replace(/\D/g, '');   // 운송장번호 비교 열쇠 — 숫자만 ('6015-8762-2153' = '601587622153')
 function parseCjFiles(files) {
   const map = new Map();
   let rows = 0;
@@ -200,7 +202,7 @@ function parseCjFiles(files) {
       if (!inv || !ob) continue;
       const ref = parseCjRef(ob);
       if (!ref) continue;
-      map.set(String(inv).trim(), ref);
+      map.set(invKey(inv), ref);
       rows++;
     }
   }
@@ -262,7 +264,7 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
     const k = String(b.order_number);
     if (!boxesByOrder.has(k)) boxesByOrder.set(k, []);
     boxesByOrder.get(k).push(b);
-    for (const inv of String(b.invoice_no || '').split(',').map((s) => s.trim()).filter(Boolean)) {
+    for (const inv of String(b.invoice_no || '').split(',').map(invKey).filter(Boolean)) {
       if (!invoiceToBox.has(inv)) invoiceToBox.set(inv, b);
     }
   }
@@ -284,10 +286,11 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
   const pending = [];
   for (const p of labelPages) {
     p.box = null; p.method = null; p.ambiguous = false;
-    let b = p.invoice ? invoiceToBox.get(p.invoice) : null;
+    const inv = invKey(p.invoice);
+    let b = inv ? invoiceToBox.get(inv) : null;
     if (b) { p.method = 'invoice'; }
-    else if (p.invoice && cjMap.has(p.invoice)) {
-      const m = cjMap.get(p.invoice);
+    else if (inv && cjMap.has(inv)) {
+      const m = cjMap.get(inv);
       b = (boxesByOrder.get(m.orderNo) || []).find((x) => x.box_no === m.boxNo) || null;
       if (b) p.method = 'cj';
       else { p.box = { orderNo: m.orderNo, boxNo: m.boxNo, size: null, virt: null }; p.method = 'cj-only'; }   // 엑셀엔 있는데 DB 박스가 없음 — 번호는 믿고 쓴다
@@ -299,9 +302,6 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
   for (const p of pending) {
     if (!(p.order && p.qty != null)) continue;
     let cands = (boxesByOrder.get(p.order) || []).filter((x) => !used.has(x.id) && (ours.qtyByBox.get(x.id) || 0) === p.qty);
-    // 위해 박스와 한국 박스는 다른 후보군 — 둘 다 있으면 CJ 운송장이 찍힌 장은 한국 박스, 아니면 위해 박스에서 고르고 애매함으로 표시
-    const mixed = cands.some((x) => x.origin) && cands.some((x) => !x.origin);
-    if (mixed) cands = cands.filter((x) => !x.origin === p.viaCj);
     if (cands.length > 1) {
       const ms = p.pbl ? (manifestByPbl.get(p.pbl) || []) : [];
       const bcs = [...new Set(ms.flatMap((m) => m.barcodes || []))];   // 여러 장이면 전부 합쳐서 그 박스의 상품 구성
@@ -314,7 +314,7 @@ function matchAndSort(labelPages, manifestPages, cjMap, ours) {
     if (!cands.length) continue;
     const b = cands[0];
     used.add(b.id);
-    p.method = 'qty'; p.ambiguous = cands.length > 1 || mixed;
+    p.method = 'qty'; p.ambiguous = cands.length > 1;
     p.box = { orderNo: String(b.order_number), boxNo: b.box_no, size: b.box_size || null, virt: boxVirtKind(b, ours), wow: !!b.origin };
   }
   for (const p of labelPages) {
