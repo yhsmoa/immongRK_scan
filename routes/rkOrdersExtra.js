@@ -138,7 +138,7 @@ async function shipScanOrders(orderNumbers, opts) {
         입력상태: vq > 0 ? (ri ? ri.state : 'none') : 'real',
         가상확정: !!(rd && rd.allFound),                     // (예전 이름) 박스가 완료·부족 없음
         박스정보: `${box.box_no}-${box.box_size}`,
-        위해박스: box.origin === Wow.WH,                     // 🇨🇳 중국에서 바로 출고하는 박스 (CJ 접수·순서지정·출고완료 대상 아님)
+        위해박스: box.origin === Wow.WH,                     // 🇨🇳 중국에서 바로 출고하는 박스 (순서지정·출고완료 대상 아님 · CJ 엑셀에서는 '중국롯데택배' 시트)
         위해단계: (wowStages && box.origin === Wow.WH && wowStages.get(`${order.발주번호}|${box.box_no}`)) || undefined,   // 와우출고 단계 (opts.wowStage)
         박스상태: rd ? rd.state : '실제',
         박스입력: rd ? `${rd.done}/${rd.total}` : '0/0',
@@ -485,25 +485,35 @@ router.post('/api/shipment/export', async (req, res) => {
 });
 
 // ── CJ 운송장 내보내기 ──
+//   시트 'CJ운송장'     = 한국에서 CJ 로 보내는 박스 (CJ 에 올리는 접수 양식 — 첫 시트)
+//   시트 '중국롯데택배' = 🇨🇳 위해 박스 (중국에서 바로 출고) — 같은 양식. 위해 박스가 있을 때만, 관리자에게만 (사원은 위해 박스를 보지 않는다)
+const CJ_SHEET = 'CJ운송장';
+const WH_SHEET = '중국롯데택배';
+const CJ_COLUMNS = [['물류센터', 15], ['연락처', 30], ['주소', 75], ['박스타입', 15], ['발주번호', 60]];   // [머리글 = 행의 키, 열 너비]
+
+/** 접수 양식 시트 한 장 — 머리글 + 박스 하나당 한 행 */
+function fillCjSheet(sheet, rows) {
+  const frame = (cell) => { cell.style('border', true); cell.style('borderColor', '000000'); cell.style('borderStyle', 'thin'); };
+  CJ_COLUMNS.forEach(([header, width], i) => {
+    const cell = sheet.cell(1, i + 1);
+    cell.value(header); cell.style('fill', 'd3d3d3'); frame(cell);
+    sheet.column(i + 1).width(width);
+  });
+  rows.forEach((row, r) => CJ_COLUMNS.forEach(([header], i) => {
+    const cell = sheet.cell(r + 2, i + 1);
+    cell.value(row[header]); frame(cell);
+  }));
+}
+
 router.post('/api/shipment/export-cj', async (req, res) => {
   try {
     const { orderNumbers, ordered } = req.body;   // ordered: 화면의 [순서대로] 가 켜져 있으면 출고 순서(rk_ship_seq)대로
+    const withWeihai = Auth.isAdmin(req);
     const orders = await shipScanOrders(orderNumbers, { boxes: bodyBoxes(req.body.boxes) });
 
     const { data: centerData } = await S.supabase.from('coupang_centers').select('center, contact, address');
     const centerMap = new Map();
     if (centerData) centerData.forEach((item) => centerMap.set(item.center, { contact: item.contact || '', address: item.address || '' }));
-
-    const workbook = await XlsxPopulate.fromBlankAsync();
-    const mainSheet = workbook.sheet(0);
-    mainSheet.name('CJ운송장');
-    const headers = ['물류센터', '연락처', '주소', '박스타입', '발주번호'];
-    headers.forEach((header, index) => {
-      const cell = mainSheet.cell(1, index + 1);
-      cell.value(header);
-      cell.style('fill', 'd3d3d3'); cell.style('border', true); cell.style('borderColor', '000000'); cell.style('borderStyle', 'thin');
-    });
-    mainSheet.column(1).width(15); mainSheet.column(2).width(30); mainSheet.column(3).width(75); mainSheet.column(4).width(15); mainSheet.column(5).width(60);
 
     // 박스 하나 = 한 행. 발주번호 열 = "[크기] 물류센터 - 발주번호 - N번 (총 M박스) - 수량개" (cjRef.js, 2026-10-22)
     //   이 값은 CJ 결과 엑셀 Z열로 돌아와 송장번호 자동입력·서류 매칭이 읽는다 — 형식은 cjRef.js 에서만 바꾼다.
@@ -511,8 +521,8 @@ router.post('/api/shipment/export-cj', async (req, res) => {
     const processedBoxes = new Set();
     orders.forEach((order) => {
       // 수량 = 박스의 스캔수량 합 (실제 + 가상, 2026-11-03). 총 M박스 = 발주서의 상품 담긴 박스 전체(출고된 것 · 위해 박스 포함)
-      //   위해 박스는 한국에서 CJ 로 보내지 않는다 — 행에서만 뺀다
-      const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-' && !p.위해박스);
+      //   위해 박스는 한국에서 CJ 로 보내지 않는다 — 행에 _wh 를 달아 '중국롯데택배' 시트로 보낸다
+      const scannedProducts = order.상품정보.filter((p) => p.스캔수량 > 0 && p.박스정보 && p.박스정보 !== '-' && (withWeihai || !p.위해박스));
       const qtyByBox = new Map();   // 박스번호 → 그 박스에 담긴 수량
       for (const p of scannedProducts) {
         const no = p.박스정보.split('-')[0];
@@ -530,7 +540,7 @@ router.post('/api/shipment/export-cj', async (req, res) => {
           cjData.push({
             물류센터: order.물류센터, 연락처: centerInfo?.contact || '', 주소: centerInfo?.address || '', 박스타입: boxType,
             발주번호: formatCjRef({ boxType, center: order.물류센터, orderNo: order.발주번호, boxNo: boxNumber, boxTotal, qty: qtyByBox.get(boxNumber) || 0 }),
-            _order: order.발주번호, _box: boxNumber, _seq: seqKeyOf(order, product),
+            _order: order.발주번호, _box: boxNumber, _seq: seqKeyOf(order, product), _wh: !!product.위해박스,
           });
         }
       });
@@ -538,18 +548,10 @@ router.post('/api/shipment/export-cj', async (req, res) => {
     // [순서대로] — 스캔 순서대로, 순서 없는 박스는 뒤에 (안정 정렬이라 원래 순서 유지)
     if (ordered === true) cjData.sort((a, b) => a._seq - b._seq);
 
-    cjData.forEach((data, index) => {
-      const rowIndex = index + 2;
-      mainSheet.cell(rowIndex, 1).value(data.물류센터);
-      mainSheet.cell(rowIndex, 2).value(data.연락처);
-      mainSheet.cell(rowIndex, 3).value(data.주소);
-      mainSheet.cell(rowIndex, 4).value(data.박스타입);
-      mainSheet.cell(rowIndex, 5).value(data.발주번호);
-      for (let col = 1; col <= 5; col++) {
-        const cell = mainSheet.cell(rowIndex, col);
-        cell.style('border', true); cell.style('borderColor', '000000'); cell.style('borderStyle', 'thin');
-      }
-    });
+    const workbook = await XlsxPopulate.fromBlankAsync();
+    const whRows = cjData.filter((d) => d._wh);
+    fillCjSheet(workbook.sheet(0).name(CJ_SHEET), cjData.filter((d) => !d._wh));
+    if (whRows.length) fillCjSheet(workbook.addSheet(WH_SHEET), whRows);
 
     const now = new Date();
     const yy = String(now.getFullYear()).slice(-2);
@@ -563,7 +565,7 @@ router.post('/api/shipment/export-cj', async (req, res) => {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename + '.xlsx')}`);
     res.send(buffer);
-    // 내보내기 이력 — 박스 단위(수량 없음), box_info = '박스번호-박스타입'
+    // 내보내기 이력 — 박스 단위(수량 없음), box_info = '박스번호-박스타입' (두 시트의 박스 모두)
     recordExport('CJ', filename + '.xlsx', cjData.map((d) => ({ order_number: d._order, box_info: `${d._box}-${d.박스타입}` })));
   } catch (e) {
     console.error('[rk] shipment/export-cj:', e);
