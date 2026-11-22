@@ -6,6 +6,7 @@
  *     중국이 담을 수 있는 것이 늘면 로켓 먼저 → push, 줄면 push(줄인 상태) → 로켓 (shrink)
  *     WOW_SHORT · WOW_BARCODE_NOT_FOUND 면 그 바코드의 위해 행을 박스에 담긴 수량까지 줄이고 한 번 더 보낸다.
  *   끌어오기 pull — 담은 수량 · 출고를 로켓에 반영하고, 양쪽 발주번호 합집합에서 어긋난 발주서를 다시 밀어준다.
+ *     줄이 같아도 박스 부가 정보(입고예정일 · 총 박스 수 · 센터 연락처/주소 — 1688-invoice 화면 · 택배엑셀용)가 다르면 다시 밀어준다.
  *   서버 프로세스 1개 전제(Procfile) — 줄 세우기는 이 프로세스 안에서만 유효하다.
  *
  *   GET  /api/wow/status?orderNumbers=a,b → { orders:{ 발주번호: 'ok'|'diff' } }  (위해 배정·박스가 양쪽 어디에도 없는 발주서는 빠진다)
@@ -42,40 +43,64 @@ async function orderState(nos) {
   return out;
 }
 
-// 위해 박스의 와우출고 단계 — `${발주번호}|${박스번호}` → 신규 · 작업중 · 작업완료 · 서류준비
-//   구매 DB ft_wow_boxes 의 기록에서 읽어 낸다 (판정 규칙 = 1688-invoice app/storage/utils/wowStage.ts).
-//   출고는 로켓 rk_ship_boxes.shipped_at 이 기준이라 여기서 보지 않는다 (끌어오기가 맞춘다)
-async function boxStages(nos) {
+// 구매 DB 의 와우 박스 행 — `${발주번호}|${박스번호}` → 행 (cols: 읽을 칼럼)
+const boxKey = (no, boxNo) => `${no}|${boxNo}`;
+async function wowBoxes(nos, cols) {
   const uid = await W.accountId();
   const rows = await S.chunked(nos, 200, (p) => W.pageAll(() => W.odb.from('ft_wow_boxes')
-    .select('id, order_number, box_no, box_info_id, work_started_at, label_path, manifest_path').eq('user_id', uid).in('order_number', p)));
-  return new Map(rows.map((b) => [`${b.order_number}|${b.box_no}`,
-    b.box_info_id ? (b.label_path && b.manifest_path ? '서류준비' : '작업완료') : (b.work_started_at ? '작업중' : '신규')]));
+    .select('id, order_number, box_no, ' + cols).eq('user_id', uid).in('order_number', p)));
+  return new Map(rows.map((b) => [boxKey(b.order_number, b.box_no), b]));
+}
+
+// 위해 박스의 와우출고 단계 — `${발주번호}|${박스번호}` → 신규 · 작업중 · 작업완료 · 서류준비 · 출고준비
+//   구매 DB ft_wow_boxes 의 기록에서 읽어 낸다 (판정 규칙 = 1688-invoice app/storage/utils/wowStage.ts).
+//   출고는 로켓 rk_ship_boxes.shipped_at 이 기준이라 여기서 보지 않는다 (끌어오기가 맞춘다)
+const stageOf = (b) => {
+  if (!b.box_info_id) return b.work_started_at ? '작업중' : '신규';
+  if (b.ready_at) return '출고준비';
+  return b.label_path && b.manifest_path ? '서류준비' : '작업완료';
+};
+async function boxStages(nos) {
+  const boxes = await wowBoxes(nos, 'box_info_id, work_started_at, label_path, manifest_path, ready_at');
+  return new Map([...boxes].map(([k, b]) => [k, stageOf(b)]));
 }
 
 // ── 로켓 DB — 발주서들의 위해 배정 · 위해 박스 ──
-//   no → { center, arrival(입고예정일 'YYYY-MM-DD'|null), done, rows: Map(바코드 → {id, qty}), boxes:[{id, box_no, box_size, shipped_at}], items:[{id, box_id, barcode, qty}] }
+//   no → { center, arrival(입고예정일 'YYYY-MM-DD'|null), phone · address(센터 연락처 · 주소 — coupang_centers, 없으면 null),
+//          boxTotal(상품이 담긴 박스 전체 수 — 한국 박스 포함. CJ 엑셀 "총 M박스" 와 같은 기준), done,
+//          rows: Map(바코드 → {id, qty}), boxes:[{id, box_no, box_size, shipped_at}](위해 박스), items:[{id, box_id, barcode, qty}](위해 박스의 줄) }
 async function loadRocket(nos) {
-  const out = new Map(nos.map((no) => [no, { center: '', arrival: null, done: false, rows: new Map(), boxes: [], items: [] }]));
+  const out = new Map(nos.map((no) => [no, { center: '', arrival: null, phone: null, address: null, boxTotal: null, done: false, rows: new Map(), boxes: [], items: [] }]));
   if (!nos.length) return out;
   const q = (table, cols, f) => S.chunked(nos, 200, (part) => S.pageAll(() => f(sb.from(table).select(cols).in('order_number', part)).order('id', { ascending: true })));
-  const [hs, rows, boxes] = await Promise.all([
+  const [hs, rows, boxes, items, centers] = await Promise.all([
     q('rk_orders', 'order_number, logistics_center, arrival_date, status', (x) => x),
     q('rk_shipping_list', 'id, order_number, barcode, qty', (x) => x.eq('source', WH).eq('status', '출고예정')),
     q('rk_ship_boxes', 'id, order_number, box_no, box_size, shipped_at', (x) => x.eq('origin', WH)),
+    q('rk_ship_box_items', 'id, box_id, order_number, barcode, qty', (x) => x),   // 발주서의 박스 줄 전부 (총 박스 수를 세려고 한국 박스 것도)
+    // 센터 연락처 · 주소는 택배엑셀용 부가 정보 — 못 읽어도 밀어주기 · 끌어오기는 계속한다
+    sb.from('coupang_centers').select('center, contact, address').then(({ data, error }) => { if (error) console.error('[rk] wow 센터 정보 읽기 실패(무시):', error.message); return data || []; }),
   ]);
-  const items = boxes.length ? await S.chunked(boxes.map((b) => b.id), 200, (part) => S.pageAll(() => sb.from('rk_ship_box_items')
-    .select('id, box_id, order_number, barcode, qty').in('box_id', part).order('id', { ascending: true }))) : [];
+  const centerOf = new Map(centers.map((c) => [c.center, c]));
+  const text = (v) => String(v == null ? '' : v).trim() || null;
   const seen = new Set();
   for (const h of hs) {
     const no = String(h.order_number);
     if (seen.has(no)) continue;   // 같은 발주번호 헤더가 둘이면 첫 행 (rkAllocate loadHeaders 와 같다)
     seen.add(no);
-    Object.assign(out.get(no), { center: S.str(h.logistics_center), arrival: h.arrival_date || null, done: S.isDoneOrder({ 상태: h.status }) });
+    const c = centerOf.get(h.logistics_center) || {};
+    Object.assign(out.get(no), { center: S.str(h.logistics_center), arrival: h.arrival_date || null, phone: text(c.contact), address: text(c.address), done: S.isDoneOrder({ 상태: h.status }) });
   }
   for (const r of rows) out.get(String(r.order_number)).rows.set(r.barcode, { id: r.id, qty: toInt(r.qty) });
   for (const b of boxes) out.get(String(b.order_number)).boxes.push(b);
-  for (const it of items) out.get(String(it.order_number)).items.push({ ...it, qty: toInt(it.qty) });
+  const whBoxIds = new Set(boxes.map((b) => b.id));
+  const filled = new Map();   // 발주번호 → Set(상품이 담긴 박스 id)
+  for (const it of items) {
+    const no = String(it.order_number), qty = toInt(it.qty);
+    if (qty > 0) (filled.get(no) || filled.set(no, new Set()).get(no)).add(it.box_id);
+    if (whBoxIds.has(it.box_id)) out.get(no).items.push({ ...it, qty });
+  }
+  for (const [no, ids] of filled) out.get(no).boxTotal = ids.size;
   return out;
 }
 const hasWow = (o) => o.rows.size > 0 || o.boxes.length > 0;
@@ -88,7 +113,7 @@ function boxedBy(o, drop) {
 }
 
 // 원하는 상태 — 위해 박스 줄 + (처리완료가 아니면) 배정 − 박스에 담긴 수량 = 박스 미정 줄
-//   박스마다 박스 크기 · 입고예정일을 같이 보낸다 (1688-invoice 와우출고 화면 표시용)
+//   박스마다 박스 크기 + 부가 정보(BOX_META: 입고예정일 · 총 박스 수 · 센터 연락처/주소)를 같이 보낸다 (1688-invoice 와우출고 화면 · 택배엑셀용)
 //   adj.dropBoxes: Set(박스번호) — 지울 박스(그 수량은 박스 미정으로 돌아간다) · adj.rowQty: Map(바코드 → 줄인 뒤 배정)
 function desiredOf(o, adj) {
   const a = adj || {};
@@ -108,7 +133,18 @@ function desiredOf(o, adj) {
       if (q > 0) lines.push({ barcode: bc, box_no: null, qty: q });
     }
   }
-  return { lines, boxes: [...used].map(([box_no, box_size]) => ({ box_no, box_size, arrival_date: o.arrival })) };
+  const meta = { arrival_date: o.arrival, box_total: o.boxTotal, center_phone: o.phone, center_address: o.address };
+  return { lines, boxes: [...used].map(([box_no, box_size]) => ({ box_no, box_size, ...meta })) };
+}
+// 박스 부가 정보 — p_boxes 키 → 구매 DB ft_wow_boxes 칼럼
+const BOX_META = { arrival_date: 'arrival_date', box_total: 'order_box_total', center_phone: 'center_phone', center_address: 'center_address' };
+// 원하는 박스 부가 정보 == 구매 DB 에 저장된 값 (meta: wowBoxes 결과)
+//   보낼 값이 있는 것만 본다 — null 은 구매 DB 가 저장된 값을 지우지 않는다. 구매 DB 에 없는 박스는 줄 비교(sameState)가 잡는다
+function sameMeta(no, d, meta) {
+  return d.boxes.every((b) => {
+    const saved = meta.get(boxKey(no, b.box_no));
+    return !saved || Object.entries(BOX_META).every(([k, col]) => b[k] == null || String(b[k]) === String(saved[col] == null ? '' : saved[col]));
+  });
 }
 // 원하는 상태 == 구매 DB 상태 (담은 줄은 담은 수량, 0 은 없는 것으로)
 const lineKey = (bc, n) => `${bc}|${n == null ? '' : n}`;
@@ -260,12 +296,17 @@ async function pull() {
   const extra = mine.filter((no) => !cn.has(no));
   if (extra.length) for (const [no, st] of await orderState(extra)) cn.set(no, st);
   const nos = [...new Set([...cn.keys(), ...mine])];
-  const rk = await loadRocket(nos.filter((no) => !pre.has(no))).then((m) => new Map([...pre, ...m]));
+  const [rk, meta] = await Promise.all([
+    loadRocket(nos.filter((no) => !pre.has(no))).then((m) => new Map([...pre, ...m])),
+    wowBoxes(nos, Object.values(BOX_META).join(', ')),
+  ]);
   const out = { picked: 0, shipped: 0, doneOrders: [], pushed: 0, errors: [] };
   for (const no of nos) {
     const st = cn.get(no) || [];
     const w0 = pullWork(rk.get(no), st);
-    if (!w0.picks.length && !w0.ship.length && sameState(desiredOf(rk.get(no)), st)) continue;
+    const d0 = desiredOf(rk.get(no));
+    const metaDiff = !sameMeta(no, d0, meta);
+    if (!w0.picks.length && !w0.ship.length && !metaDiff && sameState(d0, st)) continue;
     try {
       await wowOrder(no, async (p) => {
         // 줄 세운 안에서 양쪽을 다시 읽는다 (그사이 중국에서 [담기 취소] 했으면 옛 담은 수량으로 줄이지 않게)
@@ -284,7 +325,7 @@ async function pull() {
           out.shipped += r.shipped; out.doneOrders.push(...r.doneOrders);
         }
         if (w.picks.length || w.ship.length) o = (await loadRocket([no])).get(no);
-        if (!sameState(desiredOf(o), s)) { await p(null, { force: true }); out.pushed++; }
+        if (metaDiff || !sameState(desiredOf(o), s)) { await p(null, { force: true }); out.pushed++; }
       });
     } catch (e) {
       console.error('[rk] wow pull', no, e.message);

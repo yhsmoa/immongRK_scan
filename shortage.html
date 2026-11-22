@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>상품부족</title>
+    <title>사입관리</title>
     <style>
         /* ========== 기본 레이아웃 (rocket 스타일 통일) ========== */
         :root{
@@ -780,7 +780,7 @@
             <!-- ===== 머리 (2026-10-28 재배치) — 제목 | 작업 흐름 순서대로: 도구 · 주문 복사 · 입력목록/저장 ===== -->
             <div class="page-head">
                 <div class="ph-title">
-                    <h1>상품부족 현황</h1>
+                    <h1>사입관리</h1>
                     <p>기간을 불러와 주문할 수량을 입력하고 저장한 뒤, 이우·위해 주문으로 복사하세요</p>
                 </div>
                 <div class="ph-actions">
@@ -1127,7 +1127,7 @@
   const R=await window.__run();
   if(R&&R.done){
     window.__csv();
-    console.log('%c✅ CSV 를 내려받았습니다. 상품부족 페이지의 [광고결과 업로드] 로 올려주세요.\n'
+    console.log('%c✅ CSV 를 내려받았습니다. 사입관리 페이지의 [광고결과 업로드] 로 올려주세요.\n'
       +'(다운로드가 막혔으면 __csv() 를 한 번 더 실행하세요)','color:#0a0;font-size:13px;font-weight:bold;line-height:1.7');
   }else if(R){
     console.warn('%c수집이 끝나지 않아 CSV 를 자동 저장하지 않았습니다.\n'

@@ -243,7 +243,7 @@
                 : '<span class="none">이미지 없음</span>';
             // 카드 전체가 링크 — 상품부족 화면이 이 상품명을 검색하고 최근 30일 발주서 기준으로 불러온다
             const href = `/shortage?search=${encodeURIComponent(item.productName || '')}&days=${SHORTAGE_DAYS}`;
-            return `<a class="rk-card" href="${esc(href)}" title="상품부족에서 최근 ${SHORTAGE_DAYS}일 발주서 기준으로 보기">
+            return `<a class="rk-card" href="${esc(href)}" title="사입관리에서 최근 ${SHORTAGE_DAYS}일 발주서 기준으로 보기">
                         <div class="rk-top">
                             <span class="rk-left">
                                 <span class="rk-rank${item.rank <= TOP_RANK ? ' top' : ''}">${esc(item.rank)}</span>
@@ -298,7 +298,7 @@
             document.getElementById('foot').textContent =
                 '발주서(전체 발주서 · 처리완료 포함)의 발주수량을 발주등록일 기준으로 합쳤습니다. ' +
                 '상품명에서 색상·사이즈를 뗀 이름이 같으면 한 상품으로 묶습니다. ' +
-                `카드를 누르면 상품부족 화면에서 그 상품을 최근 ${SHORTAGE_DAYS}일 발주서 기준으로 봅니다. ` +
+                `카드를 누르면 사입관리 화면에서 그 상품을 최근 ${SHORTAGE_DAYS}일 발주서 기준으로 봅니다. ` +
                 `지금 기준: ${basisInfo.hint}. 발주서 · 확정은 이 기간의 값입니다.`;
         }
 

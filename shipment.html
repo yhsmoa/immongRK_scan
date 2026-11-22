@@ -239,6 +239,7 @@
         .inv-box{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
         .inv-box label{flex:none;width:110px;font-weight:600;color:#1e293b;font-size:13px;}
         .inv-box label .sz{color:#64748b;font-weight:500;}
+        .inv-box label .flag{width:22px;height:15px;margin-right:5px;vertical-align:-2.5px;border-radius:2px;box-shadow:0 0 0 1px rgba(15,23,42,.14);}
         .inv-box input{flex:1;height:38px;padding:0 12px;border:1px solid #e2e8f0;border-radius:9px;font-size:13.5px;outline:none;font-family:inherit;}
         .inv-box input:focus{border-color:#c7d2fe;box-shadow:0 0 0 3px rgba(99,102,241,.1);}
         .inv-box input.error{border-color:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.15);}
@@ -289,7 +290,7 @@
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅</span><span>완료 · 다 찾음 — 모든 상품을 몫만큼 찾음</span></span>
                             <span class="r"><span class="chip st-short"><b>1</b>중 <span class="wn">⚠ 6</span></span><span>완료 · 부족 — 입력은 끝났고 6개를 못 찾음 (파일엔 찾은 수만 나감)</span></span>
                             <span class="r"><span class="chip st-ship"><b>1</b>중 🚚</span><span>출고완료 — [출고완료] 로 나간 박스 ([출고] 탭)</span></span>
-                            <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 🇨🇳 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 출고완료</span></span><!--/adm-->
+                            <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 🇨🇳 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 출고준비 › 출고완료</span></span><!--/adm-->
                             <span class="r"><span class="chip st-none"><b>1</b>중 🔀👾</span><span>🔀 = 실제 스캔 + 가상이 섞인 박스 (가상 부분의 상태가 뒤에 붙음)</span></span>
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅<span class="doc">📃</span></span><span>📃 = 쿠팡 부착·동봉문서가 등록된 박스</span></span>
                             <span class="t">상품 상태</span>
@@ -677,9 +678,9 @@
         // ── 박스 배지 (2026-11-02) ──
         //   📠 실제 스캔만(찾을 것 없음) · 👾 미진행 · 🔄 진행 n/m(입력된 상품/가상 상품) · ✅ 완료·다 찾음 · ⚠ 완료·부족 n · 🚚 출고완료
         //   🔀 = 실제 + 가상 섞인 박스 (가상 부분의 상태를 따라 붙는다) · 📃 = 서류 등록됨
-        //   🇨🇳 위해 박스 = 1688-invoice 와우출고 단계를 글자로 (2026-11-19): 신규 › 작업중 › 작업완료 › 서류준비 › 출고완료.
+        //   🇨🇳 위해 박스 = 1688-invoice 와우출고 단계를 글자로 (2026-11-19): 신규 › 작업중 › 작업완료 › 서류준비 › 출고준비 › 출고완료.
         //     출고 전 단계는 구매 DB 에서 읽는다(p.위해단계) — 못 읽었으면 배지에 '확인 안 됨'
-        const WOW_STAGES=['신규','작업중','작업완료','서류준비','출고완료'];
+        const WOW_STAGES=['신규','작업중','작업완료','서류준비','출고준비','출고완료'];
         const wowStage=b=>b.shipped?'출고완료':b.stage;
         function boxBadge(b){
             if(b.wow){ const s=wowStage(b); return {cls:' st-wow', emo:b.shipped?'🇨🇳🚚':'🇨🇳', tail:` ${s||'확인 안 됨'}`, label:`위해 박스 · ${s||'단계 확인 안 됨'}`, mix:''}; }
@@ -920,6 +921,19 @@
         function closeGuide(){ document.getElementById('guideBack').classList.remove('show'); }
 
         // ── 송장번호 모달 ──
+        // 출고 나라 국기 — 윈도우에는 국기 이모지 글꼴이 없어 🇰🇷 · 🇨🇳 가 'KR' · 'CN' 글자로 보인다 → 작은 그림(SVG)으로 그린다
+        const FLAG_STAR='0,-3.6 .81,-1.11 3.42,-1.11 1.31,.43 2.12,2.91 0,1.38 -2.12,2.91 -1.31,.43 -3.42,-1.11 -.81,-1.11';   // 별 하나 (반지름 3.6)
+        // 태극기의 괘 하나 = 세 줄. rows: 1 = 이어진 줄 · 0 = 끊어진 줄
+        const flagTrigram=(x,y,deg,rows)=>`<g transform="translate(${x} ${y}) rotate(${deg})">`
+            +rows.map((solid,i)=>`<path d="M-2.3 ${(i-1)*1.6}h4.6"${solid?'':' stroke-dasharray="1.9 .8"'}/>`).join('')+`</g>`;
+        const FLAG_SVG={
+            kr:`<rect width="36" height="24" fill="#fff"/>`
+                +`<g transform="rotate(33.7 18 12)"><path d="M12 12a6 6 0 0 1 12 0z" fill="#cd2e3a"/><path d="M12 12a6 6 0 0 0 12 0z" fill="#0047a0"/><circle cx="15" cy="12" r="3" fill="#cd2e3a"/><circle cx="21" cy="12" r="3" fill="#0047a0"/></g>`
+                +`<g stroke="#111" fill="none">`+flagTrigram(7.6,5.1,-56.3,[1,1,1])+flagTrigram(28.4,5.1,56.3,[0,1,0])+flagTrigram(7.6,18.9,56.3,[1,0,1])+flagTrigram(28.4,18.9,-56.3,[0,0,0])+`</g>`,
+            cn:`<rect width="36" height="24" fill="#de2910"/><g fill="#ffde00"><polygon points="${FLAG_STAR}" transform="translate(6.5 6.5)"/>`
+                +[[12.5,2.6],[15,5],[15,8.6],[12.5,11]].map(([x,y])=>`<polygon points="${FLAG_STAR}" transform="translate(${x} ${y}) scale(.34)"/>`).join('')+`</g>`,
+        };
+        const flagIcon=(code,title)=>`<svg class="flag" viewBox="0 0 36 24" role="img" aria-label="${title}"><title>${title}</title>${FLAG_SVG[code]}</svg>`;
         let invOrders=[];   // 모달에 띄운 발주서 (최신 데이터)
         async function openInvoiceModal(){
             const sel=selectedOrders();
@@ -939,7 +953,7 @@
                 <div class="inv-order">
                     <h4>${esc(o.발주번호)}<span>${esc(o.물류센터)} · ${esc(o.입고예정일)}</span></h4>
                     ${o.boxes.map(b=>`<div class="inv-box">
-                        <label title="${b.wow?'중국에서 출고 (위해 박스)':'한국에서 출고'}">${b.wow?'🇨🇳':'🇰🇷'} ${esc(b.no)} <span class="sz">${esc(b.size)}</span></label>
+                        <label>${b.wow?flagIcon('cn','중국에서 출고 (위해 박스)'):flagIcon('kr','한국에서 출고')}${esc(b.no)} <span class="sz">${esc(b.size)}</span></label>
                         <input type="text" placeholder="송장번호 입력" data-order="${esc(o.발주번호)}" data-box="${esc(b.no)}" data-center="${esc(o.물류센터)}"
                             value="${esc((invoiceNumbers[o.발주번호]||{})[b.no]||'')}" oninput="if(this.value.trim())this.classList.remove('error')">
                     </div>`).join('')}

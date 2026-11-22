@@ -27,7 +27,7 @@ const router = express.Router();
 // opts.shipped: true → [출고] 탭 — 최근 30일 안에 출고완료된 박스만 (처리완료 발주서 포함)
 //               false(기본) → 처리완료 아닌 발주서의 출고 안 된 박스만
 // opts.boxes: [{orderNumber, boxNo}] → 그 박스만 (순서대로 보기에서 체크한 박스)
-// opts.wowStage: true → 출고 안 된 🇨🇳 위해 박스 줄에 위해단계(신규 · 작업중 · 작업완료 · 서류준비)를 붙인다 — 화면 목록용.
+// opts.wowStage: true → 출고 안 된 🇨🇳 위해 박스 줄에 위해단계(신규 · 작업중 · 작업완료 · 서류준비 · 출고준비)를 붙인다 — 화면 목록용.
 //               구매 DB 를 못 읽거나 그쪽에 박스가 없으면 비워 둔다 (목록은 그대로 연다)
 // opts.hideWow: true → 🇨🇳 위해 박스를 없는 것으로 친다 (사원 화면 목록용) — 줄 · 진행상태 · 박스전체/박스출고 모두에서 빠진다
 async function shipScanOrders(orderNumbers, opts) {
