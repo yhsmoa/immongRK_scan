@@ -291,7 +291,7 @@
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅</span><span>완료 · 다 찾음 — 모든 상품을 몫만큼 찾음</span></span>
                             <span class="r"><span class="chip st-short"><b>1</b>중 <span class="wn">⚠ 6</span></span><span>완료 · 부족 — 입력은 끝났고 6개를 못 찾음 (파일엔 찾은 수만 나감)</span></span>
                             <span class="r"><span class="chip st-ship"><b>1</b>중 🚚</span><span>출고완료 — [출고완료] 로 나간 박스 ([출고] 탭)</span></span>
-                            <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 출고준비 › 출고완료</span></span><!--/adm-->
+                            <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 출고준비 › 출고완료 (작업완료부터 초록)</span></span><!--/adm-->
                             <span class="r"><span class="chip st-none"><b>1</b>중 🔀👾</span><span>🔀 = 실제 스캔 + 가상이 섞인 박스 (가상 부분의 상태가 뒤에 붙음)</span></span>
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅<span class="doc">📃</span></span><span>📃 = 쿠팡 부착·동봉문서가 등록된 박스</span></span>
                             <span class="t">상품 상태</span>
@@ -699,11 +699,14 @@
         //   📠 실제 스캔만(찾을 것 없음) · 👾 미진행 · 🔄 진행 n/m(입력된 상품/가상 상품) · ✅ 완료·다 찾음 · ⚠ 완료·부족 n · 🚚 출고완료
         //   🔀 = 실제 + 가상 섞인 박스 (가상 부분의 상태를 따라 붙는다) · 📃 = 서류 등록됨
         //   중국 국기 = 위해 박스. 1688-invoice 와우출고 단계를 글자로 (2026-11-19): 신규 › 작업중 › 작업완료 › 서류준비 › 출고준비 › 출고완료.
-        //     출고 전 단계는 구매 DB 에서 읽는다(p.위해단계) — 못 읽었으면 배지에 '확인 안 됨'. 출고된 박스는 한국 박스처럼 회색 + 🚚
+        //     출고 전 단계는 구매 DB 에서 읽는다(p.위해단계) — 못 읽었으면 배지에 '확인 안 됨'.
+        //     색은 한국 박스와 같다: 작업완료부터(다 담음) 초록 · 출고된 박스는 회색 + 🚚 · 그 전은 흰 바탕
         const WOW_STAGES=['신규','작업중','작업완료','서류준비','출고준비','출고완료'];
+        const WOW_PACKED=WOW_STAGES.indexOf('작업완료');
         const wowStage=b=>b.shipped?'출고완료':b.stage;
+        const wowCls=b=>b.shipped?' st-ship':WOW_STAGES.indexOf(b.stage)>=WOW_PACKED?' st-ok':' st-wow';
         function boxBadge(b){
-            if(b.wow){ const s=wowStage(b); return {cls:b.shipped?' st-ship':' st-wow', emo:flagIcon('cn')+(b.shipped?'🚚':''), tail:` ${s||'확인 안 됨'}`, label:`위해 박스 · ${s||'단계 확인 안 됨'}`, mix:''}; }
+            if(b.wow){ const s=wowStage(b); return {cls:wowCls(b), emo:flagIcon('cn')+(b.shipped?'🚚':''), tail:` ${s||'확인 안 됨'}`, label:`위해 박스 · ${s||'단계 확인 안 됨'}`, mix:''}; }
             const mix=b.virtualQty>0&&b.virtualQty<b.qty?'🔀':'';
             if(b.shipped) return {cls:' st-ship', emo:'🚚', tail:'', label:'출고완료', mix};
             if(b.virtualQty<=0) return {cls:' st-real', emo:'📠', tail:'', label:'실제 스캔', mix:''};
