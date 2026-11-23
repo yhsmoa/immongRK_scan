@@ -152,3 +152,13 @@
 - 서류 매칭 수량 추정: 같은 수량의 위해 · 한국 후보가 함께 있으면 부착문서에 CJ 운송장이 찍힌 장은 한국 박스, 아니면 위해 박스에서 고르고 애매함으로 표시.
 - /shortage 🇨🇳 = `ft_wow_available.available` — 예전 `storageQtyByBarcode`(대표 행 매핑)와 X-CnStock-Warn(바코드 못 찾음)은 없앴다.
 - 모바일 [박스 이동 › 기존박스] 후보에서 위해 박스를 뺀다(번호는 비켜 간다).
+
+## 9. 1688-invoice 와우출고 흐름 변경에 맞춤 (2026-11-24)
+
+1688-invoice 쪽 설계: `1688-invoice/supabase/storage/010_wow_flow.sql` · `011_wow_alloc.sql`.
+
+- 단계가 늘었다: 신규 › 작업중 › 작업완료 › 서류준비 › **순서지정 › 합포장** › 출고준비 › 출고. 작업은 중국 모바일(1688-invoice `/m/wow`)에서 박스 라벨을 찍어 한다.
+- **"담았다" = `ft_wow_boxes.picked_at`**. 마킹 상자(`box_info_id`)는 이제 [출고준비완료] 때 정해지고, 마대면 여러 위해 박스가 한 상자를 쓴다. 그래서 `rkWow.stageOf` 는 `picked_at` 으로 담음을 본다(예전: `box_info_id`). `ft_wow_order_state` 의 `box_code` 는 출고준비 전까지 비어 있다 — 로켓은 이 값을 쓰지 않는다.
+- 박스 크기: 중국 작업자가 모바일에서 바꾸면 `ft_wow_boxes.packed_box_size` 에 남는다. 끌어오기(`pull`)가 출고 전 위해 박스의 `rk_ship_boxes.box_size` 를 그 값으로 맞추고 다시 밀어준다(응답 `sized`).
+- 하나도 담지 못하고 작업완료한 박스: 담은 수량 0 으로 끌어오기가 박스 줄 · 위해 배정을 줄이고, 다음 밀어주기 때 구매 DB 가 그 박스 기록을 지운다.
+- 선반 배정은 구매 DB 가 박스가 들어올 때 잡아 둔다(`ft_wow_alloc`) — 로켓이 보내는 값은 그대로다.
