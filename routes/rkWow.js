@@ -27,13 +27,22 @@ const toInt = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n 
 const parseNos = (v) => [...new Set(String(v == null ? '' : v).split(',').map((x) => x.trim()).filter(Boolean))];
 
 // ── 구매 DB 읽기 ──
-// 바코드 → 잔여수량(available). 실패하면 throw — 0 으로 덮으면 배정이 조용히 틀어진다
-async function available() {
+// 바코드 → { qty: 재고, reserved: 출고예정, available: 잔여수량 }. 실패하면 throw
+async function stockByBarcode() {
   const uid = await W.accountId();
   const rows = await W.pageAll(() => W.odb.rpc('ft_wow_available', { p_user_id: uid }), ['barcode']);
   const m = new Map();
-  for (const r of rows) { const bc = String(r.barcode || '').trim(); if (bc) m.set(bc, (m.get(bc) || 0) + toInt(r.available)); }
+  for (const r of rows) {
+    const bc = String(r.barcode || '').trim();
+    if (!bc) continue;
+    const s = m.get(bc) || m.set(bc, { qty: 0, reserved: 0, available: 0 }).get(bc);
+    s.qty += toInt(r.qty); s.reserved += toInt(r.reserved); s.available += toInt(r.available);
+  }
   return m;
+}
+// 바코드 → 잔여수량(available). 실패하면 throw — 0 으로 덮으면 배정이 조용히 틀어진다
+async function available() {
+  return new Map([...(await stockByBarcode())].map(([bc, s]) => [bc, s.available]));
 }
 // 발주번호 → 줄 [{ box_no, barcode, qty, picked_qty, picked_at, shipped_at }]. nos 가 null 이면 출고 전 줄이 남은 모든 발주서
 async function orderState(nos) {
@@ -432,6 +441,19 @@ router.get('/api/wow/status', async (req, res) => {
   } catch (e) {
     console.error('[rk] wow/status:', e);
     res.status(500).json({ error: '구매 DB 확인 실패: ' + e.message });
+  }
+});
+
+// 🇨🇳 위해 창고 재고 — 재고관리(/stock) 의 🇨🇳 열. 위해 창고에 있는 바코드만 { 바코드: [재고, 출고예정, 잔여수량] }
+//   화면은 잔여수량을 보여 준다 (상품부족 🇨🇳 와 같은 값 — 🇰🇷 rk_stocks 가 배정분을 이미 뺀 것과 같은 기준)
+router.get('/api/wow/stock', async (req, res) => {
+  try {
+    const out = {};
+    for (const [bc, s] of await stockByBarcode()) out[bc] = [s.qty, s.reserved, s.available];
+    res.json(out);
+  } catch (e) {
+    console.error('[rk] wow/stock:', e);
+    res.status(500).json({ error: '위해 창고 재고를 읽지 못했습니다: ' + e.message });
   }
 });
 

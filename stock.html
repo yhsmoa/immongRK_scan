@@ -74,6 +74,12 @@
         td.qty-edit:focus{outline:none;background:#fff;box-shadow:inset 0 0 0 2px #c7d2fe;}
         td.qty-zero{color:#cbd5e1;}                 /* 수량 0 — 회색 */
         td.qty-dirty{color:#F0492F;font-weight:600;} /* 수정됨(미저장) */
+        td.cn-qty{color:#b91c1c;}                    /* 🇨🇳 위해 창고 잔여수량 (읽기 전용) */
+        /* 🇰🇷·🇨🇳 머리글 — Windows 는 국기 이모지를 글자(KR·CN)로 그려서 국기 글자만 웹폰트로 (상품부족 페이지와 같은 방식 · 국기 문자 범위에만, 못 받으면 글자로) */
+        @font-face{font-family:'Twemoji Country Flags';unicode-range:U+1F1E6-1F1FF;
+            src:url('https://cdn.jsdelivr.net/npm/country-flag-emoji-polyfill@0.1.8/dist/TwemojiCountryFlags.woff2') format('woff2');font-display:swap;}
+        .flag{font-family:'Twemoji Country Flags','Segoe UI Emoji','Apple Color Emoji',sans-serif;}
+        td.cn-qty .dash{color:#cbd5e1;}
         .btn:disabled{opacity:.5;cursor:default;background:#fff;border-color:#e2e8f0;color:#94a3b8;}
         .btn:disabled:hover{background:#fff;border-color:#e2e8f0;}
         .dash{color:#cbd5e1;}
@@ -190,10 +196,10 @@
                     <thead>
                         <tr>
                             <th class="chk"><input type="checkbox" id="checkAll" onclick="toggleAll(this)"></th>
-                            <th>위치</th><th>SKU ID</th><th>바코드</th><th class="col-img">img</th><th>상품명</th><th class="ctr">수량</th><th class="ctr">시즌</th><th>비고</th>
+                            <th>위치</th><th>SKU ID</th><th>바코드</th><th class="col-img">img</th><th>상품명</th><th class="ctr" title="🇰🇷 한국 재고 (rk_stocks · 칸을 눌러 수정)"><span class="flag">🇰🇷</span> 수량</th><th class="ctr" title="🇨🇳 위해 창고 잔여수량 = 재고 − 출고예정 (구매 DB · 바코드 기준, 상품부족 🇨🇳 와 같은 값) — 칸에 마우스를 올리면 나눠 보여요" id="cnHead"><span class="flag">🇨🇳</span> 수량</th><th class="ctr">시즌</th><th>비고</th>
                         </tr>
                     </thead>
-                    <tbody id="tbody"><tr class="state-row"><td colspan="9">데이터를 불러오는 중…</td></tr></tbody>
+                    <tbody id="tbody"><tr class="state-row"><td colspan="10">데이터를 불러오는 중…</td></tr></tbody>
                 </table>
             </div>
             <div class="pagination" id="pagination"></div>
@@ -211,6 +217,30 @@
         const dashCell=v=>(v==null||v===''||v==='-')?'<span class="dash">-</span>':esc(v);
         // 수량 비교: null(빈칸)과 0을 구별
         const qtyEq=(a,b)=>(a==null&&b==null)||(a!=null&&b!=null&&Number(a)===Number(b));
+        // 🇨🇳 위해 창고 재고 — 바코드 → [재고, 출고예정, 잔여수량] (/api/wow/stock). 한국 목록과 따로 읽어 늦거나 실패해도 표는 먼저 뜬다
+        //   null = 아직 못 읽음 · cnErr = 읽기 실패 문구. 같은 바코드가 여러 위치에 있으면 각 행에 같은 값 (바코드 기준)
+        let cnStock=null, cnErr='';
+        async function loadCnStock(){
+            try{
+                const res=await fetch('/api/wow/stock');
+                const data=await res.json().catch(()=>({}));
+                if(!res.ok) throw new Error(data.error||'HTTP '+res.status);
+                cnStock=new Map(Object.entries(data)); cnErr='';
+            }catch(e){ cnStock=null; cnErr=e.message; }
+            const h=document.getElementById('cnHead');
+            if(h) h.innerHTML='<span class="flag">🇨🇳</span> 수량'+(cnErr?' <span title="'+esc('위해 창고 재고를 읽지 못했습니다: '+cnErr)+'">⚠</span>':'');
+            // 표 전체를 다시 그리지 않고 🇨🇳 칸만 채운다 — 수량 칸을 고치는 중이어도 입력이 날아가지 않게
+            document.querySelectorAll('#tbody td.cn-qty').forEach(td=>{ const c=cnContent(td.dataset.bc); td.innerHTML=c.html; td.title=c.title; });
+        }
+        // 🇨🇳 칸 내용 — 읽는 중 … · 실패 ? · 위해 창고에 없는 바코드 - · 있으면 잔여수량 (마우스: 재고 − 출고예정)
+        function cnContent(bc){
+            if(cnStock==null) return {html:'<span class="dash">'+(cnErr?'?':'…')+'</span>', title:cnErr?'위해 창고 재고를 읽지 못했습니다: '+cnErr:''};
+            const v=cnStock.get(String(bc||'').trim());
+            if(!v) return {html:'<span class="dash">-</span>', title:''};
+            const [qty,reserved,avail]=v;
+            return {html:esc(avail), title:`위해 창고 재고 ${qty} − 출고예정 ${reserved} = 잔여 ${avail}`};
+        }
+        function cnCell(bc){ const c=cnContent(bc); return `<td class="ctr cn-qty" data-bc="${esc(bc||'')}" title="${esc(c.title)}">${c.html}</td>`; }
 
         async function loadData(){
             try{
@@ -223,7 +253,7 @@
                 }));
                 applySearch();
             }catch(e){
-                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="9">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
+                document.getElementById('tbody').innerHTML=`<tr class="state-row"><td colspan="10">데이터를 불러오지 못했습니다: ${esc(e.message)}</td></tr>`;
             }
         }
 
@@ -234,7 +264,7 @@
             const start=(currentPage-1)*pageSize;
             const pageRows=viewRows.slice(start,start+pageSize);
             if(pageRows.length===0){
-                tb.innerHTML=`<tr class="state-row"><td colspan="9">표시할 재고가 없습니다.</td></tr>`;
+                tb.innerHTML=`<tr class="state-row"><td colspan="10">표시할 재고가 없습니다.</td></tr>`;
             }else{
                 tb.innerHTML=pageRows.map(r=>`<tr data-bc="${esc(r.바코드||'')}">
                     <td class="chk"><input type="checkbox" class="rowchk" data-id="${esc(r.id)}" onchange="updateDelBtn()"></td>
@@ -244,6 +274,7 @@
                     <td class="img-cell">${imgCellHtml(r.바코드)}</td>
                     <td class="pname" title="클릭: 재고 변경 이력 · 더블클릭: 상품명 수정" data-id="${esc(r.id)}" data-orig="${esc(r.상품명||'')}" onclick="pnameClick(this,'${esc(r.바코드)}','${esc(String(r.상품명||'').replace(/'/g,'&#39;'))}')" ondblclick="beginEditName(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveName('${esc(r.id)}',this)">${esc(r.상품명)}</td>
                     <td class="ctr qty-edit${r.수량===0?' qty-zero':''}${!qtyEq(r.수량,r.origQty)?' qty-dirty':''}" contenteditable="true" data-id="${esc(r.id)}" data-orig="${r.origQty==null?'':esc(r.origQty)}" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}if(event.key==='Escape'){this.textContent=this.dataset.orig;this.blur();}" onblur="saveQtyCell('${esc(r.id)}',this)">${r.수량==null?'':esc(r.수량)}</td>
+                    ${cnCell(r.바코드)}
                     <td class="ctr">${dashCell(r.시즌)}</td>
                     <td>${dashCell(r.비고)}</td>
                 </tr>`).join('');
@@ -501,6 +532,7 @@
         // ── 새로고침: 보던 페이지·검색어·필터·스크롤을 그대로 두고 데이터만 다시 불러온다 ──
         async function refreshData(){
             if(hasDirty() && !confirm('저장하지 않은 수량 수정이 있습니다.\n새로고침하면 사라집니다. 계속할까요?')) return;
+            loadCnStock();   // 🇨🇳 도 다시 (한국 목록과 동시에)
             const btn=document.getElementById('refreshBtn');
             const org=btn?btn.textContent:'';
             if(btn){ btn.disabled=true; btn.textContent='불러오는 중…'; }
@@ -689,6 +721,7 @@
         function closeHistory(){ document.getElementById('histBack').classList.remove('show'); }
 
         loadData();
+        loadCnStock();   // 🇨🇳 위해 창고 — 한국 목록과 동시에, 따로
     </script>
 
     <!-- 재고 이력 모달 -->
