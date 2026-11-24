@@ -380,15 +380,15 @@
             box-shadow: inset 0 0 0 2px #fdba74;
             outline: none;
         }
-        /* ========== 위해주문 셀 — 클릭할 때마다 빈칸 → 🌳 → 🌱 → 이우 → 빈칸 ========== */
+        /* ========== 이우주문 셀 — 클릭할 때마다 빈칸 → 🌳 → 🌱 → 위해 → 빈칸 ========== */
         td.wh-cell { background: #fff; }
-        th.col-wh { line-height: 1.25; }   /* 위해 / 주문 두 줄 — 열 너비를 늘리지 않는다 */
+        th.col-wh { line-height: 1.25; }   /* 이우 / 주문 두 줄 — 열 너비를 늘리지 않는다 */
         td.wh-cell { cursor: pointer; user-select: none; font-size: 14px; line-height: 1; }
-        .mk-yiwu { display: inline-block; padding: 2px 6px; border-radius: 5px; background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 11px; font-weight: 700; line-height: 1.3; }
+        .mk-weihai { display: inline-block; padding: 2px 6px; border-radius: 5px; background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 11px; font-weight: 700; line-height: 1.3; }
 
         /* ========== 열별 배경색 / 구분선 — 보기만 하는 칸은 회색 톤 ========== */
         .col-remain, .col-order, .col-stock { background: #f5f6f8; }   /* 잔여·주문·재고 = 같은 연한 회색 */
-        /* 구분선 살짝 굵게: 재고 | 입력·위해주문 | C 예상 | 주간 */
+        /* 구분선 살짝 굵게: 재고 | 입력·이우주문 | C 예상 | 주간 */
         th.col-stock, td.col-stock { border-right: 2px solid #cbd5e1; }
         th.col-wh,    td.wh-cell   { border-right: 2px solid #cbd5e1; }
         th.col-cf,    td.col-cf    { border-right: 2px solid #cbd5e1; }
@@ -486,7 +486,7 @@
             font-display: swap;
         }
         .order-tip .flag { font-family: 'Twemoji Country Flags', 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif; font-size: 15px; }
-        /* 위해주문 셀 hover — 표시 4가지의 뜻 */
+        /* 이우주문 셀 hover — 표시 4가지의 뜻 */
         .order-tip.mk { width: 330px; font-size: 12.5px; }
         .order-tip .mk-title { font-weight: 700; color: var(--ink); margin-bottom: 6px; }
         .order-tip .mk-ln { display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: 7px; line-height: 1.45; color: #64748b; }
@@ -784,7 +784,7 @@
                     <p>기간을 불러와 주문할 수량을 입력하고 저장한 뒤, 이우·위해 주문으로 복사하세요</p>
                 </div>
                 <div class="ph-actions">
-                    <!-- 스냅샷: 지금 화면(행 전체 + 입력값 + 위해주문 표시 + 조회조건)을 이름 붙여 보관 / 드롭다운에서 골라 그대로 복원 -->
+                    <!-- 스냅샷: 지금 화면(행 전체 + 입력값 + 이우주문 표시 + 조회조건)을 이름 붙여 보관 / 드롭다운에서 골라 그대로 복원 -->
                     <div class="snap" title="스냅샷 — 지금 화면을 이름 붙여 보관하고 다시 불러온다">
                         <select id="snapshotSelect" onchange="onSnapshotSelect(this)" title="저장된 스냅샷 불러오기">
                             <option value="">스냅샷 불러오기</option>
@@ -815,12 +815,12 @@
                         <input type="file" id="adResultFileInput" accept=".csv,.xlsx,.xls" style="display: none" onchange="uploadAdResult(this)">
                     </div>
                     <span class="btn-separator"></span>
-                    <!-- 주문 — 입력 수량이 있는 행을 '위해주문' 열 표시대로 나눈다: 빈칸·이우 → 이우 / 🌳·🌱 → 위해 (한 행은 한쪽에만)
+                    <!-- 주문 — 입력 수량이 있는 행을 '이우주문' 열 표시대로 나눈다: 🌳·🌱 → 이우 / 빈칸·위해 → 위해 (한 행은 한쪽에만, 2026-11-24 뒤집음)
                          이우: 구글 시트 붙여넣기 복사 · 위해: purchase-agent 장바구니(immongbr)에 담기 또는 복사 -->
                     <div class="btn-group" role="group" aria-label="주문">
                         <div class="menu-wrap">
-                            <button type="button" class="btn btn-copy" onclick="toggleMenu('yiwuMenu', event)" aria-haspopup="true" aria-expanded="false" title="위해주문 열이 빈칸·이우 인 행">
-                                이우 주문<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                            <button type="button" class="btn btn-copy" onclick="toggleMenu('yiwuMenu', event)" aria-haspopup="true" aria-expanded="false" title="이우주문 열이 🌳·🌱 인 행">
+                                🌳 이우 주문<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                             </button>
                             <div class="menu" id="yiwuMenu" role="menu">
                                 <button type="button" class="menu-item" role="menuitem" onclick="closeMenus(); handleCopy()">복사 (구글 시트 붙여넣기)</button>
@@ -828,8 +828,8 @@
                             </div>
                         </div>
                         <div class="menu-wrap">
-                            <button type="button" class="btn btn-copy" onclick="toggleMenu('weihaiMenu', event)" aria-haspopup="true" aria-expanded="false" title="위해주문 열이 🌳·🌱 인 행">
-                                🌳 위해 주문<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                            <button type="button" class="btn btn-copy" onclick="toggleMenu('weihaiMenu', event)" aria-haspopup="true" aria-expanded="false" title="이우주문 열이 빈칸·위해 인 행">
+                                위해 주문<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                             </button>
                             <div class="menu" id="weihaiMenu" role="menu">
                                 <button type="button" class="menu-item" role="menuitem" onclick="closeMenus(); openCartModal()">🛒 장바구니 담기</button>
@@ -949,7 +949,7 @@
                                 <th class="col-order">주문</th>
                                 <th class="col-stock" title="🇰🇷 재고관리 + 🇨🇳 위해 창고 (칸에 마우스를 올리면 나눠 보여요)">재고</th>
                                 <th id="inputHeader" class="col-input">입력</th>
-                                <th id="whHeader" class="col-wh" title="칸을 클릭할 때마다 빈칸 → 🌳 → 🌱 → 이우 → 빈칸 (칸에 마우스를 올리면 뜻이 보여요)">위해<br>주문</th>
+                                <th id="whHeader" class="col-wh" title="칸을 클릭할 때마다 빈칸 → 🌳 → 🌱 → 위해 → 빈칸 (칸에 마우스를 올리면 뜻이 보여요)">이우<br>주문</th>
                                 <th class="col-cf">C 예상<br><span class="cf-sub">w | 2w</span></th>
                                 <th class="col-week">-7-8W</th>
                                 <th class="col-week">-5-6W</th>
@@ -1146,8 +1146,8 @@
         let loadToken = 0;   // 로드 경쟁 방지: 최신 로드만 화면에 반영
         let currentSort = { key: '부족수량', order: 'desc' };
         let savedInputs = new Map(); // barcode → qty (임시저장 데이터)
-        let savedMarks = new Map();  // barcode → 위해주문 표시 none|tree|sprout|yiwu — 고른 것만 (없으면 상품정보대로). 임시저장·스냅샷에 함께
-        let pendingFlags = new Map(); // barcode → true|false — 주문은 넣었는데 상품정보 위해주문 반영이 실패한 것 ([저장] 때 다시 보낸다)
+        let savedMarks = new Map();  // barcode → 이우주문 표시 none|tree|sprout|weihai — 고른 것만 (없으면 상품정보대로). 임시저장·스냅샷에 함께
+        let pendingFlags = new Map(); // barcode → true|false — 주문은 넣었는데 상품정보 이우주문 반영이 실패한 것 ([저장] 때 다시 보낸다)
 
         /* ========== 초기화 ========== */
         document.addEventListener('DOMContentLoaded', async () => {
@@ -1250,50 +1250,50 @@
                 const count = savedInputs.size;
                 th.textContent = count > 0 ? `입력(${count})` : '입력';
             }
-            // 위해주문(n) — 불러온 행 중 입력 수량이 있고 위해로 가는 행 수
+            // 이우주문(n) — 불러온 행 중 입력 수량이 있고 이우로 가는 행 수
             const wh = document.getElementById('whHeader');
             if (wh) {
-                const n = allData.filter(it => (savedInputs.get(it.상품바코드) || 0) > 0 && routeOf(it) === 'weihai').length;
-                wh.innerHTML = n > 0 ? `위해<br>주문(${n})` : '위해<br>주문';
+                const n = allData.filter(it => (savedInputs.get(it.상품바코드) || 0) > 0 && routeOf(it) === 'yiwu').length;
+                wh.innerHTML = n > 0 ? `이우<br>주문(${n})` : '이우<br>주문';
             }
         }
 
-        /* ========== 위해주문 표시 (2026-10-28) ==========
-           칸을 클릭할 때마다  빈칸 → 🌳 → 🌱 → 이우 → 빈칸
-             none   빈칸   이번 주문: 이우   상품정보 weihai_order → false  (항상 이우)
-             tree   🌳     이번 주문: 위해   상품정보 → true   (항상 위해)
-             sprout 🌱     이번 주문: 위해   상품정보 → false  (이번만 위해)
-             yiwu   이우   이번 주문: 이우   상품정보 → true   (항상 위해인데 이번만 이우)
-           · 고른 적이 없으면 상품정보대로 — weihai_order true 🌳 / 아니면 빈칸 (그 둘은 상품정보를 바꾸지 않는다)
+        /* ========== 이우주문 표시 (2026-10-28 · 2026-11-24 이우/위해 뒤집음 — 예전 표시는 초기화, supabase/rk_yiwu_route.sql) ==========
+           칸을 클릭할 때마다  빈칸 → 🌳 → 🌱 → 위해 → 빈칸
+             none   빈칸   이번 주문: 위해   상품정보 yiwu_order → false  (항상 위해)
+             tree   🌳     이번 주문: 이우   상품정보 → true   (항상 이우)
+             sprout 🌱     이번 주문: 이우   상품정보 → false  (이번만 이우)
+             weihai 위해   이번 주문: 위해   상품정보 → true   (항상 이우인데 이번만 위해)
+           · 고른 적이 없으면 상품정보대로 — yiwu_order true 🌳 / 아니면 빈칸 (그 둘은 상품정보를 바꾸지 않는다)
            · 상품정보는 [저장] 할 때와 주문을 넣을 때(이우·위해 복사, 장바구니 담기) 고른 표시대로 바꾼다 — 클릭만으로는 DB 를 건드리지 않는다 (2026-10-29)
-           · 상품정보에 없는 상품(weihaiOrder null)은 저장할 곳이 없어 빈칸 ↔ 🌱 만
+           · 상품정보에 없는 상품(yiwuOrder null)은 저장할 곳이 없어 빈칸 ↔ 🌱 만
            · 입력 수량이 있는 행은 표시에 따라 이우·위해 중 정확히 한쪽에만 들어간다 → 두 주문이 겹치거나 빠지지 않는다
-           · 주문을 넣어도 표시는 그대로 둔다 (🌱 를 비우면 그 행이 이우 복사에 다시 들어가 이중 주문이 된다) — [초기화] 때 함께 지운다 */
-        const MARK_CYCLE = ['none', 'tree', 'sprout', 'yiwu'];
+           · 주문을 넣어도 표시는 그대로 둔다 (🌱 를 비우면 그 행이 위해 주문에 다시 들어가 이중 주문이 된다) — [초기화] 때 함께 지운다 */
+        const MARK_CYCLE = ['none', 'tree', 'sprout', 'weihai'];
         const MARK_INFO = {
-            none:   { label: '빈칸',        desc: '이우로 주문 · 상품정보 항상 위해 아님' },
-            tree:   { label: '항상 위해',   desc: '위해로 주문 · 상품정보에 항상 위해(🌳) 저장' },
-            sprout: { label: '이번만 위해', desc: '위해로 주문 · 상품정보는 항상 위해 아님' },
-            yiwu:   { label: '이번만 이우', desc: '이우로 주문 · 상품정보 항상 위해(🌳) 유지' },
+            none:   { label: '빈칸',        desc: '위해로 주문 · 상품정보 항상 이우 아님' },
+            tree:   { label: '항상 이우',   desc: '이우로 주문 · 상품정보에 항상 이우(🌳) 저장' },
+            sprout: { label: '이번만 이우', desc: '이우로 주문 · 상품정보는 항상 이우 아님' },
+            weihai: { label: '이번만 위해', desc: '위해로 주문 · 상품정보 항상 이우(🌳) 유지' },
         };
-        function canPersist(item) { return typeof item.weihaiOrder === 'boolean'; }
+        function canPersist(item) { return typeof item.yiwuOrder === 'boolean'; }
         // 고른 표시(없으면 상품정보대로) → 실제 표시. 화면 행(markOf)과 주문목록(서버 저장 목록)이 같이 쓴다
-        function resolveMark(chosen, weihaiOrder) {
-            let mark = MARK_CYCLE.includes(chosen) ? chosen : (weihaiOrder === true ? 'tree' : 'none');
+        function resolveMark(chosen, yiwuOrder) {
+            let mark = MARK_CYCLE.includes(chosen) ? chosen : (yiwuOrder === true ? 'tree' : 'none');
             // 상품정보가 없으면 '항상' 을 저장할 수 없다 — 주문처는 그대로 두고 이번만 표시로
-            if (typeof weihaiOrder !== 'boolean') mark = mark === 'tree' ? 'sprout' : mark === 'yiwu' ? 'none' : mark;
+            if (typeof yiwuOrder !== 'boolean') mark = mark === 'tree' ? 'sprout' : mark === 'weihai' ? 'none' : mark;
             return mark;
         }
-        function markOf(item) { return resolveMark(savedMarks.get(item.상품바코드), item.weihaiOrder); }
-        function routeOfMark(m) { return m === 'tree' || m === 'sprout' ? 'weihai' : 'yiwu'; }
+        function markOf(item) { return resolveMark(savedMarks.get(item.상품바코드), item.yiwuOrder); }
+        function routeOfMark(m) { return m === 'tree' || m === 'sprout' ? 'yiwu' : 'weihai'; }
         function routeOf(item) { return routeOfMark(markOf(item)); }
-        function wantFlag(mark) { return mark === 'tree' || mark === 'yiwu'; }
+        function wantFlag(mark) { return mark === 'tree' || mark === 'weihai'; }
         function nextMark(mark, persist) {
             if (!persist) return mark === 'sprout' ? 'none' : 'sprout';
             return MARK_CYCLE[(MARK_CYCLE.indexOf(mark) + 1) % MARK_CYCLE.length];
         }
         function markHtml(mark) {
-            return mark === 'tree' ? '🌳' : mark === 'sprout' ? '🌱' : mark === 'yiwu' ? '<span class="mk-yiwu">이우</span>' : '';
+            return mark === 'tree' ? '🌳' : mark === 'sprout' ? '🌱' : mark === 'weihai' ? '<span class="mk-weihai">위해</span>' : '';
         }
         function cycleMark(td) {
             const item = filteredData[Number(td.dataset.row)];
@@ -1308,18 +1308,18 @@
         function orderTargets(route) {
             return filteredData.filter(it => (savedInputs.get(it.상품바코드) || 0) > 0 && routeOf(it) === route);
         }
-        // 상품정보(rk_inventories.weihai_order)를 표시대로 — [저장] 할 때와 주문을 넣은 뒤(이우·위해 복사, 장바구니 담기) (2026-10-29)
+        // 상품정보(rk_inventories.yiwu_order)를 표시대로 — [저장] 할 때와 주문을 넣은 뒤(이우·위해 복사, 장바구니 담기) (2026-10-29)
         //   보내는 것: 지난번 실패분(pendingFlags) + 불러온 행 중 표시를 직접 고른 행 전부(수량이 없어도) + 주문한 행(rows)
         //   같은 값이어도 보낸다(멱등). 실패하면 다시 시도할지 묻고, 그만두면 pendingFlags 에 남겨 다음 [저장] 때 다시 보낸다. 반환: 알림에 붙일 문구
-        async function persistWeihaiFlags(rows, failLead = '주문은 넣었지만') {
+        async function persistYiwuFlags(rows, failLead = '주문은 넣었지만') {
             const want = new Map(pendingFlags);
             allData.forEach(it => { if (savedMarks.has(it.상품바코드) && canPersist(it)) want.set(it.상품바코드, wantFlag(markOf(it))); });
             rows.forEach(it => { if (canPersist(it)) want.set(it.상품바코드, wantFlag(markOf(it))); });
             if (!want.size) return '';
-            const items = [...want].map(([barcode, weihaiOrder]) => ({ barcode, weihaiOrder }));
+            const items = [...want].map(([barcode, yiwuOrder]) => ({ barcode, yiwuOrder }));
             for (;;) {
                 try {
-                    const res = await fetch('/api/shortage/weihai-flag', {
+                    const res = await fetch('/api/shortage/yiwu-flag', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items })
                     });
                     const data = await res.json().catch(() => ({}));
@@ -1331,22 +1331,22 @@
                         pendingFlags.delete(bc);
                         const it = byBc.get(bc);
                         if (!it) return;
-                        if (missing.has(bc)) { it.weihaiOrder = null; return; }
-                        if (it.weihaiOrder !== v) { if (v) on++; else off++; }
-                        it.weihaiOrder = v;
+                        if (missing.has(bc)) { it.yiwuOrder = null; return; }
+                        if (it.yiwuOrder !== v) { if (v) on++; else off++; }
+                        it.yiwuOrder = v;
                     });
-                    // 상품정보에서 빠진 상품은 🌳·이우 를 못 쓴다 → 칸 표시가 바뀔 수 있어 다시 그린다 (스크롤 위치는 그대로)
+                    // 상품정보에서 빠진 상품은 🌳·위해 를 못 쓴다 → 칸 표시가 바뀔 수 있어 다시 그린다 (스크롤 위치는 그대로)
                     if (missing.size && filteredData.length) renderTable();
                     else updateInputHeaderCount();
                     const parts = [];
                     if (on) parts.push(`🌳 켬 ${on}건`);
                     if (off) parts.push(`끔 ${off}건`);
                     if (missing.size) parts.push(`상품정보에 없는 ${missing.size}건 제외`);
-                    return parts.length ? `\n상품정보 위해주문: ${parts.join(' · ')}` : '';
+                    return parts.length ? `\n상품정보 이우주문: ${parts.join(' · ')}` : '';
                 } catch (e) {
-                    if (!confirm(`${failLead} 상품정보(위해주문) 저장에 실패했습니다.\n${e.message}\n\n다시 시도할까요?`)) {
+                    if (!confirm(`${failLead} 상품정보(이우주문) 저장에 실패했습니다.\n${e.message}\n\n다시 시도할까요?`)) {
                         want.forEach((v, bc) => pendingFlags.set(bc, v));
-                        return `\n⚠ 상품정보 위해주문 ${want.size}건을 반영하지 못했습니다 — [저장] 을 누르면 다시 반영해요`;
+                        return `\n⚠ 상품정보 이우주문 ${want.size}건을 반영하지 못했습니다 — [저장] 을 누르면 다시 반영해요`;
                     }
                 }
             }
@@ -1870,7 +1870,7 @@
                     if (yiwu.dataset.barcode) showYiwuPopup(yiwu.dataset.barcode, e.clientX, e.clientY);
                 }
             });
-            // '주문' 셀 · '재고' 셀 · '위해주문' 셀 hover 카드
+            // '주문' 셀 · '재고' 셀 · '이우주문' 셀 hover 카드
             tbody.addEventListener('mouseover', (e) => {
                 const td = e.target.closest('td.yiwu-cell, td.stock-cell, td.wh-cell');
                 if (!td || td === tipCell) return;
@@ -2099,7 +2099,7 @@
             tip.classList.add('show');
             placeOrderTip(e);
         }
-        // 위해주문 셀 hover — 표시 4가지의 뜻 (지금 표시 강조) + 상품정보 값 + 다음 클릭
+        // 이우주문 셀 hover — 표시 4가지의 뜻 (지금 표시 강조) + 상품정보 값 + 다음 클릭
         function showMarkTip(item, e) {
             const tip = document.getElementById('orderTip');
             if (!item || !tip) return;
@@ -2107,12 +2107,12 @@
             const cur = markOf(item);
             const list = persist ? MARK_CYCLE : ['none', 'sprout'];
             const icon = m => markHtml(m) || '<span class="mk-empty"></span>';
-            const db = item.weihaiOrder === true ? '<b>🌳 항상 위해</b>'
-                : item.weihaiOrder === false ? '<b>항상 위해 아님</b>'
-                : item.weihaiOrder === null ? '<b>없음</b> — 상품정보에 없는 상품이라 🌳·이우 는 고를 수 없어요'
-                : '<b>모름</b> — 이 목록(스냅샷)엔 값이 없어요. [불러오기] 뒤에 🌳·이우 를 고를 수 있어요';
+            const db = item.yiwuOrder === true ? '<b>🌳 항상 이우</b>'
+                : item.yiwuOrder === false ? '<b>항상 이우 아님</b>'
+                : item.yiwuOrder === null ? '<b>없음</b> — 상품정보에 없는 상품이라 🌳·위해 는 고를 수 없어요'
+                : '<b>모름</b> — 이 목록(스냅샷)엔 값이 없어요. [불러오기] 뒤에 🌳·위해 를 고를 수 있어요';
             tip.classList.add('mk');
-            tip.innerHTML = '<div class="mk-title">위해주문 — 칸을 클릭할 때마다 바뀌어요</div>'
+            tip.innerHTML = '<div class="mk-title">이우주문 — 칸을 클릭할 때마다 바뀌어요</div>'
                 + list.map(m => `<div class="mk-ln${m === cur ? ' on' : ''}"><span class="mk-ic">${icon(m)}</span><span><b>${MARK_INFO[m].label}</b> · ${MARK_INFO[m].desc}</span></div>`).join('')
                 + `<div class="mk-foot">상품정보 지금: ${db}<br>다음 클릭 → <b>${MARK_INFO[nextMark(cur, persist)].label}</b><br>상품정보는 [저장]하거나 주문을 넣을 때(복사·장바구니 담기) 바뀌어요</div>`;
             tip.classList.add('show');
@@ -2383,7 +2383,7 @@
         /* ========== 액션 버튼 ========== */
 
         // [저장] — savedInputs를 DB에 저장
-        // 임시저장에 보낼 행 — 수량이 있거나 위해주문 표시를 고른 바코드 ({ barcode, qty, route_mark })
+        // 임시저장에 보낼 행 — 수량이 있거나 이우주문 표시를 고른 바코드 ({ barcode, qty, route_mark })
         function tempSaveItems() {
             const items = [];
             new Set([...savedInputs.keys(), ...savedMarks.keys()]).forEach(barcode => {
@@ -2408,8 +2408,8 @@
                     throw new Error(err.error || '저장 실패');
                 }
                 await res.json();
-                // 고른 위해주문 표시(🌳 등)를 상품정보에도 — 지난번 반영에 실패한 것도 함께
-                const flagMsg = await persistWeihaiFlags([], '입력은 저장했지만');
+                // 고른 이우주문 표시(🌳 등)를 상품정보에도 — 지난번 반영에 실패한 것도 함께
+                const flagMsg = await persistYiwuFlags([], '입력은 저장했지만');
                 if (document.getElementById('orderListOverlay').classList.contains('active')) loadOrderList();
                 alert(`입력 ${inputCount}건 저장 완료${flagMsg}`);
                 renderTable();
@@ -2421,7 +2421,7 @@
 
         // [사입복사] — Google Sheets 붙여넣기 형식으로 클립보드 복사
         async function handleCopy() {
-            const targets = orderTargets('yiwu');   // 위해주문 열이 빈칸·이우
+            const targets = orderTargets('yiwu');   // 이우주문 열이 🌳·🌱
             const rows = [];
             targets.forEach(item => {
 
@@ -2447,18 +2447,18 @@
             });
 
             if (rows.length === 0) {
-                alert('이우로 주문할 상품이 없습니다. (입력 수량이 있고 위해주문 열이 빈칸·이우 인 행)');
+                alert('이우로 주문할 상품이 없습니다. (입력 수량이 있고 이우주문 열이 🌳·🌱 인 행)');
                 return;
             }
 
             if (!await copyToClipboard(rows.join('\n'))) { alert('클립보드 복사에 실패했습니다.'); return; }
-            const flagMsg = await persistWeihaiFlags(targets);
+            const flagMsg = await persistYiwuFlags(targets);
             alert(`${rows.length}건 복사 완료 (이우)${flagMsg}`);
         }
 
         // [위해 주문] — 위해 주문용 클립보드 복사
         async function handleCopyWeihai() {
-            const targets = orderTargets('weihai');   // 위해주문 열이 🌳·🌱
+            const targets = orderTargets('weihai');   // 이우주문 열이 빈칸·위해
             const rows = [];
             targets.forEach(item => {
                 const qty = savedInputs.get(item.상품바코드);
@@ -2484,24 +2484,24 @@
             });
 
             if (rows.length === 0) {
-                alert('위해로 주문할 상품이 없습니다. (입력 수량이 있고 위해주문 열이 🌳·🌱 인 행)');
+                alert('위해로 주문할 상품이 없습니다. (입력 수량이 있고 이우주문 열이 빈칸·위해 인 행)');
                 return;
             }
 
             if (!await copyToClipboard(rows.join('\n'))) { alert('클립보드 복사에 실패했습니다.'); return; }
-            const flagMsg = await persistWeihaiFlags(targets);
+            const flagMsg = await persistYiwuFlags(targets);
             alert(`${rows.length}건 복사 완료 (위해)${flagMsg}`);
         }
 
         /* ========== [위해 주문 ▸ 🛒 장바구니 담기] (2026-10-28) ==========
-           stock_management [주문 ▸ 장바구니] 와 같은 흐름 — 대상 = 지금 화면에 보이는 행 중 입력 수량 > 0 이고 위해주문 열이 🌳·🌱 (위해 복사와 같은 범위)
+           stock_management [주문 ▸ 장바구니] 와 같은 흐름 — 대상 = 지금 화면에 보이는 행 중 입력 수량 > 0 이고 이우주문 열이 빈칸·위해 (위해 복사와 같은 범위)
            카트: immongbr 의 NEW 카트 중 고르거나 ➕ NEW 로 새로 만든다 · 배송유형: 서버가 정한 목록(첫 값 기본)
            저장은 서버(POST /api/shortage/weihai-cart)가 한다 — 계정 고정, rk_inventories 에서 sku_id·혼용률·권장연령을 채움 */
         const CART_NEW = '__NEW__';
         let cartBusy = false;        // 저장 중
         let cartLoading = false;     // 카트 목록 읽는 중
         let cartTargets = [];
-        let cartRows = [];           // cartTargets 의 원래 행 — 저장 뒤 상품정보 위해주문 반영에 쓴다
+        let cartRows = [];           // cartTargets 의 원래 행 — 저장 뒤 상품정보 이우주문 반영에 쓴다
         let cartType = 'DIRECT';
         let cartTypeList = ['DIRECT', 'COUPANG', 'STOCK'];   // 서버(/api/shortage/weihai-carts shipmentTypes)가 정한다 — 이건 읽기 전 기본값
         function weihaiCartTargets() {
@@ -2511,7 +2511,7 @@
         async function openCartModal() {
             cartRows = orderTargets('weihai');
             cartTargets = weihaiCartTargets();
-            if (!cartTargets.length) { alert('위해로 주문할 상품이 없습니다. (입력 수량이 있고 위해주문 열이 🌳·🌱 인 행)'); return; }
+            if (!cartTargets.length) { alert('위해로 주문할 상품이 없습니다. (입력 수량이 있고 이우주문 열이 빈칸·위해 인 행)'); return; }
             const esc = v => String(v == null ? '' : v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
             const sel = document.getElementById('cartSelect');
             const name = document.getElementById('cartNameInput');
@@ -2606,7 +2606,7 @@
                 if (!res.ok) throw new Error(data.error || '전송 실패');
                 cartBusy = false;
                 closeCartModal();
-                const flagMsg = await persistWeihaiFlags(cartRows);
+                const flagMsg = await persistYiwuFlags(cartRows);
                 alert(`${data.count}건 전송 완료 (${data.cartName})${flagMsg}`
                     + (cartType === 'COUPANG' ? '\n\npurchase-agent 장바구니에서 쿠팡 사이즈를 채워야 [주문]할 수 있어요.' : ''));
                 // 🛒 를 바로 반영 — '주문' 열을 다시 계산
@@ -2644,7 +2644,7 @@
 
         /* ========== 주문목록 — 오른쪽 절반 너비 (이우 · 위해 탭) (2026-10-29) ==========
            서버에 [저장]된 입력(coupang_order_save_temp) 중 수량 > 0 을 주문처별로 — 열 때마다 서버에서 읽는다
-             주문처 = 저장한 위해주문 표시(없으면 상품정보 weihai_order)대로 — 화면 행과 같은 규칙(resolveMark)
+             주문처 = 저장한 이우주문 표시(없으면 상품정보 yiwu_order)대로 — 화면 행과 같은 규칙(resolveMark)
            · [불러오기] 전이어도, 다른 PC 에서 열어도 같은 목록
            · [저장] 하지 않은 변경은 여기 안 보인다 → 알림 문구
            · 이우 복사·장바구니 담기는 지금 화면 목록 기준이라, 저장 목록 중 화면 밖 상품은 알림 문구 */
@@ -2696,7 +2696,7 @@
             const tabsEl = document.getElementById('orderListTabs');
             const body = document.getElementById('orderListBody');
             const foot = document.getElementById('orderListFooter');
-            const tabsHtml = lists => [['yiwu', '이우'], ['weihai', '🌳 위해']].map(([r, label]) =>
+            const tabsHtml = lists => [['yiwu', '🌳 이우'], ['weihai', '위해']].map(([r, label]) =>
                 `<button type="button" role="tab" aria-selected="${r === orderListRoute}" class="${r === orderListRoute ? 'on' : ''}" onclick="setOrderListRoute('${r}')">${label}${lists ? ` <span class="cnt">${lists[r].length.toLocaleString()}</span>` : ''}</button>`).join('');
             if (orderListAll === null) {
                 tabsEl.innerHTML = tabsHtml(null);
@@ -2710,7 +2710,7 @@
             orderListAll.forEach(r => {
                 if (!r.barcode || !(r.qty > 0)) return;
                 const it = loaded.get(r.barcode);
-                const mark = resolveMark(r.route_mark, r.weihaiOrder);
+                const mark = resolveMark(r.route_mark, r.yiwuOrder);
                 lists[routeOfMark(mark)].push({
                     barcode: r.barcode, qty: r.qty, mark,
                     skuId: (it && it.skuId) || r.skuId || '',
@@ -2725,7 +2725,7 @@
             } else if (!rows.length) {
                 body.innerHTML = `<div class="slide-panel-empty">저장된 ${orderListRoute === 'yiwu' ? '이우' : '위해'} 주문이 없습니다.</div>`;
             } else {
-                body.innerHTML = `<table><thead><tr><th style="width:40px">No.</th><th>SKU</th><th>바코드</th><th style="text-align:left">상품이름</th><th style="text-align:right">수량</th><th>위해주문</th></tr></thead><tbody>`
+                body.innerHTML = `<table><thead><tr><th style="width:40px">No.</th><th>SKU</th><th>바코드</th><th style="text-align:left">상품이름</th><th style="text-align:right">수량</th><th>이우주문</th></tr></thead><tbody>`
                     + rows.map((it, i) => `<tr${loaded.has(it.barcode) ? ` onclick="navigateToItem('${badgeEsc(it.barcode)}')"` : ' style="cursor:default"'}><td>${i + 1}</td><td>${badgeEsc(it.skuId)}</td><td>${badgeEsc(it.barcode)}</td><td class="name-cell" title="${badgeEsc(it.name)}">${badgeEsc(it.name)}</td><td class="num">${Number(it.qty).toLocaleString()}</td><td>${markHtml(it.mark) || '–'}</td></tr>`).join('')
                     + '</tbody></table>';
             }

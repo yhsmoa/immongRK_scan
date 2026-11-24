@@ -2993,7 +2993,7 @@ app.get('/api/shortage', async (req, res) => {
         const cutoff56 = new Date(now); cutoff56.setDate(cutoff56.getDate() - 56);
 
         const invP = rkShared.chunkedPool(bcAll, 200, (batch) => pageAllRetry(
-            () => supabase.from('rk_inventories').select('barcode, sku_id, img, purchase_price, weihai_order').in('barcode', batch).order('id', { ascending: true })), POOL);
+            () => supabase.from('rk_inventories').select('barcode, sku_id, img, purchase_price, yiwu_order').in('barcode', batch).order('id', { ascending: true })), POOL);
         const [scanRows, invRows, forecastRows, yiwuRows, stockRows, weihai, cnStock, histRows, cn] = await Promise.all([
             rkShared.chunkedPool(bcAll, 200, (batch) => pagedQuery(
                 () => supabase.from('rk_ship_box_items').select('order_number, barcode, qty').in('barcode', batch),
@@ -3062,10 +3062,10 @@ app.get('/api/shortage', async (req, res) => {
         const barcodeToImg = new Map();
         // barcode → 매입가 (rk_inventories.purchase_price) — 화면이 쿠팡 판매가(광고결과)와 비교해 [가격오류]를 표시한다 (2026-10-20)
         const barcodeToPurchase = new Map();
-        // barcode → 위해주문(항상 위해) — 상품정보에 없는 바코드는 없음(null): 화면이 🌳·이우 를 막는다 (2026-10-28)
-        const barcodeToWeihai = new Map();
+        // barcode → 이우주문(항상 이우) — 상품정보에 없는 바코드는 없음(null): 화면이 🌳·위해 를 막는다 (2026-10-28 · 2026-11-24 이우/위해 뒤집음)
+        const barcodeToYiwu = new Map();
         invRows.forEach(r => {
-            if (r.barcode) barcodeToWeihai.set(r.barcode, barcodeToWeihai.get(r.barcode) === true || r.weihai_order === true);
+            if (r.barcode) barcodeToYiwu.set(r.barcode, barcodeToYiwu.get(r.barcode) === true || r.yiwu_order === true);
             if (r.barcode && r.sku_id) barcodeToSku.set(r.barcode, r.sku_id);
             if (r.barcode && r.img) barcodeToImg.set(r.barcode, r.img);
             if (r.barcode && r.purchase_price != null) barcodeToPurchase.set(r.barcode, Number(r.purchase_price));
@@ -3156,7 +3156,7 @@ app.get('/api/shortage', async (req, res) => {
             item.remainQty = remainMap.get(item.상품바코드) || 0;
             item.img = barcodeToImg.get(item.상품바코드) || '';
             item.purchasePrice = barcodeToPurchase.has(item.상품바코드) ? barcodeToPurchase.get(item.상품바코드) : null;
-            item.weihaiOrder = barcodeToWeihai.has(item.상품바코드) ? barcodeToWeihai.get(item.상품바코드) : null;
+            item.yiwuOrder = barcodeToYiwu.has(item.상품바코드) ? barcodeToYiwu.get(item.상품바코드) : null;
         });
 
         // 6단계 병합: 발주내역 기반 2주 구간별 집계 (-1-2W, -3-4W, -5-6W, -7-8W)
@@ -3506,7 +3506,7 @@ app.get('/api/shortage/yiwu-orders/:barcode', async (req, res) => {
 // ==================== 상품부족 입력값 임시저장 API ====================
 
 // GET: 저장된 입력값 전체 조회
-//   ?detail=1 — 주문목록용: 상품정보(rk_inventories)의 SKU·상품명·위해주문을 붙인다 (상품정보에 없는 바코드는 weihaiOrder null) (2026-10-29)
+//   ?detail=1 — 주문목록용: 상품정보(rk_inventories)의 SKU·상품명·이우주문을 붙인다 (상품정보에 없는 바코드는 yiwuOrder null) (2026-10-29)
 app.get('/api/shortage/save-temp', async (req, res) => {
     try {
         const { data, error } = await supabase
@@ -3515,12 +3515,12 @@ app.get('/api/shortage/save-temp', async (req, res) => {
         if (error) throw error;
         const rows = data || [];
         if (req.query.detail === '1' && rows.length) {
-            const info = new Map();   // barcode → { skuId, name, weihaiOrder }
+            const info = new Map();   // barcode → { skuId, name, yiwuOrder }
             const barcodes = [...new Set(rows.map(r => r.barcode).filter(Boolean))];
             for (let i = 0; i < barcodes.length; i += 200) {
                 const { data: inv, error: invError } = await supabase
                     .from('rk_inventories')
-                    .select('barcode, sku_id, name, weihai_order')
+                    .select('barcode, sku_id, name, yiwu_order')
                     .in('barcode', barcodes.slice(i, i + 200));
                 if (invError) throw invError;
                 (inv || []).forEach(r => {
@@ -3528,7 +3528,7 @@ app.get('/api/shortage/save-temp', async (req, res) => {
                     info.set(r.barcode, {
                         skuId: (prev && prev.skuId) || (r.sku_id == null ? '' : String(r.sku_id)),
                         name: (prev && prev.name) || r.name || '',
-                        weihaiOrder: (prev && prev.weihaiOrder === true) || r.weihai_order === true,
+                        yiwuOrder: (prev && prev.yiwuOrder === true) || r.yiwu_order === true,
                     });
                 });
             }
@@ -3536,7 +3536,7 @@ app.get('/api/shortage/save-temp', async (req, res) => {
                 const it = info.get(r.barcode);
                 r.skuId = it ? it.skuId : '';
                 r.name = it ? it.name : '';
-                r.weihaiOrder = it ? it.weihaiOrder : null;
+                r.yiwuOrder = it ? it.yiwuOrder : null;
             });
         }
         res.json(rows);
@@ -3546,8 +3546,8 @@ app.get('/api/shortage/save-temp', async (req, res) => {
     }
 });
 
-// 위해주문 표시 — none(빈칸·항상 이우) | tree(🌳 항상 위해) | sprout(🌱 이번만 위해) | yiwu(이번만 이우) · 정의: supabase/rk_weihai_route.sql
-const ROUTE_MARKS = ['none', 'tree', 'sprout', 'yiwu'];
+// 이우주문 표시 — none(빈칸·항상 위해) | tree(🌳 항상 이우) | sprout(🌱 이번만 이우) | weihai(이번만 위해) · 정의: supabase/rk_yiwu_route.sql
+const ROUTE_MARKS = ['none', 'tree', 'sprout', 'weihai'];
 const routeMarkOf = v => (ROUTE_MARKS.includes(v) ? v : null);
 
 // POST: 입력값 일괄 저장 (DELETE-all + INSERT)  items:[{ barcode, qty, route_mark }]
