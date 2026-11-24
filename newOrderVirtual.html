@@ -476,6 +476,7 @@
             try{
                 const j=await postJson('/api/wow/pull',{});
                 if((j.errors||[]).length) toast('와우출고 확인 실패: '+j.errors.map(e=>e.orderNumber+' '+e.error).join(' · '), 6000);
+                else if(j.cancelled) toast(`중국에서 발주취소한 위해 박스 ${j.cancelled}개를 지웠습니다 — 그 수량은 발주서에 부족으로 돌아갑니다`, 6000);
             }catch(e){ toast('와우출고 확인 실패: '+e.message, 5000); }
         }
         const srcCls=s=>s==='입고'?'src-inb':s==='위해'?'src-wh':'src-stock';

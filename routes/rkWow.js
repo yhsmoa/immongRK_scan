@@ -8,10 +8,11 @@
  *   끌어오기 pull — 담은 수량 · 출고를 로켓에 반영하고, 양쪽 발주번호 합집합에서 어긋난 발주서를 다시 밀어준다.
  *     줄이 같아도 박스 부가 정보(입고예정일 · 총 박스 수 · 센터 연락처/주소 — 1688-invoice 화면 · 택배엑셀용)가 다르면 다시 밀어준다.
  *     중국 작업자가 모바일에서 박스 크기를 바꿨으면(ft_wow_boxes.packed_box_size) 위해 박스의 크기를 그 값으로 맞춘다 (2026-11-24).
+ *     중국에서 [발주취소] 한 박스(ft_wow_boxes.cancelled_at)는 위해 박스를 지우고 그 수량만큼 위해 배정을 줄인다 → 발주서에 부족이 다시 생긴다 (2026-11-24).
  *   서버 프로세스 1개 전제(Procfile) — 줄 세우기는 이 프로세스 안에서만 유효하다.
  *
  *   GET  /api/wow/status?orderNumbers=a,b → { orders:{ 발주번호: 'ok'|'diff' } }  (위해 배정·박스가 양쪽 어디에도 없는 발주서는 빠진다)
- *   POST /api/wow/pull                     → { picked, shipped, sized, doneOrders, pushed, errors:[{ orderNumber, error }] }
+ *   POST /api/wow/pull                     → { picked, shipped, sized, cancelled, doneOrders, pushed, errors:[{ orderNumber, error }] }
  */
 const express = require('express');
 const S = require('./rkShared');
@@ -58,7 +59,9 @@ async function wowBoxes(nos, cols) {
 //   출고는 로켓 rk_ship_boxes.shipped_at 이 기준이라 여기서 보지 않는다 (끌어오기가 맞춘다)
 //   2026-11-24: "담았다" = picked_at (작업완료 시각). 예전에는 box_info_id(마킹 상자)로 봤는데,
 //     이제 마킹 상자는 출고준비 때 정해져서 그 전에는 비어 있다. 서류준비와 출고준비 사이에 순서지정 · 합포장(부착완료)이 생겼다
+//   발주취소: 중국에서 [발주취소] 한 박스 — 다음 끌어오기가 이 위해 박스를 지운다 (그 사이에만 보인다)
 const stageOf = (b) => {
+  if (b.cancelled_at) return '발주취소';
   if (!b.picked_at) return b.work_started_at ? '작업중' : '신규';
   if (b.ready_at) return '출고준비';
   if (b.attached_at) return '합포장';
@@ -66,7 +69,7 @@ const stageOf = (b) => {
   return b.label_path && b.manifest_path ? '서류준비' : '작업완료';
 };
 async function boxStages(nos) {
-  const boxes = await wowBoxes(nos, 'picked_at, work_started_at, label_path, manifest_path, ship_seq, attached_at, ready_at');
+  const boxes = await wowBoxes(nos, 'picked_at, work_started_at, label_path, manifest_path, ship_seq, attached_at, ready_at, cancelled_at');
   return new Map([...boxes].map(([k, b]) => [k, stageOf(b)]));
 }
 
@@ -170,6 +173,10 @@ async function setRowQty(row, q) {
 }
 async function setBoxSize(box, size) {
   const { error } = await sb.from('rk_ship_boxes').update({ box_size: size }).eq('id', box.id);
+  if (error) throw error;
+}
+async function deleteBox(box) {
+  const { error } = await sb.from('rk_ship_boxes').delete().eq('id', box.id);   // rk_ship_box_items 는 on delete cascade 로 함께 삭제
   if (error) throw error;
 }
 async function setItemQty(it, q) {
@@ -303,10 +310,24 @@ function sizeWork(no, o, meta) {
   }
   return out;
 }
+// 중국에서 [발주취소] 한 박스 — 출고 전 위해 박스 중 구매 DB 의 박스 행이 "취소됨"(cancelled_at)인 것
+//   구매 DB 는 그 박스의 줄 · 선반 배정을 이미 지웠고, 로켓이 박스를 뺄 때까지 취소된 박스 행만 남겨 다시 들어오는 것을 막는다
+//   (1688-invoice supabase/storage/012_wow_cancel.sql). meta: wowBoxes 결과
+function cancelWork(no, o, meta) {
+  return o.boxes.filter((b) => !b.shipped_at && (meta.get(boxKey(no, b.box_no)) || {}).cancelled_at);
+}
+// 구매 DB 에 취소된 박스 행이 남아 있는 발주번호 — 로켓에 그 박스가 없어도 한 번 밀어줘야 행이 지워진다
+//   (안 지워지면 같은 박스 번호를 다시 만들었을 때 줄이 들어가지 않는다)
+async function cancelledOrders() {
+  const uid = await W.accountId();
+  const rows = await W.pageAll(() => W.odb.from('ft_wow_boxes').select('id, order_number').eq('user_id', uid).not('cancelled_at', 'is', null));
+  return [...new Set(rows.map((r) => String(r.order_number)))];
+}
 async function pull() {
   // 로켓 쪽: 출고 안 된 위해 박스가 있거나 진행중 발주서의 위해 배정이 있는 발주서 (처리완료 발주서의 행은 기존 재고·입고처럼 남아 있다)
-  const [cn, rb, rr] = await Promise.all([
+  const [cn, dropped, rb, rr] = await Promise.all([
     orderState(null),
+    cancelledOrders().then((list) => new Set(list)),
     S.pageAll(() => sb.from('rk_ship_boxes').select('order_number').eq('origin', WH).is('shipped_at', null).order('id', { ascending: true })),
     S.listActiveOrderNumbers('rk_orders').then((active) => S.chunked(active, 200, (part) => S.pageAll(() => sb.from('rk_shipping_list')
       .select('order_number').eq('source', WH).eq('status', '출고예정').in('order_number', part).order('id', { ascending: true })))),
@@ -315,25 +336,44 @@ async function pull() {
   const pre = await loadRocket(mine);
   const extra = mine.filter((no) => !cn.has(no));
   if (extra.length) for (const [no, st] of await orderState(extra)) cn.set(no, st);
-  const nos = [...new Set([...cn.keys(), ...mine])];
+  const nos = [...new Set([...cn.keys(), ...mine, ...dropped])];
   const [rk, meta] = await Promise.all([
     loadRocket(nos.filter((no) => !pre.has(no))).then((m) => new Map([...pre, ...m])),
     wowBoxes(nos, [...Object.values(BOX_META), 'packed_box_size'].join(', ')),
   ]);
-  const out = { picked: 0, shipped: 0, sized: 0, doneOrders: [], pushed: 0, errors: [] };
+  const out = { picked: 0, shipped: 0, sized: 0, cancelled: 0, doneOrders: [], pushed: 0, errors: [] };
   for (const no of nos) {
     const st = cn.get(no) || [];
     const w0 = pullWork(rk.get(no), st);
     const d0 = desiredOf(rk.get(no));
     const metaDiff = !sameMeta(no, d0, meta);
     const sizes0 = sizeWork(no, rk.get(no), meta);
-    if (!w0.picks.length && !w0.ship.length && !sizes0.length && !metaDiff && sameState(d0, st)) continue;
+    if (!w0.picks.length && !w0.ship.length && !sizes0.length && !metaDiff && !dropped.has(no) && sameState(d0, st)) continue;
     try {
       await wowOrder(no, async (p) => {
         // 줄 세운 안에서 양쪽을 다시 읽는다 (그사이 중국에서 [담기 취소] 했으면 옛 담은 수량으로 줄이지 않게)
-        const [rk1, st1, meta1] = await Promise.all([loadRocket([no]), orderState([no]), wowBoxes([no], 'packed_box_size')]);
+        const [rk1, st1, meta1] = await Promise.all([loadRocket([no]), orderState([no]), wowBoxes([no], 'packed_box_size, cancelled_at')]);
         let o = rk1.get(no);
         const s = st1.get(no) || [];
+        const cancels = cancelWork(no, o, meta1);
+        if (cancels.length) {
+          // 중국에서 발주취소 — 위해 박스를 지우고(줄도 같이 지워진다) 그 수량만큼 위해 배정을 줄인다 → 발주서에 부족이 다시 생긴다
+          //   박스를 먼저 지운다: 중간에 끊겨도 그 배정이 박스 미정으로 남을 뿐, 다음 끌어오기가 배정을 두 번 줄이는 일은 없다
+          const left = new Map([...o.rows].map(([bc, row]) => [bc, row.qty]));
+          for (const b of cancels) {
+            const its = o.items.filter((it) => it.box_id === b.id);
+            await deleteBox(b);
+            for (const it of its) {
+              const row = o.rows.get(it.barcode);
+              if (!row) continue;
+              const q = Math.max(0, left.get(it.barcode) - it.qty);
+              await setRowQty(row, q);
+              left.set(it.barcode, q);
+            }
+            out.cancelled++;
+          }
+          o = (await loadRocket([no])).get(no);
+        }
         const w = pullWork(o, s);
         const sizes = sizeWork(no, o, meta1);
         for (const x of sizes) {   // 중국에서 바꾼 박스 크기 — 실제로 담은 크기가 맞다 (쉽먼트 화면 · 서류가 이 크기를 쓴다)
@@ -352,7 +392,8 @@ async function pull() {
         }
         if (w.picks.length || w.ship.length || sizes.length) o = (await loadRocket([no])).get(no);
         // 크기를 맞췄으면 그 크기로 다시 밀어준다 (구매 DB 의 로켓 크기 칸도 같은 값이 되게)
-        if (metaDiff || sizes.length || !sameState(desiredOf(o), s)) { await p(null, { force: true }); out.pushed++; }
+        // 취소된 박스 행이 남은 발주서는 그 박스를 뺀 상태를 보내야 구매 DB 가 그 행을 지운다
+        if (metaDiff || sizes.length || dropped.has(no) || !sameState(desiredOf(o), s)) { await p(null, { force: true }); out.pushed++; }
       });
     } catch (e) {
       console.error('[rk] wow pull', no, e.message);

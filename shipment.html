@@ -1433,7 +1433,7 @@
 
         syncActions();
         // 와우출고 — 중국에서 담은 수량·출고를 먼저 가져온다 (위해 박스의 출고완료는 이것으로만 바뀐다). 실패해도 목록은 연다
-        fetch('/api/wow/pull',{method:'POST'}).then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j.error||'HTTP '+r.status); if((j.errors||[]).length) toast('와우출고 확인 실패: '+j.errors.map(e=>e.orderNumber+' '+e.error).join(' · ')); }))
+        fetch('/api/wow/pull',{method:'POST'}).then(r=>r.json().then(j=>{ if(!r.ok) throw new Error(j.error||'HTTP '+r.status); if((j.errors||[]).length) toast('와우출고 확인 실패: '+j.errors.map(e=>e.orderNumber+' '+e.error).join(' · ')); else if(j.cancelled) toast(`중국에서 발주취소한 위해 박스 ${j.cancelled}개를 지웠습니다 — 그 수량은 발주서에 부족으로 돌아갑니다`); }))
             .catch(e=>toast('와우출고 확인 실패: '+e.message)).finally(loadOrders);
     </script>
 </body>
