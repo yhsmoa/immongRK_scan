@@ -2503,7 +2503,7 @@
         let cartTargets = [];
         let cartRows = [];           // cartTargets 의 원래 행 — 저장 뒤 상품정보 위해주문 반영에 쓴다
         let cartType = 'DIRECT';
-        let cartTypeList = ['DIRECT', 'COUPANG'];
+        let cartTypeList = ['DIRECT', 'COUPANG', 'STOCK'];   // 서버(/api/shortage/weihai-carts shipmentTypes)가 정한다 — 이건 읽기 전 기본값
         function weihaiCartTargets() {
             return cartRows
                 .map(it => ({ barcode: it.상품바코드, qty: Number(savedInputs.get(it.상품바코드)), skuId: it.skuId || '', name: it.상품이름 || '' }));

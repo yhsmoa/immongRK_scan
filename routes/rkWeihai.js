@@ -36,8 +36,12 @@ const ORDER_KEY = process.env.ORDER_SUPABASE_KEY || '';
 const ACCOUNT = String(process.env.ORDER_ACCOUNT_USERNAME || '').trim();
 const odb = ORDER_URL && ORDER_KEY ? createClient(ORDER_URL, ORDER_KEY) : null;
 
-// 장바구니에 담을 때 고르는 배송유형 — 첫 값이 기본. immongbr 은 PERSONAL 이 없다. STOCK 이 생기면 여기에 추가
-const SHIPMENT_TYPES = ['DIRECT', 'COUPANG'];
+// 장바구니에 담을 때 고르는 배송유형 — 첫 값이 기본. immongbr 은 PERSONAL 이 없다
+//   STOCK(보관)은 purchase-agent 장바구니와 같이 shipment_type 이 아니라 arrival_route 로 저장한다 (cartRouteFields)
+//     STOCK → { shipment_type: null, arrival_route: 'STOCK' } · 그 외 → { shipment_type: 값, arrival_route: 'SHIPMENT' }
+const STOCK = 'STOCK';
+const SHIPMENT_TYPES = ['DIRECT', 'COUPANG', STOCK];
+const cartRouteFields = (t) => (t === STOCK ? { shipment_type: null, arrival_route: STOCK } : { shipment_type: t, arrival_route: 'SHIPMENT' });
 const CART_COUNT_STATUSES = ['NEW', 'ORDER'];
 const CHUNK = 100;          // .in() 한 번에 넣는 개수 (URL 길이)
 const INSERT_CHUNK = 500;
@@ -234,7 +238,7 @@ router.post('/api/shortage/weihai-cart', async (req, res) => {
         user_id: uid,
         cart_id: cid,
         cart_name: cname,
-        shipment_type: shipmentType,
+        ...cartRouteFields(shipmentType),
         cart_seq: startSeq + i,
         set_total: 1,     // 단품 — purchase-agent [저장] 정규화 결과와 같은 값
         set_seq: 1,
