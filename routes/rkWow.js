@@ -444,12 +444,26 @@ router.get('/api/wow/status', async (req, res) => {
   }
 });
 
-// 🇨🇳 위해 창고 재고 — 재고관리(/stock) 의 🇨🇳 열. 위해 창고에 있는 바코드만 { 바코드: [재고, 출고예정, 잔여수량] }
+// 🇨🇳 위해 창고 재고 — 재고관리(/stock) 의 🇨🇳 열. 위해 창고에 있는 바코드만 { 바코드: [재고, 출고예정, 잔여수량, SKU ID, 상품명] }
 //   화면은 잔여수량을 보여 준다 (상품부족 🇨🇳 와 같은 값 — 🇰🇷 rk_stocks 가 배정분을 이미 뺀 것과 같은 기준)
+//   SKU ID · 상품명 = rk_inventories (한국 재고에 없고 중국에만 있는 바코드도 줄로 보여 주려고). 재고 0 인 바코드는 찾지 않는다
+//     상품명을 못 읽어도 수량은 보낸다 (이름만 비고 서버 기록에 남는다) — 수량이 주인공이라 이름 때문에 열 전체가 죽지 않게
 router.get('/api/wow/stock', async (req, res) => {
   try {
+    const stock = await stockByBarcode();
+    const need = [...stock].filter(([, s]) => s.qty > 0).map(([bc]) => bc);
+    const inv = await S.chunkedPool(need, 200, async (part) => {
+      const { data, error } = await sb.from('rk_inventories').select('barcode, sku_id, name').in('barcode', part);
+      if (error) throw error;
+      return data || [];
+    }).catch((e) => { console.error('[rk] wow/stock 상품명:', e); return []; });
+    const info = new Map();
+    for (const r of inv) { const bc = String(r.barcode || '').trim(); if (bc && !info.has(bc)) info.set(bc, r); }
     const out = {};
-    for (const [bc, s] of await stockByBarcode()) out[bc] = [s.qty, s.reserved, s.available];
+    for (const [bc, s] of stock) {
+      const i = info.get(bc);
+      out[bc] = [s.qty, s.reserved, s.available, i ? i.sku_id || '' : '', i ? i.name || '' : ''];
+    }
     res.json(out);
   } catch (e) {
     console.error('[rk] wow/stock:', e);
