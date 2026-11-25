@@ -5,14 +5,19 @@
  *   · 이우 📦  — 우리 DB yiwu_br_orders (server.js 5.5단계, 기존 그대로)
  *   · 위해 🛒  — ft_carts.status NEW(편집 중)·ORDER(주문대기) 카트의 ft_cart_items.order_qty 합
  *                DONE 카트는 이미 ft_order_items 로 넘어간 것이라 세지 않는다 (위해 📦 에서 센다)
- *   · 위해 📦  — ft_order_items.status PROCESSING 의 (주문 − 취소/반품 − 출고완료) 합
+ *   · 위해 📦  — ft_order_items.status PROCESSING 의 (주문 − 취소/반품 − 출고완료 − 창고에 있는 수량 − 와우 박스에 담은 수량) 합
  *                취소/반품 = ft_fulfillment_inbounds type CANCEL·RETURN
  *                출고완료  = ft_fulfillment_outbounds type PACKED 이면서 쉽먼트에 실린 것(shipment_id 있음)
- *                          — 포장만 하고 아직 안 나간 것(shipment_id 없음)은 주문으로 계속 센다
- *                주문 품목 하나가 음수가 되지 않게 0 에서 자른 뒤 바코드별로 더한다
- *   세트 상품은 stock_management 와 같이 set_seq 가 1(또는 없음)인 행만 센다 (세트 구성 행 중복 방지)
+ *                          — 일반 박스에 포장만 하고 아직 안 나간 것(shipment_id 없음)은 주문으로 계속 센다
+ *                창고에 있는 수량 · 와우 박스에 담은 수량 = 구매 DB ft_storage_inhouse (2026-11-26, 1688-invoice supabase/storage/013_wow_sets.sql)
+ *                          — 보관(STOCK) 상품은 위해 창고에 넣은 뒤에도 출고될 때까지 진행중이라, 빼지 않으면 같은 물건이
+ *                            '주문' 과 🇨🇳 재고(또는 위해 배정)에 두 번 잡힌다. 남는 것 = 아직 창고에 안 들어온 수량
+ *                상품(product_id) 하나가 음수가 되지 않게 0 에서 자른 뒤 바코드별로 더한다
+ *   세트 상품은 stock_management 와 같이 set_seq 가 1(또는 없음)인 행만 센다 (세트 구성 행 중복 방지 · 1세트 = 1).
+ *     출고완료는 세트의 어느 구성 행에 적혀 있어도 그 상품의 것으로 센다 (포장은 상품당 한 번 기록된다)
  *
  * '재고' 열의 🇨🇳 위해 창고 재고는 잔여수량(routes/rkWow.js available, 2026-11-18) — 🇰🇷 rk_stocks 와 더해 보여 준다.
+ *   세트 상품도 잡힌다 (2026-11-26 — 구매 DB 의 와우 대상 정의에서 "세트 아님" 을 없앰).
  *
  * 계정: 서버가 ORDER_ACCOUNT_USERNAME(immongbr) 으로 ft_users.id 를 찾아 고정한다. 화면이 보낸 계정 값은 받지 않는다.
  *
@@ -111,7 +116,7 @@ async function weihaiQtyByBarcode(barcodes) {
   if (!list.length) return { cart, order };
   const add = (m, bc, q) => { if (q) m.set(bc, (m.get(bc) || 0) + q); };
 
-  const [cartRows, orderItems] = await Promise.all([
+  const [cartRows, orderItems, inhouseRows] = await Promise.all([
     // 🛒 — NEW·ORDER 카트 → 그 카트의 행
     pageAll(() => odb.from('ft_carts').select('id').eq('user_id', uid).in('status', CART_COUNT_STATUSES)).then((carts) => {
       const ids = carts.map((c) => c.id);
@@ -120,27 +125,44 @@ async function weihaiQtyByBarcode(barcodes) {
         .select('id, barcode, order_qty, set_seq')
         .eq('user_id', uid).in('cart_id', cids).in('barcode', bcs)), 1), 4);
     }),
-    // 📦 — 진행 중 주문 품목
+    // 📦 — 진행 중 주문 품목 (세트 구성 행 포함 — 출고완료를 상품 단위로 모으려고)
     S.chunkedPool(list, CHUNK, (bcs) => pageAll(() => odb.from('ft_order_items')
-      .select('id, barcode, order_qty, set_seq')
+      .select('id, barcode, order_qty, set_seq, product_id')
       .eq('user_id', uid).eq('status', 'PROCESSING').in('barcode', bcs)), 4),
+    // 창고에 들어와 있는 수량 — 상품별 { stocked: 지금 창고에 있는 수량, wow_packed: 와우 박스에 담고 아직 안 나간 수량 }
+    pageAll(() => odb.rpc('ft_storage_inhouse', { p_user_id: uid }), ['product_id']),
   ]);
 
   cartRows.forEach((r) => { if (r.barcode && !isSetChild(r)) add(cart, r.barcode, toInt(r.order_qty)); });
 
+  // 상품(product_id) 단위로 묶는다 — 세트는 대표 행(set_seq 1 또는 없음)의 주문수량 · 바코드, 1세트 = 1
+  const keyOf = (r) => r.product_id || `item:${r.id}`;
+  const products = new Map();   // 상품 → { barcode, qty: 주문 − 취소/반품 − 출고완료 }
   const live = orderItems.filter((r) => r.barcode && !isSetChild(r));
-  const ids = live.map((r) => r.id);
-  const minus = new Map();   // order_item_id → 취소/반품 + 출고완료
-  if (ids.length) {
+  live.forEach((r) => {
+    const p = products.get(keyOf(r)) || products.set(keyOf(r), { barcode: r.barcode, qty: 0 }).get(keyOf(r));
+    p.qty += toInt(r.order_qty);
+  });
+  const keyById = new Map(orderItems.filter((r) => products.has(keyOf(r))).map((r) => [r.id, keyOf(r)]));
+  const liveIds = live.map((r) => r.id);
+  const allIds = [...keyById.keys()];
+  if (allIds.length) {
     const [inbounds, outbounds] = await Promise.all([
-      S.chunkedPool(ids, CHUNK, (part) => pageAll(() => odb.from('ft_fulfillment_inbounds')
+      // 취소/반품은 대표 행 것만 (구성 행마다 따로 적히면 세트 수의 몇 배가 된다)
+      S.chunkedPool(liveIds, CHUNK, (part) => pageAll(() => odb.from('ft_fulfillment_inbounds')
         .select('id, order_item_id, quantity').in('order_item_id', part).in('type', ['CANCEL', 'RETURN'])), 4),
-      S.chunkedPool(ids, CHUNK, (part) => pageAll(() => odb.from('ft_fulfillment_outbounds')
+      // 출고완료는 그 상품의 어느 행에 적혀 있든 센다
+      S.chunkedPool(allIds, CHUNK, (part) => pageAll(() => odb.from('ft_fulfillment_outbounds')
         .select('id, order_item_id, quantity').in('order_item_id', part).eq('type', 'PACKED').not('shipment_id', 'is', null)), 4),
     ]);
-    [...inbounds, ...outbounds].forEach((r) => minus.set(r.order_item_id, (minus.get(r.order_item_id) || 0) + toInt(r.quantity)));
+    [...inbounds, ...outbounds].forEach((r) => { products.get(keyById.get(r.order_item_id)).qty -= toInt(r.quantity); });
   }
-  live.forEach((r) => add(order, r.barcode, Math.max(0, toInt(r.order_qty) - (minus.get(r.id) || 0))));
+  // 이미 위해 창고에 들어온 수량은 '주문' 이 아니다 — 🇨🇳 재고(또는 위해 배정)에서 센다
+  inhouseRows.forEach((r) => {
+    const p = products.get(r.product_id);
+    if (p) p.qty -= toInt(r.stocked) + toInt(r.wow_packed);
+  });
+  products.forEach((p) => add(order, p.barcode, Math.max(0, p.qty)));
 
   return { cart, order };
 }

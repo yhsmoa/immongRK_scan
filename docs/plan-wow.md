@@ -40,7 +40,8 @@
   - `wow_box_id is null` = 배정만 됐고 박스 미정(예약은 되지만 담을 수 없다)
 - 뷰 `ft_storage_available(user_id, product_id, qty, reserved, available)` — **출고예정·잔여수량의 유일한 정의**
   - `qty` = `ft_storage_balance` 의 상품 합 · `reserved` = 와우 미담음 줄(`picked_at is null`) 수량 합 + 쉽먼트 요청(REQUESTED) 수량 합 · `available = qty − reserved`
-- 와우 대상 상품(바코드 → product_id)도 **한 곳**에서 정의: 그 계정의 `arrival_route='STOCK'` · DONE 아님 · `set_total ≤ 1` · `trim(barcode)` 일치. 여럿이면 `first_putaway_at` 빠른 순 → product_id 순. `ft_wow_available` 과 `ft_wow_sync_order` 가 같은 정의를 쓴다.
+- 와우 대상 상품(바코드 → product_id)도 **한 곳**에서 정의: 그 계정의 `arrival_route='STOCK'` · DONE 아님 · `trim(barcode)` 일치. 여럿이면 `first_putaway_at` 빠른 순 → product_id 순. `ft_wow_available` 과 `ft_wow_sync_order` 가 같은 정의를 쓴다.
+  - 세트 상품도 대상이다 (2026-11-26, `1688-invoice/supabase/storage/013_wow_sets.sql` — 예전에는 `set_total ≤ 1` 로 뺐다). 재고 원장이 상품 단위(1세트 = 1)이고, 바코드는 상품의 대표 행(`set_seq NULLS FIRST, item_no`) 것을 쓴다.
 
 ### 3-2. 로켓이 부르는 함수 (SECURITY DEFINER · anon 실행)
 
@@ -151,6 +152,9 @@
 - 가상스캔: 실제 스캔이 한국 배정보다 많으면 남은 목표를 넘지 않게 위해분을 줄인다(확정수량 초과 방지).
 - 서류 매칭 수량 추정: 같은 수량의 위해 · 한국 후보가 함께 있으면 부착문서에 CJ 운송장이 찍힌 장은 한국 박스, 아니면 위해 박스에서 고르고 애매함으로 표시.
 - /shortage 🇨🇳 = `ft_wow_available.available` — 예전 `storageQtyByBarcode`(대표 행 매핑)와 X-CnStock-Warn(바코드 못 찾음)은 없앴다.
+- /shortage '주문'(위해 📦)은 위해 창고에 들어온 수량을 뺀다 (2026-11-26, `routes/rkWeihai.js` · 구매 DB `ft_storage_inhouse(p_user_id)` → `(product_id, stocked, wow_packed)`).
+  - 보관 상품은 창고에 넣은 뒤에도 출고될 때까지 진행중이라, 빼지 않으면 같은 물건이 '주문' 과 🇨🇳 재고(또는 위해 배정)에 두 번 잡힌다.
+  - `stocked` = 지금 창고에 있는 수량(수량 수정 ADJUST 제외) · `wow_packed` = 와우 박스에 담고 아직 안 나간 수량. 남는 '주문' = 아직 창고에 안 들어온 수량 + 일반 박스에 담고 아직 안 나간 수량.
 - 모바일 [박스 이동 › 기존박스] 후보에서 위해 박스를 뺀다(번호는 비켜 간다).
 
 ## 9. 1688-invoice 와우출고 흐름 변경에 맞춤 (2026-11-24)
