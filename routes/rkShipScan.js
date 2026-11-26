@@ -376,7 +376,7 @@ router.post('/api/ship-scan/save', async (req, res) => {
 });
 
 // ── 일괄 가상스캔 (입고정리 /inboundArrange [가상스캔]) — 발주서 여러 건을 같은 옵션으로 한 번에 (docs/plan-virtual-scan.md §7-13) ──
-// body: { orderNumbers:[…], topUp:true|false, target:'all'|'입고'|'재고', inboundCode:'1011' | inboundCodes:['1011','1014'], confirm:false|true }
+// body: { orderNumbers:[…], topUp:true|false, target:'all'|'입고'|'재고'|'위해'|['재고','위해',…], inboundCode:'1011' | inboundCodes:['1011','1014'], confirm:false|true }
 //   · 계산 = 출고스캔 모달과 같은 VirtualPack.planVirtualScan (발주서마다 GET order 와 같은 상태를 읽어 계산)
 //   · 반영 = VirtualPack.applyPlan (모달 [확정] 규칙) → saveShipState (확정수량 한도·처리완료 검증 그대로)
 //   · confirm=false 는 읽기만(미리보기). confirm=true 는 발주서마다 계획을 **그 시점 DB 로 다시 계산**해서 저장한다 (미리보기 결과를 그대로 쓰지 않는다)
@@ -386,8 +386,16 @@ router.post('/api/ship-scan/save', async (req, res) => {
 //          qty, skus, L, kg, bySource, existingBoxes, newBoxes, topUpBoxes, upgradedBoxes, assumedCount,
 //          boxes:[{boxNo,size,sizeFrom,isNew,addQty,source,warnings}], warnings, excluded:{done,none,other:{사유:종수}}, saved?:{addQty,boxCnt,upCnt,savedQty,virtualQty} }],
 //        summary:{ orders, ready, saved, skipped, errors, qty, boxes, newBoxes } }
-const VB_TARGETS = new Set(['all', '입고', '재고', '위해']);
-const noCodeTarget = (t) => t === '재고' || t === '위해';   // 입고코드를 쓰지 않는 대상
+// target: 'all' | 출처 하나('입고'|'재고'|'위해') | 출처 배열(여럿, 신규 발주서 가상버전 2026-11-26)
+//   → 'all' 또는 담는 순서(입고 → 재고 → 위해)로 정리한 출처 배열. 잘못된 값이면 null
+const VB_SOURCES = ['입고', '재고', '위해'];
+function normVbTarget(t) {
+  if (t === 'all') return 'all';
+  const list = (Array.isArray(t) ? t : [t]).map((x) => String(x == null ? '' : x).trim());
+  if (!list.length || list.some((x) => !VB_SOURCES.includes(x))) return null;
+  return VB_SOURCES.filter((s) => list.includes(s));
+}
+const noCodeTarget = (t) => t !== 'all' && !t.includes('입고');   // 입고코드를 쓰지 않는 대상 (입고를 고르지 않음)
 async function virtualBatchOne(orderNumber, opt, confirm) {
   const st = await loadOrderScanState(orderNumber);
   if (!st.ok) return { orderNumber, status: 'skip', reason: st.error, qty: 0, boxes: [], warnings: [], excluded: { done: 0, none: 0, other: {} } };
@@ -433,8 +441,8 @@ router.post('/api/ship-scan/virtual-batch', async (req, res) => {
     const orderNumbers = [...new Set(raw.map((x) => String(x || '').trim()).filter(Boolean))];
     if (!orderNumbers.length) return res.status(400).json({ error: '발주번호가 없습니다.' });
     if (orderNumbers.length > 300) return res.status(400).json({ error: '한 번에 300건까지 처리할 수 있습니다.' });
-    const target = String(req.body.target || '');
-    if (!VB_TARGETS.has(target)) return res.status(400).json({ error: '대상(전체/입고/재고/위해)을 선택하세요.' });
+    const target = normVbTarget(req.body.target);
+    if (!target) return res.status(400).json({ error: '대상(전체/입고/재고/위해)을 선택하세요.' });
     if (typeof req.body.topUp !== 'boolean') return res.status(400).json({ error: '기존 박스(채우기/새 박스만)를 선택하세요.' });
     // 입고코드: inboundCode(하나, 입고정리) 또는 inboundCodes(여럿, 신규 발주서 가상버전 2026-10-20). 계산기는 원래 배열을 받는다
     const inboundCode = String(req.body.inboundCode || '').trim();

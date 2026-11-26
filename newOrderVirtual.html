@@ -916,10 +916,10 @@
 
         // ============================================================
         // 가상스캔 · 일괄 — 대상 발주서(등록·진행중)마다 출고스캔의 [가상스캔]을 같은 옵션으로 (입고정리 일괄 가상스캔과 같은 서버 API)
-        //   옵션은 매번 고른다 (기본값 없음): 기존 박스 · 대상(전체/입고/재고/위해) · 입고코드(여럿 — 이 발주서들의 입고 배정에 있는 코드)
+        //   옵션은 매번 고른다 (기본값 없음): 기존 박스 · 대상(입고/재고/위해 여럿, [전체] = 모두) · 입고코드(여럿 — 이 발주서들의 입고 배정에 있는 코드)
         //   위해 창고분은 대상이 전체·위해일 때 언제나 위해 박스로 따로 담긴다 (기존 박스 채우기 없음)
         // ============================================================
-        let vbHasWh=false, vbOrders=[], vbCodesAll=[], vbCodes=new Set(), vbTopUp=null, vbTarget=null, vbPreview=null, vbReq=0, vbBusy=false, vbDone=false, vbOff=new Set();
+        let vbHasWh=false, vbOrders=[], vbCodesAll=[], vbCodes=new Set(), vbTopUp=null, vbTargets=new Set(), vbPreview=null, vbReq=0, vbBusy=false, vbDone=false, vbOff=new Set();
         function openVirtualBatch(){
             const nos=targetOrderNumbers();
             const ok=nos.filter(no=>st.orders[no]==='registered');
@@ -928,7 +928,7 @@
             const codes=new Set();
             vbHasWh=false;
             for(const [k,list] of Object.entries(st.allocs)){ const no=k.split('|')[0]; if(!ok.includes(no)) continue; for(const a of list){ if(a.source==='입고'&&a.code) codes.add(a.code); if(a.source==='위해') vbHasWh=true; } }
-            vbOrders=ok; vbCodesAll=[...codes].sort(cmpKo); vbCodes=new Set(); vbTopUp=null; vbTarget=null; vbPreview=null; vbBusy=false; vbDone=false; vbOff=new Set(); vbReq++;
+            vbOrders=ok; vbCodesAll=[...codes].sort(cmpKo); vbCodes=new Set(); vbTopUp=null; vbTargets=new Set(); vbPreview=null; vbBusy=false; vbDone=false; vbOff=new Set(); vbReq++;
             document.getElementById('vbSub').textContent=`발주서 ${ok.length}건`;
             const cancel=document.getElementById('vbCancelBtn'); cancel.textContent='취소'; cancel.disabled=false;
             renderVbOpts(); renderVbBody();
@@ -936,32 +936,52 @@
         }
         function closeVirtualBatch(){ if(vbBusy) return; document.getElementById('vbBack').classList.remove('show'); vbReq++; vbPreview=null; }
         function setVbTopUp(on){ if(vbBusy||vbDone) return; vbTopUp=!!on; renderVbOpts(); runVbPreview(); }
-        function setVbTarget(t){ if(vbBusy||vbDone) return; vbTarget=t; renderVbOpts(); runVbPreview(); }
+        // 대상은 여럿 고른다 (2026-11-26). [전체] = 고를 수 있는 출처 모두 (입고는 입고 배정이 있을 때, 위해는 위해 배정이 있을 때만)
+        //   출처가 여럿이어도 출처마다 박스를 나눠 담으므로 따로 돌린 것과 같은 결과 — 순서는 입고 → 재고 → 위해
+        const VB_SRC=['입고','재고','위해'];
+        const vbAvail=()=>VB_SRC.filter(s=>s==='재고'||(s==='입고'?vbCodesAll.length>0:vbHasWh));
+        const vbAllOn=()=>vbAvail().every(s=>vbTargets.has(s));
+        function setVbTarget(t){
+            if(vbBusy||vbDone) return;
+            if(t==='all') vbTargets=vbAllOn()?new Set():new Set(vbAvail());
+            else if(vbTargets.has(t)) vbTargets.delete(t); else vbTargets.add(t);
+            renderVbOpts(); runVbPreview();
+        }
         function toggleVbCode(c){ if(vbBusy||vbDone) return; if(vbCodes.has(c)) vbCodes.delete(c); else vbCodes.add(c); renderVbOpts(); runVbPreview(); }
-        const vbNoCode=t=>t==='재고'||t==='위해';   // 입고코드를 쓰지 않는 대상
-        function vbReady(){ return vbTopUp!=null && !!vbTarget && (vbNoCode(vbTarget)||vbCodes.size>0); }
+        const vbNoCode=()=>!vbTargets.has('입고');   // 입고코드를 쓰지 않는 대상 (입고를 고르지 않음)
+        function vbReady(){ return vbTopUp!=null && vbTargets.size>0 && (vbNoCode()||vbCodes.size>0); }
+        // 서버로 보낼 대상 — 입고·재고를 모두 고르고 위해도 (있으면) 고른 경우는 기존 '전체'와 똑같이 'all', 아니면 고른 출처 배열
+        const vbTargetParam=()=>vbTargets.has('입고')&&vbTargets.has('재고')&&(vbTargets.has('위해')||!vbHasWh)?'all':VB_SRC.filter(s=>vbTargets.has(s));
+        function vbTargetHint(){
+            if(!vbTargets.size) return '<span class="need">선택하세요</span> · 여럿 고를 수 있음';
+            if(vbTargetParam()==='all') return '입고분 먼저, 재고분은 새 박스부터 (한 박스는 한 작업대)'+(vbHasWh?' · 위해분은 위해 박스로':'');
+            const name={'입고':'고른 입고코드의 입고분','재고':'재고분','위해':'위해 창고분(위해 박스로)'};
+            const list=VB_SRC.filter(s=>vbTargets.has(s));
+            return list.length===1?name[list[0]]+'만':list.map(s=>name[s]).join(' + ')+' — 출처마다 박스를 나눠 담음';
+        }
         function renderVbOpts(){
             const dis=(vbBusy||vbDone)?'disabled':'';
             const noInb=!vbCodesAll.length;
-            const codeHint=vbNoCode(vbTarget)?`${vbTarget}만 담으므로 입고코드는 쓰지 않음`
-                :noInb?'이 발주서들에는 입고 배정이 없습니다 — 대상 <b>재고</b>를 고르세요'
+            const codeHint=noInb?'이 발주서들에는 입고 배정이 없습니다'
+                :vbNoCode()?'대상에 <b>입고</b>를 고르면 입고코드를 고릅니다'
                 :vbCodes.size?'고른 코드의 입고분만 (다른 코드 분량은 제외)':'<span class="need">하나 이상 고르세요</span>';
+            const tBtn=(t,label,off)=>`<button type="button" class="${(t==='all'?vbAllOn()&&vbTargets.size>0:vbTargets.has(t))?'on':''}" ${dis||(off?'disabled':'')} onclick="setVbTarget('${t}')">${label}</button>`;
             document.getElementById('vbOpts').innerHTML=`
                 <div class="vb-opt"><span class="lbl">기존 박스</span>
                     <div class="seg"><button type="button" class="${vbTopUp===true?'on':''}" ${dis} onclick="setVbTopUp(true)">기존 박스 채우기</button><button type="button" class="${vbTopUp===false?'on':''}" ${dis} onclick="setVbTopUp(false)">새 박스만</button></div>
                     <span class="hint">${vbTopUp==null?'<span class="need">선택하세요</span> · 박스가 없는 발주서는 어느 쪽이든 새 박스':vbTopUp?'발주서마다 마지막 박스부터 채움 · 앞 박스는 마감':'기존 박스는 그대로 두고 새 박스에만 담음'}</span></div>
                 <div class="vb-opt"><span class="lbl">대상</span>
-                    <div class="seg"><button type="button" class="${vbTarget==='all'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('all')">전체</button><button type="button" class="${vbTarget==='입고'?'on':''}" ${dis||(noInb?'disabled':'')} onclick="setVbTarget('입고')">입고</button><button type="button" class="${vbTarget==='재고'?'on':''}" ${dis} onclick="setVbTarget('재고')">재고</button><button type="button" class="${vbTarget==='위해'?'on':''}" ${dis||(vbHasWh?'':'disabled')} onclick="setVbTarget('위해')">🇨🇳 위해</button></div>
-                    <span class="hint">${!vbTarget?'<span class="need">선택하세요</span>':vbTarget==='all'?'입고분 먼저, 재고분은 새 박스부터 (한 박스는 한 작업대)':vbTarget==='입고'?'고른 입고코드의 입고분만':vbTarget==='위해'?'위해 창고분만 — 위해 박스로':'재고분만'}</span></div>
+                    <div class="seg">${tBtn('all','전체',false)}${tBtn('입고','입고',noInb)}${tBtn('재고','재고',false)}${tBtn('위해','🇨🇳 위해',!vbHasWh)}</div>
+                    <span class="hint">${vbTargetHint()}</span></div>
                 <div class="vb-opt"><span class="lbl">입고코드</span>
-                    <div class="chips" style="margin:0">${vbCodesAll.map(c=>`<button type="button" class="chip ${vbCodes.has(c)?'on':''}" ${dis||(vbNoCode(vbTarget)?'disabled':'')} onclick="toggleVbCode('${esc(c)}')">${esc(c)}</button>`).join('')||'<span class="hint">-</span>'}</div>
+                    <div class="chips" style="margin:0">${vbCodesAll.map(c=>`<button type="button" class="chip ${vbCodes.has(c)?'on':''}" ${dis||(vbNoCode()?'disabled':'')} onclick="toggleVbCode('${esc(c)}')">${esc(c)}</button>`).join('')||'<span class="hint">-</span>'}</div>
                     <span class="hint">${codeHint}</span></div>`;
         }
         async function runVbPreview(){
             if(!vbReady()){ vbPreview=null; renderVbBody(); return; }
             const my=++vbReq; vbPreview=null; renderVbBody('loading');
             try{
-                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:vbOrders, topUp:vbTopUp, target:vbTarget, inboundCodes:vbNoCode(vbTarget)?[]:[...vbCodes], confirm:false});
+                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:vbOrders, topUp:vbTopUp, target:vbTargetParam(), inboundCodes:vbNoCode()?[]:[...vbCodes], confirm:false});
                 if(my!==vbReq) return; vbPreview=j; renderVbBody();
             }catch(e){ if(my===vbReq){ vbPreview=null; renderVbBody('error', e.message); } }
         }
@@ -1012,7 +1032,7 @@
             vbBusy=true; btn.disabled=true; cancel.disabled=true; btn.textContent='반영 중…'; note.className='note'; note.textContent=`발주서 ${picked.length}건 저장 중… 창을 닫지 마세요.`;
             renderVbOpts();
             try{
-                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:picked.map(r=>r.orderNumber), topUp:vbTopUp, target:vbTarget, inboundCodes:vbNoCode(vbTarget)?[]:[...vbCodes], confirm:true});
+                const j=await postJson('/api/ship-scan/virtual-batch',{orderNumbers:picked.map(r=>r.orderNumber), topUp:vbTopUp, target:vbTargetParam(), inboundCodes:vbNoCode()?[]:[...vbCodes], confirm:true});
                 vbPreview=j; vbDone=true; vbBusy=false; cancel.disabled=false; cancel.textContent='닫기';
                 renderVbOpts(); renderVbBody();
                 const s=j.summary||{};

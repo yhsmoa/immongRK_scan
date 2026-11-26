@@ -269,6 +269,28 @@ test('대상 선택(sourceFilter): 입고만 / 재고만 담고 나머지는 제
   assert.ok(legacy.excluded.some((e) => e.reason === '출처 정보 없음'));
 });
 
+test('대상 여럿(sourceFilter 배열): 재고 + 위해 = 따로 돌린 것과 같은 박스 (재고 → 위해, 번호는 이어서)', () => {
+  const pw = (barcode, inb, stk, wh, opts = {}) => Object.assign(prod(barcode, inb + stk + wh, opts), { allocInbound: inb, allocStock: stk, allocWeihai: wh });
+  const prods = [pw('A', 4, 3, 2), pw('B', 0, 2, 0), pw('C', 0, 0, 1), pw('D', 5, 0, 0)];
+  const extra = { boxItems: [{ boxNo: 1, barcode: 'Z', qty: 1 }], savedBoxes: [{ boxNo: 1, boxSize: '중' }] };
+  const both = run(prods, extra, { sourceFilter: ['위해', '재고'], topUpExisting: false });
+  assert.deepStrictEqual(both.boxes.filter((b) => b.items.length).map((b) => `${b.boxNo}:${b.source}:${b.addQty}`), ['2:재고:5', '3:위해:3']);
+  assert.ok(both.excluded.some((e) => e.barcode === 'D' && e.reason === '위해·재고 배정 없음'));
+  assert.deepStrictEqual(both.assumptions.sourceFilter, ['위해', '재고']);
+  // 따로 돌린 결과와 박스 구성이 같다
+  const stkOnly = run(prods, extra, { sourceFilter: '재고', topUpExisting: false });
+  const whOnly = run(prods, extra, { sourceFilter: '위해', topUpExisting: false });
+  const sig = (p) => p.boxes.filter((b) => b.items.length).map((b) => `${b.source}:${b.size}:${b.items.map((i) => `${i.barcode}${i.qty}`).join(',')}`);
+  assert.deepStrictEqual(sig(both), [...sig(stkOnly), ...sig(whOnly)]);
+  // 기존 박스 채우기: 재고만 마지막 박스를 채우고 위해는 언제나 새 박스
+  const top = run(prods, extra, { sourceFilter: ['재고', '위해'], topUpExisting: true });
+  assert.deepStrictEqual(top.boxes.filter((b) => b.items.length).map((b) => `${b.boxNo}:${b.isNew ? '신규' : '기존'}:${b.source}`), ['1:기존:재고', '2:신규:위해']);
+  // 하나도 없으면 ok=false + 사유에 고른 출처
+  const none = run([pw('D', 5, 0, 0)], {}, { sourceFilter: ['재고', '위해'] });
+  assert.strictEqual(none.ok, false);
+  assert.ok(none.reason.includes('재고·위해 배정분이 없습니다'));
+});
+
 test('입고코드 선택(inboundCodes): 고른 코드의 입고분만, 다른 코드는 "다른 입고코드" 로 제외', () => {
   const pc = (barcode, byCode, stk = 0, opts = {}) => {
     const inb = Object.values(byCode).reduce((s, v) => s + v, 0);
