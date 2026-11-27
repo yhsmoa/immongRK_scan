@@ -66,6 +66,11 @@
         .chip.st-prog{background:transparent;color:#3C3489;border:1.5px dashed #7F77DD;padding:1px 6px;} .chip.st-prog b{color:#1e293b;}
         .chip.st-ship{background:#e5e7eb;color:#374151;border:1.5px solid #d1d5db;padding:1px 6px;} .chip.st-ship b{color:#1f2937;}
         .chip.st-wow{background:#fff;color:#334155;border:1.5px solid #cbd5e1;padding:1px 6px;} .chip.st-wow b{color:#1e293b;}   /* 위해 박스 — 색이 아니라 중국 국기로 알아본다 */
+        /* 위해 박스 단계 색 (2026-11-27): 작업완료 = 노랑 깜빡임(한국이 부착·동봉문서를 올려야 함) · 서류 도착 ~ 합포장 = 회색(중국 작업 대기) · 출고준비 = 초록(st-ok) */
+        .chip.st-wdue{background:#FEF3C7;color:#78350F;border:1.5px solid #F59E0B;padding:1px 6px;animation:wdue-blink 1s ease-in-out infinite;} .chip.st-wdue b{color:#78350F;}
+        @keyframes wdue-blink{0%,100%{background:#FEF3C7;border-color:#F59E0B;}50%{background:#FDE047;border-color:#D97706;}}
+        @media (prefers-reduced-motion: reduce){ .chip.st-wdue{animation:none;background:#FDE047;} }
+        .chip.st-wdoc{background:#f1f5f9;color:#475569;border:1.5px solid #94a3b8;padding:1px 6px;} .chip.st-wdoc b{color:#334155;}
         .flag{width:13px;height:9px;flex:none;vertical-align:-1px;border-radius:1.5px;box-shadow:0 0 0 1px rgba(15,23,42,.14);}   /* 출고 나라 국기 (그림은 스크립트의 FLAG_SVG) */
         .chip .wn{color:#c2410c;font-weight:900;margin-left:1px;}   /* ⚠ 부족 n — 초록 배지 안에서도 확실히 보이게 */
         .ist{font-size:12px;font-weight:700;white-space:nowrap;}
@@ -291,7 +296,10 @@
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅</span><span>완료 · 다 찾음 — 모든 상품을 몫만큼 찾음</span></span>
                             <span class="r"><span class="chip st-short"><b>1</b>중 <span class="wn">⚠ 6</span></span><span>완료 · 부족 — 입력은 끝났고 6개를 못 찾음 (파일엔 찾은 수만 나감)</span></span>
                             <span class="r"><span class="chip st-ship"><b>1</b>중 🚚</span><span>출고완료 — [출고완료] 로 나간 박스 ([출고] 탭)</span></span>
-                            <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 출고준비 › 출고완료 (작업완료부터 초록)</span></span><!--/adm-->
+                            <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 순서지정 › 합포장 › 출고준비 › 출고완료</span></span>
+                            <span class="r"><span class="chip st-wdue"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 작업완료</span><span>중국에서 다 담음 — 부착문서 · 동봉문서를 등록할 차례 (깜빡임)</span></span>
+                            <span class="r"><span class="chip st-wdoc"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 서류준비</span><span>서류가 중국에 도착 — 중국 순서지정 · 합포장 대기 (회색)</span></span>
+                            <span class="r"><span class="chip st-ok"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 출고준비</span><span>중국 출고준비완료 — 출고만 남음 (초록)</span></span><!--/adm-->
                             <span class="r"><span class="chip st-none"><b>1</b>중 🔀👾</span><span>🔀 = 실제 스캔 + 가상이 섞인 박스 (가상 부분의 상태가 뒤에 붙음)</span></span>
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅<span class="doc">📃</span></span><span>📃 = 쿠팡 부착·동봉문서가 등록된 박스</span></span>
                             <span class="t">상품 상태</span>
@@ -701,11 +709,15 @@
         //   중국 국기 = 위해 박스. 1688-invoice 와우출고 단계를 글자로 (2026-11-19): 신규 › 작업중 › 작업완료 › 서류준비 › 순서지정 › 합포장 › 출고준비 › 출고완료.
         //     (2026-11-24: 순서지정 · 합포장 추가 — 1688-invoice 와우출고 화면의 탭과 같은 이름 · 같은 순서)
         //     출고 전 단계는 구매 DB 에서 읽는다(p.위해단계) — 못 읽었으면 배지에 '확인 안 됨'.
-        //     색은 한국 박스와 같다: 작업완료부터(다 담음) 초록 · 출고된 박스는 회색 + 🚚 · 그 전은 흰 바탕
+        //     색 (2026-11-27): 신규 · 작업중 = 흰 바탕 · 작업완료 = 노랑 깜빡임(한국이 부착 · 동봉문서를 올릴 차례)
+        //       · 서류준비 · 순서지정 · 합포장 = 회색(서류가 중국에 도착, 중국 작업 대기) · 출고준비 = 초록 · 출고완료 = 회색 + 🚚
+        //     서류 도착 여부는 구매 DB(label_path · manifest_path 둘 다) 기준 — 로켓에 서류가 있어도 중국에 안 넘어갔으면 계속 깜빡인다 (다시 등록해야 함)
         const WOW_STAGES=['신규','작업중','작업완료','서류준비','순서지정','합포장','출고준비','출고완료'];
-        const WOW_PACKED=WOW_STAGES.indexOf('작업완료');
+        const WOW_CLS={'작업완료':' st-wdue','서류준비':' st-wdoc','순서지정':' st-wdoc','합포장':' st-wdoc','출고준비':' st-ok'};
         const wowStage=b=>b.shipped?'출고완료':b.stage;
-        const wowCls=b=>b.shipped?' st-ship':WOW_STAGES.indexOf(b.stage)>=WOW_PACKED?' st-ok':' st-wow';
+        const wowCls=b=>b.shipped?' st-ship':(WOW_CLS[b.stage]||' st-wow');
+        // 로켓에는 부착 · 동봉문서가 다 있는데 중국 단계가 아직 작업완료 = 서류가 구매 DB 로 넘어가지 못함
+        const wowDocsStuck=b=>!b.shipped&&b.stage==='작업완료'&&b.docs.label&&b.docs.manifest;
         function boxBadge(b){
             if(b.wow){ const s=wowStage(b); return {cls:wowCls(b), emo:flagIcon('cn')+(b.shipped?'🚚':''), tail:` ${s||'확인 안 됨'}`, label:`위해 박스 · ${s||'단계 확인 안 됨'}`, mix:''}; }
             const mix=b.virtualQty>0&&b.virtualQty<b.qty?'🔀':'';
@@ -722,6 +734,8 @@
             if(b.wow){
                 const s=wowStage(b);
                 if(s) rows.push(['단계', WOW_STAGES.map(x=>x===s?`<strong>${x}</strong>`:`<small>${x}</small>`).join(' <small>›</small> ')]);
+                if(wowDocsStuck(b)) rows.push(['⚠', '서류는 등록됐지만 중국에 넘어가지 않았습니다 — 쉽먼트 서류를 다시 등록하세요']);
+                else if(!b.shipped&&b.stage==='작업완료') rows.push(['할 일', '중국 작업완료 — 부착문서 · 동봉문서를 등록하세요']);
                 rows.push(['스캔', `${b.qty} <small>(위해 창고 — 와우출고)</small>`]);
             }
             else if(b.virtualQty>0){ rows.push(['스캔', `${b.qty} <small>(실제 ${b.qty-b.virtualQty} + 가상 ${b.virtualQty})</small>`]); rows.push(['확인', `${b.okQty}${b.short?` <small>· 부족 ${b.short}</small>`:''}`]); }
