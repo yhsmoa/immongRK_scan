@@ -299,7 +299,7 @@
                             <!--adm--><span class="r"><span class="chip st-wow"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 작업중</span><span>위해 박스 — 중국에서 바로 출고. 와우출고 단계: 신규 › 작업중 › 작업완료 › 서류준비 › 순서지정 › 합포장 › 출고준비 › 출고완료</span></span>
                             <span class="r"><span class="chip st-wdue"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 작업완료</span><span>중국에서 다 담음 — 부착문서 · 동봉문서를 등록할 차례 (깜빡임)</span></span>
                             <span class="r"><span class="chip st-wdoc"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 서류준비</span><span>서류가 중국에 도착 — 중국 순서지정 · 합포장 대기 (회색)</span></span>
-                            <span class="r"><span class="chip st-ok"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 출고준비</span><span>중국 출고준비완료 — 출고만 남음 (초록)</span></span><!--/adm-->
+                            <span class="r"><span class="chip st-ok"><b>1</b>중 <svg class="flag" aria-hidden="true"><use href="#flag-cn"/></svg> 출고준비</span><span>중국 출고준비완료 — 출고만 남음 (초록) · 출고완료는 초록 + 🚚</span></span><!--/adm-->
                             <span class="r"><span class="chip st-none"><b>1</b>중 🔀👾</span><span>🔀 = 실제 스캔 + 가상이 섞인 박스 (가상 부분의 상태가 뒤에 붙음)</span></span>
                             <span class="r"><span class="chip st-ok"><b>1</b>중 ✅<span class="doc">📃</span></span><span>📃 = 쿠팡 부착·동봉문서가 등록된 박스</span></span>
                             <span class="t">상품 상태</span>
@@ -710,12 +710,12 @@
         //     (2026-11-24: 순서지정 · 합포장 추가 — 1688-invoice 와우출고 화면의 탭과 같은 이름 · 같은 순서)
         //     출고 전 단계는 구매 DB 에서 읽는다(p.위해단계) — 못 읽었으면 배지에 '확인 안 됨'.
         //     색 (2026-11-27): 신규 · 작업중 = 흰 바탕 · 작업완료 = 노랑 깜빡임(한국이 부착 · 동봉문서를 올릴 차례)
-        //       · 서류준비 · 순서지정 · 합포장 = 회색(서류가 중국에 도착, 중국 작업 대기) · 출고준비 = 초록 · 출고완료 = 회색 + 🚚
+        //       · 서류준비 · 순서지정 · 합포장 = 회색(서류가 중국에 도착, 중국 작업 대기) · 출고준비 = 초록 · 출고완료 = 초록 + 🚚
         //     서류 도착 여부는 구매 DB(label_path · manifest_path 둘 다) 기준 — 로켓에 서류가 있어도 중국에 안 넘어갔으면 계속 깜빡인다 (다시 등록해야 함)
         const WOW_STAGES=['신규','작업중','작업완료','서류준비','순서지정','합포장','출고준비','출고완료'];
         const WOW_CLS={'작업완료':' st-wdue','서류준비':' st-wdoc','순서지정':' st-wdoc','합포장':' st-wdoc','출고준비':' st-ok'};
         const wowStage=b=>b.shipped?'출고완료':b.stage;
-        const wowCls=b=>b.shipped?' st-ship':(WOW_CLS[b.stage]||' st-wow');
+        const wowCls=b=>b.shipped?' st-ok':(WOW_CLS[b.stage]||' st-wow');   // 출고완료도 초록 (+ 🚚) — 2026-11-27
         // 로켓에는 부착 · 동봉문서가 다 있는데 중국 단계가 아직 작업완료 = 서류가 구매 DB 로 넘어가지 못함
         const wowDocsStuck=b=>!b.shipped&&b.stage==='작업완료'&&b.docs.label&&b.docs.manifest;
         function boxBadge(b){
